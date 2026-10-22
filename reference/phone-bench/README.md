@@ -14,13 +14,13 @@ Open `index.html` from any web server that serves this repository. It loads `../
 
 `https://nemounus.github.io/proof-of-one/reference/phone-bench/`
 
-Then tap **Start benchmark**, keep the screen on, and post the result in [issue #8](https://github.com/NemoUnus/proof-of-one/issues/8).
+Then tap **Start benchmark**, keep the screen on, and post the result in [issue #9](https://github.com/NemoUnus/proof-of-one/issues/9).
 
 ## Reference results
 
 | Device | Median of 3 runs |
 |---|---|
-| **iPhone 14** (Safari, 4 cores reported), measured by the founder, 23 Oct 2026 | **3.5 s** (3.6, 3.5, 3.5); proof verified |
+| **iPhone 14** (in the browser, 4 cores reported), measured by the founder, 23 Oct 2026 | **3.5 s** (3.6, 3.5, 3.5); proof verified |
 | Server, 2 cores, headless Chromium | about 10 s |
 | Server, Node.js (`ballot-circuit` tests) | 4–5 s |
 | Low-cost Android phones | **wanted**: please contribute |

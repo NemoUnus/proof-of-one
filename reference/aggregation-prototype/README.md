@@ -28,7 +28,7 @@ For comparison, the Circom ballot proof has 32,535 constraints. Gates and constr
 
 1. Verifying one ballot proof inside another costs about **750,000 gates**, whatever the size of the ballot proof. A 2-to-1 aggregation tree therefore costs about 1.5 million gates per ballot in total, on servers, not on phones.
 2. The **compatible** ballot proof is about 7 times larger than the native one, because Poseidon and Baby Jubjub are not native to this proof system. The Elliptic-curve code here is a plain double-and-add without optimisation, so part of the gap may close.
-3. **Not measured:** proving time, proof size and on-chain verification gas. Proving needs the public parameters of the Aztec Ignition ceremony, which could not be downloaded in the environment where this was built. Anyone with normal internet access can complete the measurement with these files (see below and [issue #8](https://github.com/NemoUnus/proof-of-one/issues/8)).
+3. **Not measured:** proving time, proof size and on-chain verification gas. Proving needs the public parameters of the Aztec Ignition ceremony, which could not be downloaded in the environment where this was built. Anyone with normal internet access can complete the measurement with these files (see below and [issue #9](https://github.com/NemoUnus/proof-of-one/issues/9)).
 
 ## How to reproduce
 
