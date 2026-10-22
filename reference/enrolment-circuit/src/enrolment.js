@@ -23,6 +23,8 @@ const TAG = Object.freeze({ CREDENTIAL: 3n, COMMITMENT: 4n, CREDENTIAL_MSG: 5n, 
 const KEY_DEPTH = 8;
 const WASM = path.join(__dirname, "..", "build", "registration_js", "registration.wasm");
 const RN_LIMIT = 1n << 252n;
+const BATCH_K = 2;                       // reference batch size B = 2^k = 4
+const BATCH_WASM = path.join(__dirname, "..", "build", "batch_insert_js", "batch_insert.wasm");
 
 let eddsa = null;
 async function init() { if (!eddsa) eddsa = await buildEddsa(); return eddsa; }
@@ -132,4 +134,35 @@ function createRegistry(P, { vkey, keySetRoot, minBatch = 3, depth = 32 }) {
   };
 }
 
-module.exports = { TAG, KEY_DEPTH, WASM, init, newMember, leafOf, createEnclave, buildRegistration, prove, createRegistry };
+// ------------------------------------------------ batch insertion proof π_batch
+// Chain hash the contract keeps while leaves are registered: h_i = Poseidon(h_{i-1}, leaf_i).
+function leavesHash(H, leaves) {
+  return leaves.reduce((h, l) => H([h, BigInt(l)]), 0n);
+}
+// Witness for inserting exactly B = 2^k leaves into the empty, aligned subtree that
+// starts at tree.leaves.length. `tree` is the current identity tree (IncrementalTree).
+function buildBatchInsert(P, tree, leaves, k = BATCH_K) {
+  const H = P.hash.H, B = 1 << k;
+  if (leaves.length !== B) throw new Error(`batch must contain exactly ${B} leaves`);
+  const start = tree.leaves.length;
+  if (start % B !== 0) throw new Error("batch start is not aligned");
+  const lv = tree.levels();
+  const siblings = [];
+  let i = start >> k;
+  for (let d = k; d < tree.depth; d++) {
+    const sib = i ^ 1;
+    siblings.push(sib < lv[d].length ? lv[d][sib] : tree.zeros[d]);
+    i >>= 1;
+  }
+  const after = new IncrementalTree(H, tree.depth);
+  for (const l of tree.leaves) after.insert(l);
+  for (const l of leaves) after.insert(l);
+  const input = {
+    oldRoot: tree.root.toString(), newRoot: after.root.toString(), startIndex: String(start),
+    leavesHash: leavesHash(H, leaves).toString(), leaves: leaves.map(String), siblings: siblings.map(String),
+  };
+  return { input, newRoot: after.root };
+}
+const proveBatch = (input, zkey) => snarkjs.groth16.fullProve(input, BATCH_WASM, zkey);
+
+module.exports = { TAG, KEY_DEPTH, WASM, BATCH_K, BATCH_WASM, init, newMember, leafOf, createEnclave, buildRegistration, prove, createRegistry, leavesHash, buildBatchInsert, proveBatch };

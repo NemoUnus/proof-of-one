@@ -16,3 +16,7 @@ npx snarkjs groth16 setup ../build/registration.r1cs pot15_final.ptau registrati
 npx snarkjs zkey contribute registration_0.zkey registration_test.zkey --name="TEST ONLY" -e="$(head -c 64 /dev/urandom | base64)"
 npx snarkjs zkey export verificationkey registration_test.zkey vkey_test.json
 rm -f registration_0.zkey
+npx snarkjs groth16 setup ../build/batch_insert.r1cs pot15_final.ptau batch_0.zkey
+npx snarkjs zkey contribute batch_0.zkey batch_test.zkey --name="TEST ONLY" -e="$(head -c 64 /dev/urandom | base64)"
+npx snarkjs zkey export verificationkey batch_test.zkey vkey_batch_test.json
+rm -f batch_0.zkey

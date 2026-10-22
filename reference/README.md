@@ -8,7 +8,7 @@ Four small packages implement the core of the protocol end to end. Each is writt
 |---|---|---|
 | [`tally/`](tally/) | Encrypted one-hot ballots, nullifiers, trustee key generation, voter self-verification, homomorphic tally, threshold decryption with DLEQ proofs, independent recount tool | 13 |
 | [`ballot-circuit/`](ballot-circuit/) | Zero-knowledge ballot proof π_vote (Circom, Groth16): membership, non-revocation, nullifier, eligibility, well-formed encrypted ballot | 11 |
-| [`enrolment-circuit/`](enrolment-circuit/) | Unlinkable registration proof π_reg (Circom, Groth16), enclave credential issuance, registry rules, revocation on re-enrolment | 9 |
+| [`enrolment-circuit/`](enrolment-circuit/) | Unlinkable registration proof π_reg and batch insertion proof π_batch (Circom, Groth16), enclave credential issuance, registry rules, revocation on re-enrolment | 13 |
 | [`contracts/`](contracts/) | Solidity identity and revocation registries, polls, ballots and results; full on-chain flow tested with real proofs | 8 |
 
 ## How they fit together
@@ -46,7 +46,7 @@ cd ../contracts   && npm install && npm test
 
 - A real trusted setup (a large public ceremony) or a universal-setup proof system ([issue #7](https://github.com/NemoUnus/proof-of-one/issues/7)).
 - A robust distributed key generation for the trustees.
-- Batch insertion and revocation updates proven by SNARKs (on-chain hashing is too expensive; see implementation notes).
+- Revocation updates proven by a SNARK (on-chain hashing is too expensive; see implementation notes). Batch insertion is done.
 - Enrolment front end: document-validity proof, liveness and face matching in an attested enclave.
 - Prover performance on phones.
 - Independent human review of everything here.

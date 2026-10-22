@@ -10,24 +10,26 @@ These notes record where the implementation confirmed the specifications, where 
 |---|---|---|---|
 | Ballot proof π_vote, 4 options, trees of depth 32 | about 40,000 constraints | **31,554** | Includes revocation non-membership (C1), which the original estimate did not |
 | Registration proof π_reg, key-set depth 8 | 12,000–18,000 | **9,171** | EdDSA-Poseidon verification dominates |
+| Batch insertion proof π_batch, depth 32 | — | **16,227** (4 leaves); **501,947** (1,024 leaves) | Four public inputs regardless of batch size |
 | π_vote proving time | "seconds on phones" | 4–5 s on a server CPU (snarkjs, JavaScript) | Phone measurement still needed; native provers are expected to be faster |
 
 ## 2. Measured gas (reference contracts, unoptimised)
 
 | Operation | Spec estimate | Measured |
 |---|---|---|
-| Register an identity (π_reg) | ~300,000 | **302,271** |
+| Register an identity (π_reg) | ~300,000 | **302,271**; **334,589** with the batch chain hash |
 | First ballot (π_vote, 26 public inputs) | ~420,000 | **533,615** |
 | Re-vote | ~400,000 | **442,997** |
 | Create poll (including subgroup check of the tally key) | — | **629,441** |
 | Publish result | ~300,000 | **158,118** |
 | Insert identities, on-chain hashing | ~650,000 per leaf (naive) | **~1,050,000 per leaf** |
+| Insert a batch with π_batch (any batch size) | ~400,000 per batch | **293,548 per batch** |
 | Revoke, on-chain path checks | — | **4,027,982** |
 
 **Consequences:**
 
 1. A ballot costs about 27% more than estimated. The cost estimates in contracts spec §10 and whitepaper §8.9 should be updated. Ballot aggregation (Decision Log #23) and hashing the public inputs into one value become more important.
-2. On-chain hashing for insertion and revocation is not viable. Batch insertion and revocation updates proven by SNARKs are required, not optional.
+2. On-chain hashing for insertion and revocation is not viable. **Batch insertion with π_batch is now implemented** and cuts insertion from about 1,050,000 gas per leaf to 293,548 per batch, which is under 300 gas per leaf for a batch of 1,024. Revocation updates still need the same treatment.
 
 ## 3. Details the specifications must state explicitly
 
@@ -42,6 +44,7 @@ These notes record where the implementation confirmed the specifications, where 
 | N7 | **Snapshot semantics:** a poll created before a revocation keeps its old revocation root, so a revoked identity can still vote in polls that were already open. This is the intended behaviour, since the snapshot is fixed, but it should be stated, together with the cooling-off period. | contracts |
 | N8 | **Without π_vote, the tally checks cannot detect a vote-shifting ballot** such as (+2, −1, 0, 0). Every path that accepts ballots must verify the proof. | tally |
 | N9 | **The eligible-identity count** used for the bound check is `leafCount − revokedCount` at the snapshot. | contracts |
+| N10 | **Batch insertion binding:** the registry keeps a Poseidon chain hash of each batch as leaves are registered, and π_batch must match it. Batches are full, aligned and inserted in order; the target subtree is proven empty, with the empty-subtree root computed in the circuit. | enrolment-circuit, contracts |
 
 ## 4. Open issues found during implementation
 

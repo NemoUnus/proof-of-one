@@ -20,6 +20,8 @@ const E = require("../../enrolment-circuit/src/enrolment");
 
 const BALLOT_ZKEY = path.join(__dirname, "..", "..", "ballot-circuit", "setup", "ballot_test.zkey");
 const REG_ZKEY = path.join(__dirname, "..", "..", "enrolment-circuit", "setup", "registration_test.zkey");
+const BATCH_ZKEY = path.join(__dirname, "..", "..", "enrolment-circuit", "setup", "batch_test.zkey");
+const Z2 = [0n, 0n], Z22 = [[0n, 0n], [0n, 0n]];
 const art = (n) => JSON.parse(fs.readFileSync(path.join(__dirname, "..", "build", n + ".json"), "utf8"));
 const ATTRS = { ageBand: 3, natCode: 250, sexCode: 1, expiryMonth: 24400 };
 const POLICY = { minAgeBand: 2, minExpiryMonth: 24330, requiredNat: 0 };
@@ -61,13 +63,24 @@ async function enrol({ fingerprint = fp(), reenrol = false } = {}) {
 // --- the phone's local view of both registries, rebuilt from events only
 async function syncTrees() {
   const H = P.hash.H;
+  const inserted = Number(await identity.leafCount());
+  const regs = (await identity.queryFilter(identity.filters.Registered())).sort((x, y) => Number(x.args.index - y.args.index));
   const ids = new IncrementalTree(H, B.DEPTH);
-  const ins = await identity.queryFilter(identity.filters.LeafInserted());
-  ins.sort((x, y) => Number(x.args.index - y.args.index)).forEach((e) => ids.insert(e.args.leaf));
+  regs.filter((e) => Number(e.args.index) < inserted).forEach((e) => ids.insert(e.args.leaf));
+  const pending = regs.filter((e) => Number(e.args.index) >= inserted).map((e) => e.args.leaf);
   const rev = new RevocationTree(H, B.REV_DEPTH);
   for (const e of await revocation.queryFilter(revocation.filters.Revoked())) rev.revoke(e.args.rn);
-  const index = new Map(ins.map((e) => [e.args.leaf.toString(), Number(e.args.index)]));
-  return { ids, rev, index };
+  const index = new Map(regs.map((e) => [e.args.leaf.toString(), Number(e.args.index)]));
+  return { ids, rev, index, pending };
+}
+
+// --- anyone: prove and submit the insertion of the next full batch
+async function insertNextBatch() {
+  const v = await syncTrees();
+  const { input, newRoot } = E.buildBatchInsert(P, v.ids, v.pending.slice(0, 4));
+  const { proof } = await E.proveBatch(input, BATCH_ZKEY);
+  const p = sp(proof);
+  return { tx: identity.insertBatch(newRoot, p.a, p.b, p.c), newRoot, p };
 }
 
 // --- the enclave operator's witness for an on-chain revocation
@@ -104,9 +117,10 @@ test.before(async () => {
   const deploy = async (abi, bytecode, ...args) => { const c = await new ethers.ContractFactory(abi, bytecode, signer).deploy(...args); await c.waitForDeployment(); return c; };
   poseidon = await deploy(poseidonContract.generateABI(2), poseidonContract.createCode(2));
   enclave = E.createEnclave(P, { epochs: 4 });
-  const RV = art("RegistrationVerifier"), BV = art("Groth16Verifier"), IR = art("IdentityRegistry"), RR = art("RevocationRegistry"), PP = art("ProofOfOnePolls");
+  const RV = art("RegistrationVerifier"), BIV = art("BatchInsertVerifier"), BV = art("Groth16Verifier"), IR = art("IdentityRegistry"), RR = art("RevocationRegistry"), PP = art("ProofOfOnePolls");
   const regVerifier = await deploy(RV.abi, RV.bytecode);
-  identity = await deploy(IR.abi, IR.bytecode, await poseidon.getAddress(), await regVerifier.getAddress(), enclave.keySetRoot, 3, await signer.getAddress());
+  const batchVerifier = await deploy(BIV.abi, BIV.bytecode);
+  identity = await deploy(IR.abi, IR.bytecode, await poseidon.getAddress(), await regVerifier.getAddress(), await batchVerifier.getAddress(), 4, enclave.keySetRoot, await signer.getAddress());
   revocation = await deploy(RR.abi, RR.bytecode, await poseidon.getAddress(), await signer.getAddress());
   const ballotVerifier = await deploy(BV.abi, BV.bytecode);
   polls = await deploy(PP.abi, PP.bytecode, await ballotVerifier.getAddress(), await identity.getAddress(), await revocation.getAddress());
@@ -114,13 +128,15 @@ test.before(async () => {
 });
 test.after(async () => { if (globalThis.curve_bn128) await globalThis.curve_bn128.terminate(); });
 
-test("registration: valid π_reg accepted; reused credential rejected; small batch refused", async () => {
+test("registration: valid π_reg accepted; reused credential rejected; incomplete batch refused", async () => {
   people.push(await enrol(), await enrol());
-  await reverts(identity.insertBatch.staticCall(), identity, "BatchTooSmall");
+  await reverts(identity.insertBatch.staticCall(0n, Z2, Z22, Z2), identity, "BatchNotReady");
   const a = people[0];
   await reverts(identity.register.staticCall(a.leaf, a.member.cn, a.proof.a, a.proof.b, a.proof.c), identity, "CredentialUsed");
   people.push(await enrol(), await enrol());
-  gas.insertBatch4 = await used(identity.insertBatch());
+  const ins = await insertNextBatch();
+  await reverts(identity.insertBatch.staticCall(ins.newRoot + 1n, ins.p.a, ins.p.b, ins.p.c), identity, "InvalidProof");
+  gas.insertBatch4 = await used(ins.tx);
   assert.equal(await identity.leafCount(), 4n);
 });
 
@@ -174,11 +190,11 @@ test("re-enrolment: the old identity is revoked on-chain and cannot vote in late
   gas.revoke = await used(revocation.revoke(alice2.revokeOld, 1, w.lowIndex, w.lowValue, w.lowNext, w.lowSiblings, w.newSiblings));
   assert.equal(await revocation.revokedCount(), 1n);
 
-  people.push(alice2, await enrol(), await enrol());
-  await used(identity.insertBatch());
+  people.push(alice2, await enrol(), await enrol(), await enrol());
+  await used((await insertNextBatch()).tx);
   await used(polls.createPoll(await pollParams()));
   const later = await polls.pollCount();
-  assert.equal((await polls.getPoll(later)).eligible, 6n); // 7 leaves − 1 revoked
+  assert.equal((await polls.getPoll(later)).eligible, 7n); // 8 leaves − 1 revoked
 
   const v = await syncTrees();
   assert.equal(v.rev.root, await revocation.root());

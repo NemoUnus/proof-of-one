@@ -1,7 +1,7 @@
 {
   "name": "@proof-of-one/enrolment-circuit",
   "version": "0.1.0",
-  "description": "Reference unlinkable registration proof (π_reg) and enclave/registry simulation for Proof of One (not for production use)",
+  "description": "Reference unlinkable registration proof (\u03c0_reg) and enclave/registry simulation for Proof of One (not for production use)",
   "main": "src/enrolment.js",
   "private": true,
   "license": "Apache-2.0",
@@ -9,7 +9,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "build": "mkdir -p build && circom2 circuits/registration.circom --r1cs --wasm --sym --O2 -o build",
+    "build": "mkdir -p build && circom2 circuits/registration.circom --r1cs --wasm --sym --O2 -o build && circom2 circuits/batch_insert.circom --r1cs --wasm --sym --O2 -o build",
     "setup:test": "bash scripts/setup-test.sh",
     "test": "node --test --test-force-exit test/*.test.js"
   },

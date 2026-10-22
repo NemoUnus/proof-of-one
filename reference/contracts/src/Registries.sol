@@ -13,51 +13,64 @@ interface IRegistrationVerifier {
         external view returns (bool);
 }
 
+interface IBatchInsertVerifier {
+    function verifyProof(uint256[2] calldata a, uint256[2][2] calldata b, uint256[2] calldata c, uint256[4] calldata pub)
+        external view returns (bool);
+}
+
 /// @title IdentityRegistry (reference)
-/// @notice Accepts identity leaves that carry a valid unlinkable-registration proof (π_reg),
-///         enforces one use per credential, and inserts leaves into a depth-32 Poseidon
-///         Merkle tree only in batches of at least `minBatch` (red-team change C2).
-/// @dev Insertion here hashes on-chain (32 Poseidon calls per leaf), which is simple but
-///      expensive. The specification replaces this with batch insertion proven by a SNARK.
-///      The key-set root has no timelock in this reference. Not audited.
+/// @notice Accepts identity leaves that carry a valid unlinkable-registration proof (π_reg)
+///         and enforces one use per credential. Leaves enter the depth-32 Poseidon tree only
+///         in full batches of BATCH leaves (red-team change C2), each inserted with a batch
+///         insertion proof (π_batch), so the contract never hashes the tree itself.
+/// @dev While leaves are registered, the contract keeps a Poseidon chain hash of each batch;
+///      π_batch must match it, so the inserter cannot change, drop or reorder leaves.
+///      Anyone may submit the insertion proof. The key-set root has no timelock in this
+///      reference. Not audited.
 contract IdentityRegistry {
     uint256 public constant DEPTH = 32;
     IPoseidon2 public immutable poseidon;
     IRegistrationVerifier public immutable verifier;
-    uint256 public immutable minBatch;
+    IBatchInsertVerifier public immutable batchVerifier;
+    uint256 public immutable BATCH;
     address public governance;
 
     uint256 public keySetRoot;
     uint256 public root;
-    uint256 public leafCount;
-    uint256[DEPTH + 1] public zeros;
-    uint256[DEPTH] private filledSubtrees;
+    uint256 public leafCount;         // leaves inserted into the tree
+    uint256 public registeredCount;   // leaves registered (inserted or waiting)
+    uint256 public pendingHash;       // chain hash of the batch being filled
+    mapping(uint256 => uint256) public batchHash; // batch number => chain hash of its leaves
     mapping(uint256 => bool) public credentialUsed;
     mapping(uint256 => bool) public isHistoricalRoot;
-    uint256[] private pending;
-    uint256 public pendingStart;
 
-    event Registered(uint256 indexed leaf, uint256 indexed cn);
-    event LeafInserted(uint256 indexed index, uint256 leaf);
+    event Registered(uint256 indexed leaf, uint256 indexed cn, uint256 index);
+    event BatchReady(uint256 indexed batch, uint256 leavesHash);
     event BatchInserted(uint256 start, uint256 count, uint256 root);
     event KeySetUpdated(uint256 keySetRoot);
 
     error CredentialUsed();
     error InvalidProof();
-    error BatchTooSmall();
+    error BatchNotReady();
     error NotGovernance();
 
-    constructor(IPoseidon2 poseidon_, IRegistrationVerifier verifier_, uint256 keySetRoot_, uint256 minBatch_, address governance_) {
+    constructor(
+        IPoseidon2 poseidon_,
+        IRegistrationVerifier verifier_,
+        IBatchInsertVerifier batchVerifier_,
+        uint256 batchSize_,
+        uint256 keySetRoot_,
+        address governance_
+    ) {
         poseidon = poseidon_;
         verifier = verifier_;
+        batchVerifier = batchVerifier_;
+        BATCH = batchSize_;
         keySetRoot = keySetRoot_;
-        minBatch = minBatch_;
         governance = governance_;
-        for (uint256 i = 0; i < DEPTH; i++) {
-            filledSubtrees[i] = zeros[i];
-            zeros[i + 1] = poseidon.poseidon([zeros[i], zeros[i]]);
-        }
-        root = zeros[DEPTH];
+        uint256 z = 0; // root of the empty tree, computed once
+        for (uint256 i = 0; i < DEPTH; i++) z = poseidon.poseidon([z, z]);
+        root = z;
         isHistoricalRoot[root] = true;
         emit KeySetUpdated(keySetRoot_);
     }
@@ -73,40 +86,31 @@ contract IdentityRegistry {
         if (credentialUsed[cn]) revert CredentialUsed();
         if (!verifier.verifyProof(a, b, c, [leaf, cn, keySetRoot])) revert InvalidProof();
         credentialUsed[cn] = true;
-        pending.push(leaf);
-        emit Registered(leaf, cn);
+        pendingHash = poseidon.poseidon([pendingHash, leaf]);
+        uint256 index = registeredCount++;
+        emit Registered(leaf, cn, index);
+        if (registeredCount % BATCH == 0) {
+            uint256 id = registeredCount / BATCH - 1;
+            batchHash[id] = pendingHash;
+            pendingHash = 0;
+            emit BatchReady(id, batchHash[id]);
+        }
     }
 
     function pendingCount() external view returns (uint256) {
-        return pending.length - pendingStart;
+        return registeredCount - leafCount;
     }
 
-    /// @notice Anyone may insert the pending leaves once at least `minBatch` are waiting.
-    function insertBatch() external {
-        uint256 start = pendingStart;
-        uint256 count = pending.length - start;
-        if (count < minBatch) revert BatchTooSmall();
-        uint256 first = leafCount;
-        for (uint256 k = 0; k < count; k++) _insert(pending[start + k]);
-        pendingStart = pending.length;
-        isHistoricalRoot[root] = true;
-        emit BatchInserted(first, count, root);
-    }
-
-    function _insert(uint256 leaf) private {
-        uint256 index = leafCount;
-        uint256 cur = leaf;
-        for (uint256 i = 0; i < DEPTH; i++) {
-            if ((index >> i) & 1 == 0) {
-                filledSubtrees[i] = cur;
-                cur = poseidon.poseidon([cur, zeros[i]]);
-            } else {
-                cur = poseidon.poseidon([filledSubtrees[i], cur]);
-            }
-        }
-        root = cur;
-        leafCount = index + 1;
-        emit LeafInserted(index, leaf);
+    /// @notice Anyone may insert the next full batch with a proof of the new root.
+    function insertBatch(uint256 newRoot, uint256[2] calldata a, uint256[2][2] calldata b, uint256[2] calldata c) external {
+        uint256 start = leafCount;
+        if (registeredCount < start + BATCH) revert BatchNotReady();
+        uint256 h = batchHash[start / BATCH];
+        if (!batchVerifier.verifyProof(a, b, c, [root, newRoot, start, h])) revert InvalidProof();
+        root = newRoot;
+        leafCount = start + BATCH;
+        isHistoricalRoot[newRoot] = true;
+        emit BatchInserted(start, BATCH, newRoot);
     }
 }
 

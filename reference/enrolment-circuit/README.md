@@ -1,4 +1,4 @@
-# Proof of One — unlinkable registration (reference)
+# Proof of One — unlinkable registration and batch insertion (reference)
 
 > **Reference code for review and testing only. Not audited. The included trusted setup is TEST-ONLY and insecure.**
 
@@ -21,11 +21,17 @@ Specification: [`docs/specs/ballot-and-enrolment-v0.1.md`](../../docs/specs/ball
 
 The enclave knows `cm`, `rn` and the attributes, but not `idc`, `salt` or `ρ`. Linking a person to `leaf` or `cn` would therefore mean inverting or distinguishing Poseidon outputs. Whether this argument holds is the open question in [issue #3](https://github.com/NemoUnus/proof-of-one/issues/3).
 
+## Batch insertion proof π_batch
+
+Inserting leaves by hashing on-chain costs about 1 million gas per leaf (see the implementation notes). `circuits/batch_insert.circom` instead proves that a full batch of B = 2^k registered leaves was written, in order, into the empty aligned subtree at the next position of the identity tree. Its public inputs are only the old root, the new root, the start index and the chain hash of the leaves, which the contract keeps as leaves are registered. The prover therefore cannot change, drop, reorder or overwrite leaves. Anyone may submit the proof.
+
 ## Size
 
 | Circuit | Constraints (`--O2`) |
 |---|---|
 | π_reg (key-set tree depth 8, i.e. up to 256 enclave keys) | **9,171** |
+| π_batch, B = 4 (reference parameters) | **16,227** |
+| π_batch, B = 1,024 (realistic batch; compiled for measurement only) | **501,947** |
 
 ## Run it
 
@@ -51,12 +57,16 @@ The tests also use [`../tally`](../tally/) and [`../ballot-circuit`](../ballot-c
 | Same person enrolling twice without the re-enrolment path | Refused by the enclave |
 | Minimum batch | Leaves wait until *K* are pending |
 | **End to end** | Register → batch → valid ballot proof (π_vote). After re-enrolment, the old identity can no longer vote; the new one and other members can |
+| Batch insertion, honest (two consecutive batches) | Proofs verify; new root equals the reference tree |
+| Batch aimed at an occupied subtree | Cannot be proven (existing leaves cannot be overwritten) |
+| Misaligned batch start | Cannot be proven |
+| Different chain hash, or leaves reordered by the prover | Cannot be proven / fails against the registered chain hash |
 
 ## Not implemented
 
 - Document reading, the document-validity proof, liveness, face matching and duplicate search. The enclave receives a `fingerprint` that stands for "this person".
 - Enclave attestation, threshold or MPC operation of the enclave, the cooling-off period, random delays and network anonymity.
-- On-chain registries: batch insertion by SNARK and revocation-tree updates. This package simulates their rules in JavaScript.
+- Revocation-tree updates proven by a SNARK. The on-chain registries are in [`../contracts`](../contracts/).
 
 ## Authorship and review status
 
