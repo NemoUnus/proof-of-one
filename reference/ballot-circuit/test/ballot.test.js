@@ -33,6 +33,9 @@ test.before(async () => {
     { s: C.randScalar(), ageBand: 4, natCode: 250, sexCode: 1, expiryMonth: 24400, salt: C.randScalar(), rn: handle() },
     { s: C.randScalar(), ageBand: 1, natCode: 250, sexCode: 2, expiryMonth: 24400, salt: C.randScalar(), rn: handle() }, // under age band
     { s: C.randScalar(), ageBand: 5, natCode: 250, sexCode: 2, expiryMonth: 24400, salt: C.randScalar(), rn: handle() }, // will be revoked
+    // two nationalities (Decision #30); the second document has expired for polls requiring 24330
+    { s: C.randScalar(), ageBand: 3, sexCode: 1, docs: [{ nat: 250, expiry: 24400 }, { nat: 364, expiry: 24320 }], salt: C.randScalar(), rn: handle() },
+    { s: C.randScalar(), ageBand: 3, sexCode: 2, docs: [{ nat: 250, expiry: 24400 }, { nat: 124, expiry: 24500 }], salt: C.randScalar(), rn: handle() },
   ];
   for (const m of members) m.index = idTree.insert(B.memberLeaf(P, m));
   revTree.revoke(handle());
@@ -125,4 +128,43 @@ test("end to end: verified submissions, re-vote, tally and recount", async () =>
   const counts = P.combine(agg, partials, 2, poll.ledger.distinctVoters);
   assert.deepEqual(counts, [0n, 0n, 0n, 1n]);
   assert.ok(P.checkResult(poll.ledger, { chain: poll.ledger.chain, counts }).ok);
+});
+
+// ---------------------------------------------------- several nationalities (Decision #30)
+const regional = (requiredNat) => ({ ...POLICY, requiredNat });
+const ballotUnder = (m, policy, extra = {}) =>
+  B.buildBallot(P, { pollId: POLL, PK: keys.PK, policy, ctxHash: CTX, member: m, leafIndex: m.index, idTree, revTree, choice: 0, ...extra });
+
+test("two nationalities: a valid proof for the region of each, without revealing the other", async () => {
+  const dual = members[4];
+  for (const nat of [250, 124]) {
+    const policy = regional(nat);
+    const b = ballotUnder(dual, policy);
+    const { proof } = await B.prove(b.input, ZKEY);
+    const signals = B.publicSignals(P, { idRoot: idTree.root, revRoot: revTree.root, pollId: POLL, nf: b.nf, PK: keys.PK, policy, ctxHash: CTX, C: b.C });
+    assert.equal(await B.verify(VKEY, signals, proof), true, `region ${nat}`);
+    assert.equal(signals.length, 18, "public inputs do not include any nationality");
+  }
+});
+
+test("global poll: one nullifier per person, whichever document is used", () => {
+  const dual = members[4];
+  const viaFirst = ballotUnder(dual, POLICY, { docIndex: 0 }), viaSecond = ballotUnder(dual, POLICY, { docIndex: 1 });
+  assert.equal(viaFirst.nf, viaSecond.nf, "a second ballot replaces the first; it is never counted twice");
+  return Promise.all([snarkjs.wtns.calculate(viaFirst.input, B.WASM, { type: "mem" }), snarkjs.wtns.calculate(viaSecond.input, B.WASM, { type: "mem" })]);
+});
+
+test("cannot vote in the region of a nationality one does not hold", async () => {
+  assert.throws(() => ballotUnder(members[4], regional(840)), /no document/);
+  await witnessFails(ballotUnder(members[4], regional(840), { docIndex: 0 }).input);
+  await witnessFails(ballotUnder(members[4], regional(840), { docIndex: 2 }).input); // empty slot
+});
+
+test("an expired document does not count; the member's other valid document still does", async () => {
+  const m = members[3];
+  assert.throws(() => ballotUnder(m, regional(364)), /no document/);
+  await witnessFails(ballotUnder(m, regional(364), { docIndex: 1 }).input);
+  await snarkjs.wtns.calculate(ballotUnder(m, regional(250)).input, B.WASM, { type: "mem" });
+  await snarkjs.wtns.calculate(ballotUnder(m, POLICY).input, B.WASM, { type: "mem" });
+  await witnessFails(ballotUnder(m, POLICY, { docIndex: 1 }).input); // global poll, expired document chosen
 });

@@ -18,6 +18,7 @@ const crypto = require("crypto");
 const snarkjs = require("snarkjs");
 const { buildEddsa } = require("circomlibjs");
 const { IncrementalTree, RevocationTree } = require("../../ballot-circuit/src/trees");
+const A = require("../../ballot-circuit/src/attrs");
 
 const TAG = Object.freeze({ CREDENTIAL: 3n, COMMITMENT: 4n, CREDENTIAL_MSG: 5n, REVOCATION: 6n });
 const KEY_DEPTH = 8;
@@ -41,9 +42,20 @@ function newMember(P, attrs) {
   const cn = H([TAG.CREDENTIAL, rho]);
   return { s, salt, rho, idc, cm, cn, ...attrs };
 }
+// Same identity secret s (so the same nullifier in every poll), fresh salt and ρ, so
+// the enclave cannot link the new commitment to the old leaf. Used when a document is
+// added or renewed (Decision #30).
+function refreshMember(P, member, attrs) {
+  const C = P.curve, H = P.hash.H;
+  const salt = C.randScalar(), rho = C.randScalar();
+  const cm = H([TAG.COMMITMENT, member.idc, salt, rho]);
+  const cn = H([TAG.CREDENTIAL, rho]);
+  const { natCode, expiryMonth, docs, ...rest } = member;
+  return { ...rest, salt, rho, cm, cn, ...attrs };
+}
 function leafOf(P, m) {
   const H = P.hash.H;
-  return H([m.idc, H([m.ageBand, m.natCode, m.sexCode, m.expiryMonth, m.salt]), m.rn]);
+  return H([m.idc, A.attrHash(H, m, m.salt), m.rn]);
 }
 
 // ---------------------------------------------------------------- the enclave
@@ -62,7 +74,8 @@ function createEnclave(P, { epochs = 4 } = {}) {
     keys.push({ epoch: BigInt(e), prv, A, index: keyTree.insert(H(A)) });
   }
   const kR = P.curve.randScalar();              // secret for revocation handles
-  const enrolled = new Map();                   // fingerprint -> { generation, rn, revokeAfter }
+  const enrolled = new Map();                   // fingerprint -> { generation, rn, attrs }
+  const usedDocs = new Set();                   // document fingerprints already used
   const issuedLog = [];                         // what the enclave sees: for unlinkability tests
 
   // rn = Poseidon(TAG, kR, fingerprint, generation), truncated below 2^252.
@@ -70,22 +83,45 @@ function createEnclave(P, { epochs = 4 } = {}) {
 
   // Called only after the uniqueness checks pass. `reenrol` marks a lost-phone case:
   // the old handle is returned for publication in the revocation registry.
-  function issue({ fingerprint, attrs, cm, epoch = 0, reenrol = false }) {
+  // `docId` stands for the fingerprint of the document itself (defaults to the person's).
+  function issue({ fingerprint, attrs, cm, epoch = 0, reenrol = false, docId = fingerprint }) {
     const prev = enrolled.get(fingerprint);
     if (prev && !reenrol) throw new Error("already enrolled");
+    if (!prev && usedDocs.has(docId)) throw new Error("document already used");
+    A.docsOf(attrs);
+    usedDocs.add(docId);
+    return sign(fingerprint, prev, attrs, cm, epoch);
+  }
+
+  // Decision #30: a person who is already enrolled adds a further genuine document
+  // (another nationality), or renews the document of a nationality they already have.
+  // In the real enclave: the document passes the validity checks, is not used by anyone,
+  // and its chip photo and the live face match THIS person's existing face template.
+  // Here the caller states the person (`fingerprint`) and the face check result.
+  function addDocument({ fingerprint, docId, doc, cm, epoch = 0, faceMatches = true }) {
+    const prev = enrolled.get(fingerprint);
+    if (!prev) throw new Error("not enrolled");
+    if (!faceMatches) throw new Error("document holder is not this member");
+    if (usedDocs.has(docId)) throw new Error("document already used");
+    const attrs = A.withDocument(prev.attrs, doc);
+    usedDocs.add(docId);
+    return { ...sign(fingerprint, prev, attrs, cm, epoch), attrs };
+  }
+
+  function sign(fingerprint, prev, attrs, cm, epoch) {
     const generation = prev ? prev.generation + 1n : 0n;
     const rn = handle(fingerprint, generation);
     const k = keys[epoch];
-    const msg = H([TAG.CREDENTIAL_MSG, attrs.ageBand, attrs.natCode, attrs.sexCode, attrs.expiryMonth, cm, rn, k.epoch]);
+    const msg = H([TAG.CREDENTIAL_MSG, ...A.attrFields(attrs), cm, rn, k.epoch]);
     const sig = eddsa.signPoseidon(k.prv, F.e(msg));
-    enrolled.set(fingerprint, { generation, rn });
+    enrolled.set(fingerprint, { generation, rn, attrs });
     issuedLog.push({ cm, rn, attrs });
     return {
       credential: { rn, epoch: k.epoch, A: k.A, R8: [F.toObject(sig.R8[0]), F.toObject(sig.R8[1])], S: sig.S, keyIndex: k.index },
       revokeOld: prev ? prev.rn : null,
     };
   }
-  return { issue, keyTree, get keySetRoot() { return keyTree.root; }, issuedLog };
+  return { issue, addDocument, keyTree, get keySetRoot() { return keyTree.root; }, issuedLog };
 }
 
 // ------------------------------------------------------- the phone's π_reg input
@@ -95,8 +131,8 @@ function buildRegistration(P, enclave, member, credential) {
   const kp = enclave.keyTree.path(credential.keyIndex);
   const input = {
     leaf: leaf.toString(), cn: m.cn.toString(), keySetRoot: enclave.keySetRoot.toString(),
-    s: m.s.toString(), ageBand: String(m.ageBand), natCode: String(m.natCode), sexCode: String(m.sexCode),
-    expiryMonth: String(m.expiryMonth), salt: m.salt.toString(), rho: m.rho.toString(), rn: m.rn.toString(),
+    s: m.s.toString(), ageBand: String(m.ageBand), sexCode: String(m.sexCode),
+    nat: A.slots(m).map((d) => d.nat.toString()), exp: A.slots(m).map((d) => d.expiry.toString()), salt: m.salt.toString(), rho: m.rho.toString(), rn: m.rn.toString(),
     epoch: credential.epoch.toString(), Ax: credential.A[0].toString(), Ay: credential.A[1].toString(),
     R8x: credential.R8[0].toString(), R8y: credential.R8[1].toString(), S: credential.S.toString(),
     keySiblings: kp.siblings.map(String), keyPathIndex: kp.pathIndex.map(String),
@@ -192,4 +228,4 @@ function buildRevoke(P, rt, rn) {
 }
 const proveRevoke = (input, zkey) => snarkjs.groth16.fullProve(input, REVOKE_WASM, zkey);
 
-module.exports = { TAG, KEY_DEPTH, WASM, BATCH_K, BATCH_WASM, REVOKE_WASM, buildRevoke, proveRevoke, init, newMember, leafOf, createEnclave, buildRegistration, prove, createRegistry, leavesHash, buildBatchInsert, proveBatch };
+module.exports = { TAG, KEY_DEPTH, WASM, BATCH_K, BATCH_WASM, REVOKE_WASM, buildRevoke, proveRevoke, init, newMember, refreshMember, leafOf, createEnclave, buildRegistration, prove, createRegistry, leavesHash, buildBatchInsert, proveBatch };

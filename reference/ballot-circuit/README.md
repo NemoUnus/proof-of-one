@@ -16,7 +16,7 @@ Without revealing who the voter is, or how they voted, the phone proves:
 | 2 | Its identity leaf `Poseidon(idc, attributes, rn)` is in the identity tree at the poll's snapshot root | Only enrolled members can vote |
 | 3 | Its hidden revocation handle `rn` is **not** in the revocation tree, via an indexed-tree low-leaf proof | Lost or replaced identities cannot vote |
 | 4 | `nf = Poseidon(1, pollId, s)` | One ballot per member per poll; re-votes replace earlier ones |
-| 5 | Age band ≥ minimum, document valid until after the poll, nationality as required | Eligibility, without revealing the attributes |
+| 5 | Age band ≥ minimum, and one of the member's documents (up to three, one per nationality), chosen privately, is valid until after the poll and has the required nationality | Eligibility, without revealing the attributes or the other nationalities ([Decision #30](../../docs/specs/several-nationalities-v0.1.md)) |
 | 6 | Every `v_j` is 0 or 1 and they sum to 1 | Each ballot counts as exactly one vote |
 | 7 | Every `(A_j, B_j)` encrypts `v_j` under the poll's tally key | The encrypted ballot is the ballot that was proven |
 | 8 | The proof is bound to `ctxHash` | It cannot be replayed in another context |
@@ -28,9 +28,9 @@ The verifier never takes public inputs from the submitter. It rebuilds them from
 
 | Parameters | Constraints (Groth16, `--O2`) |
 |---|---|
-| Identity tree depth 32, revocation tree depth 32, 4 options, 18 public inputs | **32,429** |
+| Identity tree depth 32, revocation tree depth 32, 4 options, up to 3 documents, 18 public inputs | **32,535** |
 
-That is in line with the whitepaper's estimate of about 40,000. With snarkjs (pure JavaScript) on a server CPU, one proof takes about 4–5 seconds. Proving time on phones, for example with a native prover, has not yet been measured.
+That is in line with the whitepaper's estimate of about 40,000. With snarkjs (pure JavaScript) on a server CPU, one proof takes about 4–5 seconds; in a browser on a 2-core server, about 10 seconds. To measure a phone, open the [phone benchmark](../phone-bench/) on it.
 
 ## Run it
 
@@ -59,6 +59,10 @@ The tests use the tally code in `../tally`, so run `npm install` there as well.
 | Member below the minimum age band | Cannot be proven |
 | Ciphertexts swapped, or another poll or context used after proving | Verification fails |
 | End to end: verified submissions, a re-vote, and a proof attached to someone else's ciphertexts | Mismatched proof rejected; tally correct; contract checks pass |
+| Two nationalities: regional polls of each | Valid proofs for both; no nationality among the public inputs |
+| Two nationalities: global poll | Same nullifier whichever document is used, so only one ballot counts |
+| Region of a nationality not held, or an empty document slot | Cannot be proven |
+| Expired document | Cannot be used; the member's other valid document still can |
 
 ## Trusted setup
 

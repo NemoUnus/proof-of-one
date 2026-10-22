@@ -1,0 +1,7 @@
+[package]
+name = "ballot_native"
+type = "bin"
+authors = ["Proof of One AI agents"]
+
+[dependencies]
+poseidon = { path = "../../libs/poseidon" }

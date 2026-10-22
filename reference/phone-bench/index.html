@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ballot Proof Phone Benchmark</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: one narrow column built for a phone held in one hand; the run button and the timing readout are the page. */
+:root {
+  --bg: #f3f5f4; --surface: #ffffff; --ink: #18211e; --muted: #5a6763; --line: #d5ddd9;
+  --accent: #0f6e5c; --accent-ink: #ffffff; --ok: #1f7a3a; --bad: #b3261e;
+  --font-body: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #111816; --surface: #19221f; --ink: #e6eeea; --muted: #9aaba5; --line: #2c3a35;
+  --accent: #4fc2a7; --accent-ink: #0b1513; --ok: #6fd18c; --bad: #ff8a80; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #111816; --surface: #19221f; --ink: #e6eeea; --muted: #9aaba5; --line: #2c3a35;
+  --accent: #4fc2a7; --accent-ink: #0b1513; --ok: #6fd18c; --bad: #ff8a80; color-scheme: dark }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 1rem; line-height: 1.55;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 24px 40px; }
+main { max-width: 34rem; margin: 0 auto; display: grid; gap: 20px; }
+h1 { font-size: 1.6rem; line-height: 1.2; margin: 0; text-wrap: balance; }
+.eyebrow { font-family: var(--font-mono); font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0 0 6px; }
+p { margin: 0; }
+.lead { color: var(--muted); max-width: 62ch; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; display: grid; gap: 12px; min-width: 0; }
+.spec { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-size: .9rem; }
+.spec dt { color: var(--muted); }
+.spec dd { margin: 0; font-family: var(--font-mono); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+button { font: inherit; font-weight: 700; border: 0; border-radius: 8px; padding: 14px 18px; cursor: pointer; background: var(--accent); color: var(--accent-ink); }
+button.secondary { background: transparent; color: var(--accent); border: 1px solid var(--accent); padding: 10px 14px; font-weight: 400; }
+button:disabled { opacity: .55; cursor: progress; }
+button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+label { font-size: .9rem; color: var(--muted); display: grid; gap: 4px; }
+input[type=text] { font: inherit; padding: 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); width: 100%; box-sizing: border-box; }
+.status { font-family: var(--font-mono); font-size: .85rem; color: var(--muted); min-height: 1.4em; }
+.runs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.run { border: 1px solid var(--line); border-radius: 8px; padding: 10px; text-align: center; }
+.run b { display: block; font-family: var(--font-mono); font-size: 1.35rem; font-variant-numeric: tabular-nums; }
+.run span { font-size: .75rem; color: var(--muted); }
+.verdict.ok { color: var(--ok); } .verdict.bad { color: var(--bad); }
+pre { font-family: var(--font-mono); font-size: .8rem; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 12px; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.note { font-size: .85rem; color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+<main>
+  <header>
+    <p class="eyebrow">Proof of One · reference code · test only</p>
+    <h1>How fast can this phone make a ballot proof?</h1>
+  </header>
+
+  <p class="lead">Every ballot carries a zero-knowledge proof made on the voter's phone. This page makes the same proof three times with test data and measures how long it takes. Nothing about you or your phone is sent anywhere. You copy the result yourself if you want to share it.</p>
+
+  <section class="panel" aria-labelledby="what">
+    <h2 id="what" class="eyebrow">What is measured</h2>
+    <dl class="spec">
+      <dt>Proof</dt><dd>π_vote, Groth16 on BN254</dd>
+      <dt>Size</dt><dd>32,535 constraints, 4 options</dd>
+      <dt>Trees</dt><dd>identity depth 32, revocation depth 32</dd>
+      <dt>Prover</dt><dd>snarkjs 0.7.5 in the browser (WebAssembly)</dd>
+      <dt>Download</dt><dd>about 24 MB, once</dd>
+    </dl>
+    <p class="note">A native prover in a phone app is usually several times faster than a browser. This page gives an upper bound.</p>
+  </section>
+
+  <section class="panel" aria-labelledby="run">
+    <h2 id="run" class="eyebrow">Run</h2>
+    <label for="model">Phone model (optional, only added to the text you copy)
+      <input id="model" type="text" placeholder="for example: Samsung Galaxy A15, 4 GB" autocomplete="off">
+    </label>
+    <div class="row">
+      <button id="start" type="button">Start benchmark</button>
+      <span class="note">Keep the screen on. It can take a minute or more.</span>
+    </div>
+    <p id="status" class="status" role="status">Ready.</p>
+    <div class="runs" aria-label="Proving times">
+      <div class="run"><b id="r0">–</b><span>run 1</span></div>
+      <div class="run"><b id="r1">–</b><span>run 2</span></div>
+      <div class="run"><b id="r2">–</b><span>run 3</span></div>
+    </div>
+    <p id="verdict" class="verdict"></p>
+  </section>
+
+  <section class="panel" aria-labelledby="share" id="sharebox" hidden>
+    <h2 id="share" class="eyebrow">Result to share</h2>
+    <pre id="report"></pre>
+    <div class="row">
+      <button id="copy" type="button" class="secondary">Copy result</button>
+      <span id="copied" class="note"></span>
+    </div>
+    <p class="note">Post it in issue #8 of the project on GitHub (github.com/NemoUnus/proof-of-one/issues/8), under any name you like.</p>
+  </section>
+
+  <p class="note">The trusted setup behind this proof is for testing only and must never be used for real polls.</p>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/snarkjs@0.7.5/build/snarkjs.min.js"></script>
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const status = (t) => { $("status").textContent = t; };
+  let report = "";
+
+  async function fetchBytes(url) {
+    const r = await fetch(url);
+    if (!r.ok) throw new Error("could not load " + url + " (" + r.status + ")");
+    return new Uint8Array(await r.arrayBuffer());
+  }
+  function concat(parts) {
+    const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+    let o = 0; for (const p of parts) { out.set(p, o); o += p.length; }
+    return out;
+  }
+  function fromBase64(str) {
+    const bin = atob(str.trim()); const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+  const secs = (ms) => (ms / 1000).toFixed(1) + " s";
+
+  async function run() {
+    $("start").disabled = true; $("verdict").textContent = ""; $("verdict").className = "verdict";
+    ["r0", "r1", "r2"].forEach((id) => { $(id).textContent = "–"; });
+    let wake = null;
+    try { wake = await navigator.wakeLock?.request("screen"); } catch (e) { /* optional */ }
+    try {
+      if (typeof snarkjs === "undefined") throw new Error("the proving library did not load; check the connection and reload");
+      status("Downloading proof files…");
+      const t0 = performance.now();
+      const cfg = await (await fetch("bench.json")).json();
+      const [wasm, zkey, input, vkey] = await Promise.all([
+        fetchBytes(cfg.wasm),
+        cfg.zkeyEncoding === "base64"
+          ? Promise.all(cfg.zkey.map((u) => fetch(u).then((r) => { if (!r.ok) throw new Error("could not load " + u); return r.text(); }))).then((t) => fromBase64(t.join("")))
+          : Promise.all(cfg.zkey.map(fetchBytes)).then(concat),
+        fetch(cfg.input).then((r) => r.json()),
+        fetch(cfg.vkey).then((r) => r.json()),
+      ]);
+      const dl = performance.now() - t0;
+      const times = []; let lastOk = false;
+      for (let i = 0; i < 3; i++) {
+        status("Run " + (i + 1) + " of 3: computing witness and proof…");
+        await new Promise((r) => setTimeout(r, 50));
+        const t = performance.now();
+        const { proof, publicSignals } = await snarkjs.groth16.fullProve(input, { type: "mem", data: wasm }, { type: "mem", data: zkey });
+        const ms = performance.now() - t;
+        times.push(ms); $("r" + i).textContent = secs(ms);
+        if (i === 2) { status("Checking the last proof…"); lastOk = await snarkjs.groth16.verify(vkey, publicSignals, proof); }
+      }
+      const sorted = [...times].sort((a, b) => a - b), median = sorted[1];
+      $("verdict").textContent = lastOk ? "Proof verified. Median " + secs(median) + "." : "The proof did not verify. Please report this.";
+      $("verdict").className = "verdict " + (lastOk ? "ok" : "bad");
+      const uaPlat = navigator.userAgentData?.platform || "";
+      report = [
+        "Proof of One phone benchmark v0.1",
+        "proof: pi_vote, 32,535 constraints, Groth16, snarkjs 0.7.5 (browser)",
+        "runs: " + times.map(secs).join(", ") + "  (median " + secs(median) + ")",
+        "verified: " + (lastOk ? "yes" : "NO"),
+        "download: " + secs(dl),
+        "cores: " + (navigator.hardwareConcurrency || "?") + ", memory: " + (navigator.deviceMemory ? navigator.deviceMemory + " GB (approx.)" : "?") + (uaPlat ? ", platform: " + uaPlat : ""),
+        "phone: " + ($("model").value.trim() || "(not given)"),
+      ].join("\n");
+      $("report").textContent = report; $("sharebox").hidden = false;
+      status("Done.");
+    } catch (e) {
+      status("Stopped: " + (e && e.message ? e.message : e));
+    } finally {
+      $("start").disabled = false;
+      try { await wake?.release(); } catch (e) { /* ignore */ }
+    }
+  }
+
+  $("start").addEventListener("click", run);
+  $("copy").addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText(report); $("copied").textContent = "Copied."; }
+    catch (e) {
+      const range = document.createRange(); range.selectNodeContents($("report"));
+      const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
+      $("copied").textContent = "Selected. Copy it with your phone's menu.";
+    }
+  });
+})();
+</script>
+</body>
+</html>

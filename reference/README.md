@@ -2,13 +2,15 @@
 
 > **For review and testing only. Not audited. Uses a TEST-ONLY trusted setup. Do not use with real participants.**
 
-Four small packages implement the core of the protocol end to end. Each is written to be read and attacked, not deployed.
+Four small packages implement the core of the protocol end to end, and two folders hold measurements for the next design steps. Each is written to be read and attacked, not deployed.
 
 | Package | What it contains | Tests |
 |---|---|---|
 | [`tally/`](tally/) | Encrypted one-hot ballots, nullifiers, trustee key generation, voter self-verification, homomorphic tally, threshold decryption with DLEQ proofs, independent recount tool | 13 |
-| [`ballot-circuit/`](ballot-circuit/) | Zero-knowledge ballot proof π_vote (Circom, Groth16): membership, non-revocation, nullifier, eligibility, well-formed encrypted ballot, all per-poll values bound by one `pollHash` | 12 |
-| [`enrolment-circuit/`](enrolment-circuit/) | Unlinkable registration proof π_reg, batch insertion proof π_batch and revocation proof π_revoke (Circom, Groth16), enclave credential issuance, registry rules | 18 |
+| [`ballot-circuit/`](ballot-circuit/) | Zero-knowledge ballot proof π_vote (Circom, Groth16): membership, non-revocation, nullifier, eligibility with up to three nationalities, well-formed encrypted ballot, all per-poll values bound by one `pollHash` | 16 |
+| [`enrolment-circuit/`](enrolment-circuit/) | Unlinkable registration proof π_reg, batch insertion proof π_batch and revocation proof π_revoke (Circom, Groth16), enclave credential issuance including added documents, registry rules | 21 |
+| [`phone-bench/`](phone-bench/) | Web page that measures how fast a phone makes the ballot proof | — |
+| [`aggregation-prototype/`](aggregation-prototype/) | Ballot proof and aggregator in Noir (UltraHonk) for size measurements of recursive aggregation | check script |
 | [`contracts/`](contracts/) | Solidity identity and revocation registries, polls, ballots and results; single and batched ballot submission; full on-chain flow tested with real proofs | 9 |
 
 ## How they fit together

@@ -3,6 +3,7 @@
 "use strict";
 const path = require("path");
 const snarkjs = require("snarkjs");
+const A = require("./attrs");
 
 const K = 4, DEPTH = 32, REV_DEPTH = 32;
 const BUILD = path.join(__dirname, "..", "build");
@@ -13,7 +14,7 @@ function memberLeaf(P, m) {
   const { H } = P.hash, C = P.curve;
   const [px, py] = C.coords(C.mul(C.G, m.s));
   const idc = H([px, py]);
-  const attr = H([m.ageBand, m.natCode, m.sexCode, m.expiryMonth, m.salt]);
+  const attr = A.attrHash(H, m, m.salt);
   return H([idc, attr, m.rn]);
 }
 
@@ -26,8 +27,13 @@ function pollHashOf(P, { idRoot, revRoot, pollId, PK, policy, ctxHash }) {
 }
 
 // Everything the phone needs to submit one ballot.
-function buildBallot(P, { pollId, PK, policy, ctxHash, member, leafIndex, idTree, revTree, choice, k = K }) {
+// `docIndex` (optional) chooses which of the member's documents is used for eligibility;
+// by default the first one that satisfies the poll's policy.
+function buildBallot(P, { pollId, PK, policy, ctxHash, member, leafIndex, idTree, revTree, choice, k = K, docIndex }) {
   const C = P.curve;
+  const di = docIndex ?? A.selectDoc(member, policy);
+  if (di < 0) throw new Error("no document satisfies this poll's policy");
+  const sl = A.slots(member);
   const enc = P.encryptBallot(PK, k, choice);
   const nf = P.nullifier(pollId, member.s);
   const idp = idTree.path(leafIndex);
@@ -39,8 +45,9 @@ function buildBallot(P, { pollId, PK, policy, ctxHash, member, leafIndex, idTree
     PK: pt(PK), minAgeBand: String(policy.minAgeBand), minExpiryMonth: String(policy.minExpiryMonth),
     requiredNat: String(policy.requiredNat), ctxHash: ctxHash.toString(),
     CA: enc.C.map((c) => pt(c.A)), CB: enc.C.map((c) => pt(c.B)),
-    s: member.s.toString(), ageBand: String(member.ageBand), natCode: String(member.natCode), sexCode: String(member.sexCode),
-    expiryMonth: String(member.expiryMonth), salt: member.salt.toString(), rn: member.rn.toString(),
+    s: member.s.toString(), ageBand: String(member.ageBand), sexCode: String(member.sexCode),
+    nat: sl.map((d) => d.nat.toString()), exp: sl.map((d) => d.expiry.toString()), docSel: sl.map((_, i) => (i === di ? "1" : "0")),
+    salt: member.salt.toString(), rn: member.rn.toString(),
     idSiblings: idp.siblings.map(String), idPathIndex: idp.pathIndex.map(String),
     lowValue: rev.lowValue.toString(), nextValue: rev.nextValue.toString(),
     revSiblings: rev.siblings.map(String), revPathIndex: rev.pathIndex.map(String),

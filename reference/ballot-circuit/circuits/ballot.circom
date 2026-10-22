@@ -5,12 +5,16 @@
 //
 // STATEMENT (all private values stay on the phone):
 //   1. P = s·G and idc = Poseidon(P.x, P.y)                     identity
-//   2. leaf = Poseidon(idc, Poseidon(ageBand, natCode, sexCode, expiryMonth, salt), rn)
+//   2. leaf = Poseidon(idc, Poseidon(ageBand, sexCode, nat_0, exp_0, nat_1, exp_1,
+//                                    nat_2, exp_2, salt), rn)
 //      and leaf is in the identity tree with root `idRoot`       membership
+//      (up to 3 verified documents, each with nationality and expiry; Decision #30)
 //   3. rn is NOT in the revocation tree with root `revRoot`       not revoked
 //   4. nf = Poseidon(1, pollId, s)                               one ballot per poll
-//   5. ageBand ≥ minAgeBand, expiryMonth ≥ minExpiryMonth,
-//      and natCode == requiredNat unless requiredNat == 0        eligibility
+//   5. ageBand ≥ minAgeBand, and ONE document, chosen privately by the phone, has
+//      nat ≠ 0, exp ≥ minExpiryMonth, and nat == requiredNat
+//      unless requiredNat == 0                                   eligibility
+//      (which document, and the member's other nationalities, stay hidden)
 //   6. every v_j ∈ {0,1} and Σ v_j = 1                           well-formed one-hot
 //   7. A_j = r_j·G and B_j = v_j·G + r_j·PK for every j           encryption
 //   8. ctxHash is bound to the proof                              no replay elsewhere
@@ -117,9 +121,10 @@ template Ballot(depth, revDepth, k) {
     // ----------------------------------------------------------- private inputs
     signal input s;
     signal input ageBand;
-    signal input natCode;
     signal input sexCode;
-    signal input expiryMonth;
+    signal input nat[3];             // nationality per document; 0 = empty slot
+    signal input exp[3];             // expiry month per document
+    signal input docSel[3];          // one-hot: the document used for this poll
     signal input salt;
     signal input rn;
     signal input idSiblings[depth];
@@ -141,12 +146,14 @@ template Ballot(depth, revDepth, k) {
     idc.inputs[1] <== P.out[1];
 
     // 2. membership
-    component attr = Poseidon(5);
+    component attr = Poseidon(9);
     attr.inputs[0] <== ageBand;
-    attr.inputs[1] <== natCode;
-    attr.inputs[2] <== sexCode;
-    attr.inputs[3] <== expiryMonth;
-    attr.inputs[4] <== salt;
+    attr.inputs[1] <== sexCode;
+    for (var d = 0; d < 3; d++) {
+        attr.inputs[2 + 2 * d] <== nat[d];
+        attr.inputs[3 + 2 * d] <== exp[d];
+    }
+    attr.inputs[8] <== salt;
     component leaf = Poseidon(3);
     leaf.inputs[0] <== idc.out;
     leaf.inputs[1] <== attr.out;
@@ -194,11 +201,31 @@ template Ballot(depth, revDepth, k) {
     ageOk.in[0] <== ageBand;
     ageOk.in[1] <== minAgeBand;
     ageOk.out === 1;
+    // the selected document: docSel is one-hot, natSel/expSel are its fields
+    signal selNat[3];
+    signal selExp[3];
+    var selSum = 0;
+    var natAcc = 0;
+    var expAcc = 0;
+    for (var d = 0; d < 3; d++) {
+        docSel[d] * (docSel[d] - 1) === 0;
+        selNat[d] <== docSel[d] * nat[d];
+        selExp[d] <== docSel[d] * exp[d];
+        selSum += docSel[d];
+        natAcc += selNat[d];
+        expAcc += selExp[d];
+    }
+    selSum === 1;
+    signal natSel <== natAcc;
+    signal expSel <== expAcc;
+    component natEmpty = IsZero();
+    natEmpty.in <== natSel;
+    natEmpty.out === 0;              // an empty slot cannot be used
     component expOk = GreaterEqThan(32);
-    expOk.in[0] <== expiryMonth;
+    expOk.in[0] <== expSel;
     expOk.in[1] <== minExpiryMonth;
     expOk.out === 1;
-    requiredNat * (natCode - requiredNat) === 0;
+    requiredNat * (natSel - requiredNat) === 0;
 
     // 6–7. one-hot ballot, encrypted
     signal sum[k + 1];

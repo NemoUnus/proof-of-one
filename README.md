@@ -35,6 +35,7 @@ Participation is free. Topics of sponsored polls are chosen by participants them
 | [Contracts spec v0.1](docs/specs/contracts-v0.1.md) | Smart-contract interfaces, checks and cost estimates |
 | [Implementation notes v0.1](docs/specs/implementation-notes-v0.1.md) | Measured sizes and gas, and lessons from the reference code |
 | [Ballot aggregation v0.1](docs/specs/ballot-aggregation-v0.1.md) | How to cut the cost per ballot: options, measurements and recommended path |
+| [Several nationalities v0.1](docs/specs/several-nationalities-v0.1.md) | One identity with up to three verified nationalities: one vote in each region, one in global polls |
 | [Who can enrol? Document coverage v0.1](docs/research/document-coverage-v0.1.md) · [data (CSV)](docs/research/document-coverage-v0.1.csv) | Which countries issue chip documents a phone can read, and what share of people can take part today |
 | [Decision log](docs/decisions/DECISION_LOG.md) | Every design decision and why it was taken |
 

@@ -1,0 +1,19 @@
+{
+  "name": "@proof-of-one/aggregation-prototype",
+  "version": "0.1.0",
+  "description": "Prototype measurements for recursive ballot aggregation (not for production use)",
+  "private": true,
+  "type": "module",
+  "license": "Apache-2.0",
+  "scripts": {
+    "libs": "bash scripts/fetch-libs.sh",
+    "check": "node scripts/check.mjs",
+    "size": "node scripts/size.mjs"
+  },
+  "dependencies": {
+    "@aztec/bb.js": "5.2.1",
+    "@noir-lang/noir_js": "1.0.0-rc.6",
+    "@noir-lang/noir_wasm": "1.0.0-rc.6"
+  },
+  "engines": { "node": ">=20" }
+}

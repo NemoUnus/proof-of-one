@@ -1,0 +1,1 @@
+{"wasm":"ballot.wasm","zkey":["../ballot-circuit/setup/ballot_test.zkey"],"input":"input.json","vkey":"../ballot-circuit/setup/vkey_test.json"}

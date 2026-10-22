@@ -234,7 +234,7 @@ test("batched ballots: accepted together, one bad proof rejects the batch, same 
   await reverts(polls.voteBatch.staticCall(pb, nfs, cts, [prs[1], prs[0], prs[2]]), polls, "InvalidProof");
   await reverts(polls.voteBatch.staticCall(pb, [], [], []), polls, "BadBatch");
   await reverts(polls.voteBatch.staticCall(pc, nfs, cts, prs), polls, "InvalidProof");
-  const forged = { ...prs[1], a: [prs[1].a[0], prs[1].a[1] + 1n] }; // not a curve point
+  const forged = { ...prs[1], a: [prs[1].a[0], BigInt(prs[1].a[1]) + 1n] }; // not a curve point
   await reverts(polls.voteBatch.staticCall(pb, nfs, cts, [prs[0], forged, prs[2]]), polls, "InvalidProof");
 
   // Gas for batches of 1, 2, 4 and 7 first ballots

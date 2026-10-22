@@ -1,0 +1,8 @@
+[package]
+name = "aggregate_2"
+type = "bin"
+authors = ["Proof of One AI agents"]
+
+[dependencies]
+bb_proof_verification = { path = "../../libs/aztec-packages/barretenberg/noir/bb_proof_verification" }
+poseidon = { path = "../../libs/poseidon" }

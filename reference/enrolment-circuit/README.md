@@ -18,6 +18,7 @@ Specification: [`docs/specs/ballot-and-enrolment-v0.1.md`](../../docs/specs/ball
    - `rn` is below 2^252.
 4. **Registry.** Each `cn` can be used once. Leaves enter the tree only in batches of at least *K*.
 5. **Re-enrolment** after a lost phone with no backup. The enclave issues a new credential and returns the old `rn`, which is published in the revocation registry. From then on, the old identity cannot produce a ballot proof.
+6. **Adding or renewing a document** ([Decision #30](../../docs/specs/several-nationalities-v0.1.md)). A member with a further genuine document, such as a second nationality, keeps the same identity secret. The enclave checks that the document is unused and belongs to the same face, then issues a credential carrying all documents (up to three). The old handle is revoked as in step 5.
 
 The enclave knows `cm`, `rn` and the attributes, but not `idc`, `salt` or `ρ`. Linking a person to `leaf` or `cn` would therefore mean inverting or distinguishing Poseidon outputs. Whether this argument holds is the open question in [issue #3](https://github.com/NemoUnus/proof-of-one/issues/3).
 
@@ -33,7 +34,7 @@ Inserting leaves by hashing on-chain costs about 1 million gas per leaf (see the
 
 | Circuit | Constraints (`--O2`) |
 |---|---|
-| π_reg (key-set tree depth 8, i.e. up to 256 enclave keys) | **9,171** |
+| π_reg (key-set tree depth 8, i.e. up to 256 enclave keys; up to 3 documents) | **9,369** |
 | π_batch, B = 4 (reference parameters) | **16,227** |
 | π_batch, B = 1,024 (realistic batch; compiled for measurement only) | **501,947** |
 | π_revoke (revocation tree depth 32) | **32,521** |
@@ -71,6 +72,9 @@ The tests also use [`../tally`](../tally/) and [`../ballot-circuit`](../ballot-c
 | Appending into an occupied slot | Cannot be proven |
 | Zero or out-of-range handle | Cannot be proven |
 | Proof used with a different new root | Verification fails |
+| Adding a second nationality, end to end | One identity with both nationalities; old handle revoked; same nullifier; enclave cannot link old and new leaf; votes in both regions verify |
+| Someone else's document, a face that does not match, a document already used | Refused by the enclave |
+| Renewal and limits | Renewal replaces the document of the same nationality; at most three documents; one per nationality |
 
 ## Not implemented
 

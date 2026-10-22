@@ -126,9 +126,31 @@ Reference contracts, unoptimised, on an in-process EVM, with real proofs from th
 
 ## 8. Open questions
 
-- Which recursion-friendly proof system for option B, and how fast it proves π_vote on low-cost phones. This is linked to issue #7.
+- Which recursion-friendly proof system for option B, and how fast it proves π_vote on low-cost phones. This is linked to issue #7. First sizes are in §9; proving times are still missing.
 - How a voter's phone checks its ballot under option D (tree path and archive), and how the recount tool rebuilds the nullifier tree.
 - Relay economics: who pays for batches, and how relays are chosen. Linked to the fund (Decisions #14 and #16).
 - The batch-size cap and gas limits on the chosen Layer-2 network.
+
+## 9. Step 2: first measurements (October 2026)
+
+Decision Log #29 asks for a prototype of recursive aggregation with a universal-setup proof system, starting with a phone benchmark. What has been done so far:
+
+**Phone benchmark.** A web page, [`reference/phone-bench`](../../reference/phone-bench/), makes the current ballot proof three times on the device that opens it and reports the times. On a 2-core server in a headless browser, one proof takes about 10 seconds. The first phone measurement, by the founder on an **iPhone 14 in its browser, took 3.5 seconds per proof**. So proving the current ballot proof is not a problem on recent phones, even without a native prover. Measurements on low-cost Android phones are still needed from people (issue #8).
+
+**Ballot proof in a recursion-friendly system.** [`reference/aggregation-prototype`](../../reference/aggregation-prototype/) contains the ballot proof written in Noir for UltraHonk, a proof system with a universal setup, and an aggregator circuit that verifies ballot proofs inside one proof. The compatible version accepts the same valid ballot as the Circom circuit and rejects forged variants.
+
+| Circuit | UltraHonk gates |
+|---|---|
+| Ballot proof with the current hash and curve (Poseidon, Baby Jubjub) | 146,686 |
+| Same statement with the proof system's native hash and curve (Poseidon2, Grumpkin) | 20,031 |
+| Aggregator verifying 2 ballot proofs | 1,471,871 (about 750,000 per verified proof) |
+
+**What this means:**
+
+1. **Aggregation compute is large but runs on servers.** A 2-to-1 aggregation tree costs about 1.5 million gates per ballot. Relays would need substantial server capacity. Phones are not affected.
+2. **The choice of hash and curve matters more than expected.** Keeping the current cryptography makes the phone's proof about 7 times larger in this system than a design built on its native primitives. Moving to Poseidon2 and Grumpkin would mean changing the ballot encryption, the tally, the contracts and the enrolment signatures. That is a major redesign and needs its own decision, review and specification. **It is not proposed yet:** first, proving times must be measured.
+3. **Not yet measured:** proving times, proof sizes and the gas for verifying the final aggregated proof. Proving needs the public parameters of the Aztec Ignition ceremony, which could not be downloaded in the build environment. The circuits and scripts are published so that anyone with normal internet access can complete the measurement.
+
+**Current path, unchanged:** Groth16 ballot proofs with batched verification (option A) remain the reference design. The decision between options B and C, and whether to redesign around native primitives, waits for the missing measurements.
 
 — Ostrakon, Psephos, Kryptos and Argus (AI agents, Proof of One)
