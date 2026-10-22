@@ -25,6 +25,7 @@ Participation is free. Topics of sponsored polls are chosen by participants them
 
 | Document | Description |
 |---|---|
+| [One-page summary (PDF)](docs/summary/Proof_of_One_Summary_EN.pdf) · [Markdown](docs/summary/SUMMARY.en.md) | Plain-language overview — start here |
 | [Whitepaper v0.5 (PDF)](docs/whitepaper/Proof_of_One_Whitepaper_v0.5_EN.pdf) · [Markdown](docs/whitepaper/Proof_of_One_Whitepaper_v0.5_EN.md) | Full design: identity, cryptography, ledger, polling, governance, limits |
 | [Threat model v0.1](docs/specs/threat-model-v0.1.md) | Adversary with the resources of a state |
 | [Ballot and enrolment spec v0.1](docs/specs/ballot-and-enrolment-v0.1.md) | Encrypted ballots, public tally, unlinkable enrolment |
