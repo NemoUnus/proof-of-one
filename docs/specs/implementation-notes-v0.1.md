@@ -19,8 +19,10 @@ These notes record where the implementation confirmed the specifications, where 
 | Operation | Spec estimate | Measured |
 |---|---|---|
 | Register an identity (π_reg) | ~300,000 | **302,271**; **334,589** with the batch chain hash |
-| First ballot | ~420,000 | **429,479** with `pollHash` and packed storage (533,615 with 26 public inputs) |
-| Re-vote | ~400,000 | **378,064** (442,997 before) |
+| A voter's first ballot | ~420,000 | **390,086**; the poll's very first ballot **424,298** (533,615 with 26 public inputs, before `pollHash` and packed storage) |
+| Re-vote | ~400,000 | **372,913** (442,997 before) |
+| Groth16 verification of π_vote alone | — | **303,022** (78% of a ballot) |
+| Batch of n ballots (`voteBatch`) | — | **about 347,000 + 101,000 · n**, measured for n = 1, 2, 4, 7; +34,000 for the poll's first batch |
 | Create poll (subgroup check of the tally key; `pollHash`, once per poll) | — | **874,687** |
 | Publish result | ~300,000 | **158,118** |
 | Insert identities, on-chain hashing | ~650,000 per leaf (naive) | **~1,050,000 per leaf** |
@@ -30,7 +32,7 @@ These notes record where the implementation confirmed the specifications, where 
 
 **Consequences:**
 
-1. The first measurement put a ballot about 27% above the estimate. Binding the nine per-poll values with one `pollHash`, and packing storage, brought it down to 429,479 gas, close to the estimate. The next large reduction is ballot aggregation (Decision Log #23).
+1. The first measurement put a ballot about 27% above the estimate. Binding the nine per-poll values with one `pollHash`, and packing storage, brought it below the estimate. **Batched verification is now implemented** (Decision Log #23): about 101,000 gas per ballot in large batches, 3.8 times less than a single ballot. Further steps and their limits are in [ballot-aggregation-v0.1.md](ballot-aggregation-v0.1.md).
 2. On-chain hashing for insertion and revocation is not viable. **Batch insertion with π_batch is now implemented** and cuts insertion from about 1,050,000 gas per leaf to 293,548 per batch, which is under 300 gas per leaf for a batch of 1,024. **Revocation with π_revoke is also implemented**: 294,646 gas instead of 4,027,982.
 
 ## 3. Details the specifications must state explicitly
@@ -49,6 +51,8 @@ These notes record where the implementation confirmed the specifications, where 
 | N10 | **Batch insertion binding:** the registry keeps a Poseidon chain hash of each batch as leaves are registered, and π_batch must match it. Batches are full, aligned and inserted in order; the target subtree is proven empty, with the empty-subtree root computed in the circuit. | enrolment-circuit, contracts |
 | N11 | **Initial revocation root:** RevocationRegistry takes the root of the sentinel-only tree as a constructor argument instead of hashing it on-chain. Deployers and auditors must check that it equals the root of a depth-32 tree holding only Poseidon(0, 0); the tests do. | contracts |
 | N12 | **pollHash:** the ballot proof takes `pollHash = Poseidon(7, Poseidon(idRoot, revRoot, pollId, PK.x, PK.y), Poseidon(minAgeBand, minExpiryMonth, requiredNat, ctxHash))` as one public input. The contract computes it once at poll creation from its own state, and the phone computes the same value. | ballot-circuit, contracts |
+| N13 | **Fixed gas for precompile calls.** A failing call to a curve precompile consumes all gas forwarded to it. Forwarding all remaining gas turns an invalid point into an out-of-gas failure of the whole transaction. The batch verifier gives each call a fixed allowance. | contracts |
+| N14 | **Batch weights from the complete call data.** Batch verification is sound only if the random weights are fixed after every proof and input; they are derived from keccak256 of the full call data. | contracts |
 
 ## 4. Open issues found during implementation
 

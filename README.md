@@ -32,6 +32,7 @@ Participation is free. Topics of sponsored polls are chosen by participants them
 | [Red-team review v0.1](docs/specs/red-team-review-ballot-spec-v0.1.md) | Attacks on the ballot spec and accepted fixes |
 | [Contracts spec v0.1](docs/specs/contracts-v0.1.md) | Smart-contract interfaces, checks and cost estimates |
 | [Implementation notes v0.1](docs/specs/implementation-notes-v0.1.md) | Measured sizes and gas, and lessons from the reference code |
+| [Ballot aggregation v0.1](docs/specs/ballot-aggregation-v0.1.md) | How to cut the cost per ballot: options, measurements and recommended path |
 | [Decision log](docs/decisions/DECISION_LOG.md) | Every design decision and why it was taken |
 
 ## Reference code

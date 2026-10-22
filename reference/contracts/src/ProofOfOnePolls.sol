@@ -27,13 +27,25 @@ interface IBallotVerifier {
     ) external view returns (bool);
 }
 
+/// @notice Batched verifier for many ballot proofs of one poll (BallotBatchVerifier.sol).
+interface IBallotBatchVerifier {
+    struct Proof { uint256[2] a; uint256[2][2] b; uint256[2] c; }
+    function verifyBallots(
+        uint256 pollHash,
+        uint256[] calldata nfs,
+        uint256[16][] calldata cts,
+        Proof[] calldata proofs
+    ) external view returns (bool);
+}
+
 /// @title Proof of One — polls, ballots and results (reference implementation)
 /// @notice Combines the roles of PollRegistry, PollAnswers and ResultsRegistry from
 ///         docs/specs/contracts-v0.1.md, for a 4-option poll without breakdown cells.
 /// @dev Snapshot roots are read from IdentityRegistry and RevocationRegistry when a poll
 ///      is created. NOT IMPLEMENTED HERE (see the spec): trustee signatures on the tally
 ///      key and on results, on-chain DLEQ and aggregate fraud proofs, the relay
-///      (ERC-4337), and ballot aggregation. Reference code; not audited.
+///      (ERC-4337), and recursive ballot aggregation. Batched submission
+///      (voteBatch) is implemented. Reference code; not audited.
 contract ProofOfOnePolls {
     uint256 public constant K = 4;
     uint256 public constant SNARK_FIELD = 21888242871839275222246405745257275088548364400416034343698204186575808495617;
@@ -69,6 +81,7 @@ contract ProofOfOnePolls {
     }
 
     IBallotVerifier public immutable verifier;
+    IBallotBatchVerifier public immutable batchVerifier;
     IIdentityRegistry public immutable identity;
     IRevocationRegistry public immutable revocation;
     IPoseidon3 public immutable poseidon3;
@@ -114,9 +127,11 @@ contract ProofOfOnePolls {
     error TooManyVoters();
     error ChallengePeriodRunning();
     error DeadlineNotReached();
+    error BadBatch();
 
     constructor(
         IBallotVerifier verifier_,
+        IBallotBatchVerifier batchVerifier_,
         IIdentityRegistry identity_,
         IRevocationRegistry revocation_,
         IPoseidon3 p3,
@@ -124,6 +139,7 @@ contract ProofOfOnePolls {
         IPoseidon5 p5
     ) {
         verifier = verifier_;
+        batchVerifier = batchVerifier_;
         identity = identity_;
         revocation = revocation_;
         poseidon3 = p3;
@@ -175,6 +191,7 @@ contract ProofOfOnePolls {
 
     // ---------------------------------------------------------------- ballots
 
+    /// @notice Submit one ballot directly. Always available, so no aggregator can censor.
     /// @param ct ciphertexts in circuit order: A_0..A_3 (x, y) then B_0..B_3 (x, y)
     function vote(
         uint256 pollId,
@@ -184,11 +201,7 @@ contract ProofOfOnePolls {
         uint256[2][2] calldata pb,
         uint256[2] calldata pc
     ) external {
-        Poll storage p = _polls[pollId];
-        if (p.state != State.Open || block.timestamp < p.openTime || block.timestamp >= p.closeTime) revert PollNotOpen();
-        Slot memory slot = ballots[pollId][nf];
-        if (slot.count >= p.maxRevotes) revert RevoteCapReached();
-
+        Poll storage p = _openPoll(pollId);
         // Public inputs: the poll's own pollHash, the nullifier and the ciphertexts.
         uint256[18] memory pub;
         pub[0] = p.pollHash;
@@ -197,19 +210,57 @@ contract ProofOfOnePolls {
         if (!verifier.verifyProof(pa, pb, pc, pub)) revert InvalidProof();
 
         Counters memory cnt = _counters[pollId];
+        bytes32 chain = _record(pollId, p.maxRevotes, nf, ct, cnt, ballotChain[pollId]);
+        ballotChain[pollId] = chain;
+        _counters[pollId] = cnt;
+    }
+
+    /// @notice Submit many ballots of one poll in one transaction (anyone may call, for
+    ///         example a relay). All proofs are checked together with n + 3 pairings; if any
+    ///         proof is invalid the whole batch is rejected, so a relay must check each
+    ///         proof off-chain first. Ballots are recorded in the given order, exactly as
+    ///         if submitted one by one, so the ballot chain and events are unchanged.
+    function voteBatch(
+        uint256 pollId,
+        uint256[] calldata nfs,
+        uint256[16][] calldata cts,
+        IBallotBatchVerifier.Proof[] calldata proofs
+    ) external {
+        Poll storage p = _openPoll(pollId);
+        if (nfs.length == 0 || nfs.length != cts.length || nfs.length != proofs.length) revert BadBatch();
+        if (!batchVerifier.verifyBallots(p.pollHash, nfs, cts, proofs)) revert InvalidProof();
+
+        Counters memory cnt = _counters[pollId];
+        bytes32 chain = ballotChain[pollId];
+        uint16 cap = p.maxRevotes;
+        for (uint256 i = 0; i < nfs.length; i++) chain = _record(pollId, cap, nfs[i], cts[i], cnt, chain);
+        ballotChain[pollId] = chain;
+        _counters[pollId] = cnt;
+    }
+
+    function _openPoll(uint256 pollId) internal view returns (Poll storage p) {
+        p = _polls[pollId];
+        if (p.state != State.Open || block.timestamp < p.openTime || block.timestamp >= p.closeTime) revert PollNotOpen();
+    }
+
+    /// @dev Records one verified ballot; returns the extended ballot chain. Counters are
+    ///      updated in memory and written once by the caller.
+    function _record(uint256 pollId, uint16 cap, uint256 nf, uint256[16] calldata ct, Counters memory cnt, bytes32 chain)
+        internal returns (bytes32)
+    {
+        Slot memory slot = ballots[pollId][nf];
+        if (slot.count >= cap) revert RevoteCapReached();
         if (slot.count == 0) cnt.distinctVoters++;
         // Same encoding as the reference tally: per option j, A_j.x, A_j.y, B_j.x, B_j.y
-        bytes memory enc;
-        for (uint256 j = 0; j < K; j++) {
-            enc = abi.encodePacked(enc, ct[2 * j], ct[2 * j + 1], ct[8 + 2 * j], ct[8 + 2 * j + 1]);
-        }
-        bytes32 h = keccak256(enc);
+        bytes32 h = keccak256(abi.encodePacked(
+            ct[0], ct[1], ct[8], ct[9], ct[2], ct[3], ct[10], ct[11],
+            ct[4], ct[5], ct[12], ct[13], ct[6], ct[7], ct[14], ct[15]));
         uint32 n = slot.count + 1;
         ballots[pollId][nf] = Slot(bytes28(h), n);
-        ballotChain[pollId] = keccak256(abi.encodePacked(ballotChain[pollId], nf, h, uint256(cnt.totalSubmissions)));
+        chain = keccak256(abi.encodePacked(chain, nf, h, uint256(cnt.totalSubmissions)));
         cnt.totalSubmissions++;
-        _counters[pollId] = cnt;
         emit Ballot(pollId, nf, ct, uint16(n));
+        return chain;
     }
 
     // ---------------------------------------------------------------- results

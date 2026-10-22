@@ -4,7 +4,8 @@
   "description": "Reference smart contracts for Proof of One polls (not for production use)",
   "scripts": {
     "compile": "node scripts/compile.js",
-    "test": "node scripts/compile.js && node --test --test-force-exit test/*.test.js"
+    "test": "node scripts/compile.js && node --test --test-force-exit test/*.test.js",
+    "generate:batch-verifier": "node scripts/gen-batch-verifier.js"
   },
   "license": "Apache-2.0",
   "dependencies": {

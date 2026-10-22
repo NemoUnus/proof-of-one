@@ -27,7 +27,7 @@ const art = (n) => JSON.parse(fs.readFileSync(path.join(__dirname, "..", "build"
 const ATTRS = { ageBand: 3, natCode: 250, sexCode: 1, expiryMonth: 24400 };
 const POLICY = { minAgeBand: 2, minExpiryMonth: 24330, requiredNat: 0 };
 
-let P, provider, signer, poseidon, identity, revocation, polls, enclave, keys, gas = {};
+let P, provider, signer, poseidon, identity, revocation, polls, enclave, keys, ballotVerifier, ballotBatchVerifier, gas = {};
 let people = [], pollId, ctx, firstPollEvents;
 
 const fp = () => BigInt("0x" + crypto.randomBytes(31).toString("hex"));
@@ -106,18 +106,19 @@ test.before(async () => {
   const deploy = async (abi, bytecode, ...args) => { const c = await new ethers.ContractFactory(abi, bytecode, signer).deploy(...args); await c.waitForDeployment(); return c; };
   poseidon = await deploy(poseidonContract.generateABI(2), poseidonContract.createCode(2));
   enclave = E.createEnclave(P, { epochs: 4 });
-  const RV = art("RegistrationVerifier"), BIV = art("BatchInsertVerifier"), RKV = art("RevokeVerifier"), BV = art("Groth16Verifier"), IR = art("IdentityRegistry"), RR = art("RevocationRegistry"), PP = art("ProofOfOnePolls");
+  const BBV = art("BallotBatchVerifier"), RV = art("RegistrationVerifier"), BIV = art("BatchInsertVerifier"), RKV = art("RevokeVerifier"), BV = art("Groth16Verifier"), IR = art("IdentityRegistry"), RR = art("RevocationRegistry"), PP = art("ProofOfOnePolls");
   const regVerifier = await deploy(RV.abi, RV.bytecode);
   const batchVerifier = await deploy(BIV.abi, BIV.bytecode);
   identity = await deploy(IR.abi, IR.bytecode, await poseidon.getAddress(), await regVerifier.getAddress(), await batchVerifier.getAddress(), 4, enclave.keySetRoot, await signer.getAddress());
   const revokeVerifier = await deploy(RKV.abi, RKV.bytecode);
   const emptyRevRoot = new RevocationTree(P.hash.H, B.REV_DEPTH).root;
   revocation = await deploy(RR.abi, RR.bytecode, await revokeVerifier.getAddress(), await signer.getAddress(), emptyRevRoot);
-  const ballotVerifier = await deploy(BV.abi, BV.bytecode);
+  ballotVerifier = await deploy(BV.abi, BV.bytecode);
+  ballotBatchVerifier = await deploy(BBV.abi, BBV.bytecode);
   const p3 = await deploy(poseidonContract.generateABI(3), poseidonContract.createCode(3));
   const p4 = await deploy(poseidonContract.generateABI(4), poseidonContract.createCode(4));
   const p5 = await deploy(poseidonContract.generateABI(5), poseidonContract.createCode(5));
-  polls = await deploy(PP.abi, PP.bytecode, await ballotVerifier.getAddress(), await identity.getAddress(), await revocation.getAddress(),
+  polls = await deploy(PP.abi, PP.bytecode, await ballotVerifier.getAddress(), await ballotBatchVerifier.getAddress(), await identity.getAddress(), await revocation.getAddress(),
     await p3.getAddress(), await p4.getAddress(), await p5.getAddress());
   keys = P.dkg(5, 3);
 });
@@ -161,7 +162,8 @@ test("ballots with valid proofs are accepted; a re-vote replaces the earlier bal
   const choices = [0, 1, 1, 3];
   for (let i = 0; i < 4; i++) {
     const g = await used(send(await makeBallot(people[i], choices[i], pollId, v), pollId));
-    if (i === 0) gas.voteFirst = g;
+    if (i === 0) gas.voteFirst = g;   // first ballot of the poll (counters written from zero)
+    if (i === 1) gas.voteTypical = g; // first ballot of a voter, poll already active
   }
   gas.voteRevote = await used(send(await makeBallot(people[3], 2, pollId, v), pollId));
   assert.equal(await polls.distinctVoters(pollId), 4n);
@@ -200,6 +202,68 @@ test("re-enrolment: the old identity is revoked on-chain and cannot vote in late
   await used(send(await makeBallot(alice2, 0, later, v), later));
   await used(send(await makeBallot(people[1], 1, later, v), later));
   assert.equal(await polls.distinctVoters(later), 2n);
+});
+
+// --- batched submission (voteBatch): one transaction, n + 3 pairings for n proofs
+const asBatch = (bs) => [bs.map((b) => b.nf), bs.map((b) => ctArray(b.C)), bs.map((b) => ({ a: b.sp.a, b: b.sp.b, c: b.sp.c }))];
+const sendBatch = (bs, id) => polls.voteBatch(id, ...asBatch(bs));
+const intrinsic = (data) => { const b = ethers.getBytes(data); return 21000n + BigInt(b.reduce((g, x) => g + (x ? 16 : 4), 0)); };
+
+test("batched ballots: accepted together, one bad proof rejects the batch, same chain and counts as single ballots", async () => {
+  const voters = people.filter((x, i) => i !== 0); // the first identity was revoked
+  assert.equal(voters.length, 7);
+  await used(polls.createPoll(await pollParams()));
+  const pb = await polls.pollCount();
+  await used(polls.createPoll(await pollParams()));
+  const pc = await polls.pollCount();
+  const v = await syncTrees();
+  const choices = [0, 1, 2, 3, 0, 1, 2];
+  const bB = [], bC = [];
+  for (let i = 0; i < 7; i++) bB.push(await makeBallot(voters[i], choices[i], pb, v));
+  for (let i = 0; i < 7; i++) bC.push(await makeBallot(voters[i], choices[i], pc, v));
+
+  // Cost of verifying one proof on its own (snarkjs verifier), without the transaction overhead
+  const one = bB[0], pub = [(await polls.getPoll(pb)).pollHash, one.nf, ...ctArray(one.C)];
+  const data = ballotVerifier.interface.encodeFunctionData("verifyProof", [one.sp.a, one.sp.b, one.sp.c, pub]);
+  gas.verifySingle = (await ballotVerifier.verifyProof.estimateGas(one.sp.a, one.sp.b, one.sp.c, pub)) - intrinsic(data);
+  assert.equal(await ballotVerifier.verifyProof(one.sp.a, one.sp.b, one.sp.c, pub), true);
+
+  // Rejections: a swapped ciphertext, proofs in the wrong order, an empty batch, another poll
+  const [nfs, cts, prs] = asBatch(bB.slice(0, 3));
+  await reverts(polls.voteBatch.staticCall(pb, nfs, [cts[0], cts[2], cts[1]], prs), polls, "InvalidProof");
+  await reverts(polls.voteBatch.staticCall(pb, nfs, cts, [prs[1], prs[0], prs[2]]), polls, "InvalidProof");
+  await reverts(polls.voteBatch.staticCall(pb, [], [], []), polls, "BadBatch");
+  await reverts(polls.voteBatch.staticCall(pc, nfs, cts, prs), polls, "InvalidProof");
+  const forged = { ...prs[1], a: [prs[1].a[0], prs[1].a[1] + 1n] }; // not a curve point
+  await reverts(polls.voteBatch.staticCall(pb, nfs, cts, [prs[0], forged, prs[2]]), polls, "InvalidProof");
+
+  // Gas for batches of 1, 2, 4 and 7 first ballots
+  gas.batch1 = await used(sendBatch(bB.slice(0, 1), pb));
+  gas.batch2 = await used(sendBatch(bB.slice(1, 3), pb));
+  gas.batch4 = await used(sendBatch(bB.slice(3, 7), pb));
+  gas.batch7 = await used(sendBatch(bC, pc));
+  assert.equal(await polls.distinctVoters(pb), 7n);
+  assert.equal(await polls.distinctVoters(pc), 7n);
+
+  // Re-votes inside one batch, including the same nullifier twice: applied in order
+  const r1 = await makeBallot(voters[1], 3, pc, v), r2 = await makeBallot(voters[1], 0, pc, v);
+  await used(sendBatch([r1, r2], pc));
+  assert.equal((await polls.ballots(pc, r1.nf)).count, 3n);
+  assert.equal(await polls.distinctVoters(pc), 7n);
+  await reverts(polls.voteBatch.staticCall(pc, ...asBatch([await makeBallot(voters[1], 1, pc, v)])), polls, "RevoteCapReached");
+
+  // The chain and the counted ballots, rebuilt from events, match the contract and the choices
+  const toPoint = (x, y) => [P.curve.F.e(x), P.curve.F.e(y)];
+  const evs = (await polls.queryFilter(polls.filters.Ballot(pc))).map((l, seq) => {
+    const ct = l.args.ciphertexts.map(BigInt);
+    return { seq, nf: BigInt(l.args.nf), count: Number(l.args.count),
+      C: [0, 1, 2, 3].map((j) => ({ A: toPoint(ct[2 * j], ct[2 * j + 1]), B: toPoint(ct[8 + 2 * j], ct[8 + 2 * j + 1]) })) };
+  });
+  const rep = P.replay(evs);
+  assert.equal(rep.chain, await polls.ballotChain(pc));
+  const agg = P.aggregate(rep.counted, 4);
+  const partials = keys.shares.map((sh) => ({ index: sh.index, parts: P.partialDecrypt(sh, keys.publicShares[sh.index - 1].PK, agg, BigInt(pc)) }));
+  assert.deepEqual(P.combine(agg, partials, 3, rep.distinct), [3n, 1n, 2n, 1n]); // voter 2 changed 1 → 3 → 0
 });
 
 test("ballot chain on-chain equals the chain rebuilt by the reference tally from events", async () => {
