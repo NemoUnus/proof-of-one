@@ -41,6 +41,7 @@ Runnable reference implementation of the voting core: [reference/](reference/). 
 |---|---|
 | [reference/tally](reference/tally/) | Encrypted ballots, voter self-verification, threshold decryption with proofs, independent recount tool |
 | [reference/ballot-circuit](reference/ballot-circuit/) | Zero-knowledge ballot proof (Circom/Groth16): only eligible, unique, non-revoked members can cast a well-formed ballot |
+| [reference/enrolment-circuit](reference/enrolment-circuit/) | Unlinkable registration: the registration service cannot tell which registry entry belongs to whom; lost identities can be revoked without revealing which |
 | [reference/contracts](reference/contracts/) | Solidity contract for polls, ballots and results, tested end to end with real proofs |
 
 ## Design in one paragraph

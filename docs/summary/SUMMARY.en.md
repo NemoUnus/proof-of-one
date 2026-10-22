@@ -33,7 +33,7 @@ It is an open system for polls in which:
 - An authority that issues passports could create false identities. The system makes this costly and visible, but cannot fully prevent it.
 
 ## Where we are
-- **Done:** design and whitepaper published; working reference code with 33 tests.
+- **Done:** design and whitepaper published; working reference code with 42 tests.
 - **Now:** review by independent experts.
 - **Next:** public test network and face-accuracy study; then first polls in low-risk settings.
 

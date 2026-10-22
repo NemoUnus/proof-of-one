@@ -2,12 +2,13 @@
 
 > **For review and testing only. Not audited. Uses a TEST-ONLY trusted setup. Do not use with real participants.**
 
-Three small packages implement the core of the voting protocol end to end. Each is written to be read and attacked, not deployed.
+Four small packages implement the core of the protocol end to end. Each is written to be read and attacked, not deployed.
 
 | Package | What it contains | Tests |
 |---|---|---|
 | [`tally/`](tally/) | Encrypted one-hot ballots, nullifiers, trustee key generation, voter self-verification, homomorphic tally, threshold decryption with DLEQ proofs, independent recount tool | 13 |
 | [`ballot-circuit/`](ballot-circuit/) | Zero-knowledge ballot proof π_vote (Circom, Groth16): membership, non-revocation, nullifier, eligibility, well-formed encrypted ballot | 11 |
+| [`enrolment-circuit/`](enrolment-circuit/) | Unlinkable registration proof π_reg (Circom, Groth16), enclave credential issuance, registry rules, revocation on re-enrolment | 9 |
 | [`contracts/`](contracts/) | Solidity contract for polls, ballots and results, with the generated Groth16 verifier; end-to-end tests with real proofs | 9 |
 
 ## How they fit together
@@ -32,6 +33,7 @@ Requires Node.js 20 or later.
 ```bash
 cd tally          && npm install && npm test
 cd ../ballot-circuit && npm install && npm run build && npm test
+cd ../enrolment-circuit && npm install && npm run build && npm test
 cd ../contracts   && npm install && npm test
 ```
 
@@ -44,7 +46,7 @@ cd ../contracts   && npm install && npm test
 
 - A real trusted setup (a large public ceremony) or a universal-setup proof system ([issue #7](https://github.com/NemoUnus/proof-of-one/issues/7)).
 - A robust distributed key generation for the trustees.
-- Identity and revocation registries with batch insertion.
-- Enrolment: document proof, enclave, credential.
+- On-chain identity and revocation registries with batch insertion by SNARK.
+- Enrolment front end: document-validity proof, liveness and face matching in an attested enclave.
 - Prover performance on phones.
 - Independent human review of everything here.
