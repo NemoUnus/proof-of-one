@@ -1,0 +1,219 @@
+iso3,name,population_2025,chip_passport,chip_id_card,icao_pkd,note
+AFG,Afghanistan,43844111,no,no,no,no chip
+ALB,Albania,2349580,yes,yes,yes,ReadID list 2023
+DZA,Algeria,47435312,yes,yes,no,ReadID list 2023
+ASM,American Samoa,46029,yes,no,no,holders of the parent state passport
+AND,Andorra,82904,yes,no,no,ReadID list 2023
+AGO,Angola,39040039,yes,no,yes,since 2025
+ATG,Antigua and Barbuda,94209,yes,no,no,ReadID list 2023
+ARG,Argentina,45851378,yes,no,yes,ReadID list 2023
+ARM,Armenia,3086700,yes,no,no,ReadID list 2023
+ABW,Aruba,108785,yes,no,no,holders of the parent state passport
+AUS,Australia,27614411,yes,no,yes,ReadID list 2023
+AUT,Austria,9208163,yes,yes,yes,ReadID list 2023
+AZE,Azerbaijan,10246996,yes,yes,no,ReadID list 2023
+BHS,Bahamas,403033,yes,no,no,ReadID list 2023
+BHR,Bahrain,1600366,yes,no,yes,ReadID list 2023
+BGD,Bangladesh,175686899,yes,no,yes,ReadID list 2023
+BRB,Barbados,282623,yes,yes,yes,ReadID list 2023
+BLR,Belarus,9085991,yes,yes,yes,ReadID list 2023
+BEL,Belgium,11941781,yes,yes,yes,ReadID list 2023
+BLZ,Belize,422924,yes,no,yes,ReadID list 2023
+BEN,Benin,14814460,yes,yes,yes,ReadID list 2023
+BMU,Bermuda,64555,yes,no,yes,ReadID list 2023
+BTN,Bhutan,796682,no,no,no,no chip (2023)
+BOL,Bolivia,12581843,yes,no,no,ReadID list 2023
+BIH,Bosnia and Herzegovina,3140095,yes,yes,yes,ReadID list 2023
+BWA,Botswana,2562122,yes,no,yes,ReadID list 2023
+BRA,Brazil,212812405,yes,no,yes,ReadID list 2023
+VGB,British Virgin Islands,39732,yes,no,no,ReadID list 2023
+BRN,Brunei Darussalam,466330,yes,no,yes,ReadID list 2023
+BGR,Bulgaria,6433302,yes,no,yes,ReadID list 2023
+BFA,Burkina Faso,24074580,yes,no,no,ReadID list 2023
+BDI,Burundi,14390003,yes,no,no,ReadID list 2023
+CPV,Cabo Verde,527326,yes,no,no,ReadID list 2023
+KHM,Cambodia,17847982,yes,no,no,ReadID list 2023
+CMR,Cameroon,29879337,yes,no,yes,ReadID list 2023
+CAN,Canada,41651653,yes,no,yes,ReadID list 2023
+CYM,Cayman Islands,75844,yes,no,no,ReadID list 2023
+CAF,Central African Republic,5513282,yes,no,no,ReadID list 2023
+TCD,Chad,21003705,yes,yes,no,ReadID list 2023
+CHI,Channel Islands,168466,yes,no,no,ReadID list 2023
+CHL,Chile,19859921,yes,yes,yes,ReadID list 2023
+CHN,China,1406585000,yes,no,yes,ReadID list 2023
+COL,Colombia,53425635,yes,no,yes,ReadID list 2023
+COM,Comoros,882847,yes,no,no,ReadID list 2023
+COD,"Congo, Democratic Republic",112832473,yes,no,no,ReadID list 2023
+COG,"Congo, Republic",6484437,yes,no,no,ReadID list 2023
+CRI,Costa Rica,5152950,yes,no,yes,ReadID list 2023
+CIV,Cote d'Ivoire,32711547,yes,yes,yes,ReadID list 2023
+HRV,Croatia,3876200,yes,yes,yes,ReadID list 2023
+CUB,Cuba,10937203,unclear,no,no,not found in sources used
+CUW,Curacao,156263,yes,no,no,holders of the parent state passport
+CYP,Cyprus,1370754,yes,yes,no,ReadID list 2023
+CZE,Czechia,10886878,yes,yes,yes,ReadID list 2023
+DNK,Denmark,6009169,yes,no,no,ReadID list 2023
+DJI,Djibouti,1184076,yes,yes,no,ReadID list 2023
+DMA,Dominica,65871,yes,no,no,ReadID list 2023
+DOM,Dominican Republic,11520487,yes,no,yes,since 2026
+ECU,Ecuador,18289896,yes,yes,yes,ReadID list 2023
+EGY,Egypt,118365995,no,no,yes,ordinary passports had no chip in 2023; ICAO PKD participant
+SLV,El Salvador,6365503,unclear,no,no,not found in sources used
+GNQ,Equatorial Guinea,1938431,yes,no,no,ReadID list 2023
+ERI,Eritrea,3607003,no,no,no,no chip (2023)
+EST,Estonia,1366475,yes,yes,no,ReadID list 2023
+SWZ,Eswatini,1256174,no,no,no,no chip (2023)
+ETH,Ethiopia,135472051,yes,no,yes,since 2025
+FRO,Faroe Islands,54900,yes,no,no,ReadID list 2023
+FJI,Fiji,933154,yes,no,no,ReadID list 2023
+FIN,Finland,5646436,yes,yes,yes,ReadID list 2023
+FRA,France,68720337,yes,yes,yes,ReadID list 2023
+PYF,French Polynesia,282465,yes,no,no,ReadID list 2023
+GAB,Gabon,2593130,yes,no,no,ReadID list 2023
+GMB,Gambia,2822093,yes,no,no,ReadID list 2023
+GEO,Georgia,3935766,yes,yes,yes,ReadID list 2023
+DEU,Germany,83491249,yes,yes,yes,ReadID list 2023
+GHA,Ghana,35064272,yes,yes,yes,since April 2025
+GIB,Gibraltar,40126,yes,yes,no,ReadID list 2023
+GRC,Greece,10413962,yes,no,no,ReadID list 2023
+GRL,Greenland,56831,yes,no,no,ReadID list 2023
+GRD,Grenada,117303,yes,no,no,ReadID list 2023
+GUM,Guam,168999,yes,no,no,holders of the parent state passport
+GTM,Guatemala,18687881,no,no,no,pilot planned 2027
+GIN,Guinea,15099727,yes,no,no,ReadID list 2023
+GNB,Guinea-Bissau,2249515,yes,yes,no,ReadID list 2023
+GUY,Guyana,835986,yes,no,yes,PKD participant since 2025
+HTI,Haiti,11906095,yes,yes,no,ReadID list 2023
+HND,Honduras,11005850,yes,no,no,ReadID list 2023
+HKG,Hong Kong (China),7498900,yes,no,yes,ReadID list 2023
+HUN,Hungary,9514251,yes,yes,yes,ReadID list 2023
+ISL,Iceland,392404,yes,no,yes,ReadID list 2023
+IND,India,1463865525,rollout,no,yes,chip passports since 2024–25; full transition planned by 2035 (about 8 million issued by Nov 2025)
+IDN,Indonesia,285721236,yes,no,yes,ReadID list 2023
+IRN,Iran,92417681,yes,no,yes,ReadID list 2023
+IRQ,Iraq,47020774,yes,yes,yes,ReadID list 2023
+IRL,Ireland,5484367,yes,yes,yes,ReadID list 2023
+IMN,Isle of Man,84118,yes,no,no,ReadID list 2023
+ISR,Israel,10122800,yes,no,no,ReadID list 2023
+ITA,Italy,58915656,yes,yes,yes,ReadID list 2023
+JAM,Jamaica,2837077,yes,no,yes,ReadID list 2023
+JPN,Japan,123366734,yes,no,yes,ReadID list 2023
+JOR,Jordan,11520684,yes,no,yes,since 2025
+KAZ,Kazakhstan,20843754,yes,yes,yes,ReadID list 2023
+KEN,Kenya,57532493,yes,yes,yes,ReadID list 2023
+KIR,Kiribati,136488,unclear,no,no,not found in sources used
+PRK,"Korea, Democratic People's Republic (North Korea)",26571036,no,no,no,no
+KOR,"Korea, Republic of (South Korea)",51684564,yes,no,yes,ReadID list 2023
+XKX,Kosovo,1576876,yes,yes,no,ReadID list 2023
+KWT,Kuwait,4865298,yes,no,yes,ReadID list 2023
+KGZ,Kyrgyz Republic,7343064,yes,yes,no,ReadID list 2023
+LAO,Lao PDR,7873046,yes,no,no,ReadID list 2023
+LVA,Latvia,1847785,yes,yes,yes,ReadID list 2023
+LBN,Lebanon,5849421,yes,no,no,ReadID list 2023
+LSO,Lesotho,2363325,yes,no,yes,ReadID list 2023
+LBR,Liberia,5731206,yes,no,no,ReadID list 2023
+LBY,Libya,7458555,no,no,no,chip only for non-ordinary passports
+LIE,Liechtenstein,41024,yes,no,no,ReadID list 2023
+LTU,Lithuania,2888774,yes,yes,no,ReadID list 2023
+LUX,Luxembourg,686970,yes,yes,yes,ReadID list 2023
+MAC,Macao (China),685900,yes,no,yes,ReadID list 2023
+MDG,Madagascar,32740678,yes,no,no,ReadID list 2023
+MWI,Malawi,22216120,yes,no,yes,ReadID list 2023
+MYS,Malaysia,35977838,yes,no,yes,ReadID list 2023
+MDV,Maldives,529676,yes,no,no,ReadID list 2023
+MLI,Mali,25198821,yes,no,yes,ReadID list 2023
+MLT,Malta,579704,yes,yes,no,ReadID list 2023
+MHL,Marshall Islands,36282,unclear,no,no,not found in sources used
+MRT,Mauritania,5315065,yes,yes,no,ReadID list 2023
+MUS,Mauritius,1243741,no,no,no,no chip (2023)
+MEX,Mexico,131946900,yes,yes,yes,ReadID list 2023
+FSM,Micronesia,113683,unclear,no,no,not found in sources used
+MDA,Moldova,2360527,yes,yes,yes,ReadID list 2023
+MCO,Monaco,38341,yes,no,no,ReadID list 2023
+MNG,Mongolia,3568978,yes,no,yes,ReadID list 2023
+MNE,Montenegro,623129,yes,yes,no,ReadID list 2023
+MAR,Morocco,38430770,yes,yes,yes,ReadID list 2023
+MOZ,Mozambique,35631653,yes,no,no,ReadID list 2023
+MMR,Myanmar,54850648,no,no,no,machine-readable only
+NAM,Namibia,3092816,yes,no,yes,ReadID list 2023
+NRU,Nauru,12025,unclear,no,no,not found in sources used
+NPL,Nepal,29618118,yes,no,yes,ReadID list 2023
+NLD,Netherlands,18087633,yes,yes,yes,ReadID list 2023
+NCL,New Caledonia,295333,yes,no,no,holders of the parent state passport
+NZL,New Zealand,5324700,yes,no,yes,ReadID list 2023
+NIC,Nicaragua,7007502,unclear,no,no,not found in sources used
+NER,Niger,27917831,yes,no,no,ReadID list 2023
+NGA,Nigeria,237527782,yes,no,yes,ReadID list 2023
+MKD,North Macedonia,1820909,yes,no,no,ReadID list 2023
+MNP,Northern Mariana Islands,43541,yes,no,no,holders of the parent state passport
+NOR,Norway,5610870,yes,yes,yes,ReadID list 2023
+OMN,Oman,5494691,yes,no,yes,ReadID list 2023
+PAK,Pakistan,255219554,rollout,no,no,chip passports since Aug 2023; all new passports chip-based from 15 Oct 2026
+PLW,Palau,17663,unclear,no,no,not found in sources used
+PAN,Panama,4571189,yes,no,yes,ReadID list 2023
+PNG,Papua New Guinea,10762817,unclear,no,no,not found in sources used
+PRY,Paraguay,7013078,yes,no,no,ReadID list 2023
+PER,Peru,34576665,yes,yes,yes,ReadID list 2023
+PHL,Philippines,116786962,yes,yes,yes,ReadID list 2023
+POL,Poland,36435861,yes,yes,no,ReadID list 2023
+PRT,Portugal,10804871,yes,no,no,ReadID list 2023
+PRI,Puerto Rico (US),3184835,yes,no,no,holders of the parent state passport
+QAT,Qatar,2972215,yes,no,yes,ReadID list 2023
+ROU,Romania,19020271,yes,yes,yes,ReadID list 2023
+RUS,Russian Federation,143513328,yes,no,yes,ReadID list 2023
+RWA,Rwanda,14569341,yes,no,yes,ReadID list 2023
+KNA,Saint Kitts and Nevis,46922,yes,no,yes,ReadID list 2023
+LCA,Saint Lucia,180149,unclear,no,no,not found in sources used
+MAF,Saint Martin (France),24941,yes,no,no,holders of the parent state passport
+VCT,Saint Vincent and the Grenadines,99924,yes,no,no,ReadID list 2023
+WSM,Samoa,219306,unclear,no,no,not found in sources used
+SMR,San Marino,34109,yes,yes,yes,ReadID list 2023
+STP,Sao Tome and Principe,240254,yes,no,no,ReadID list 2023
+SAU,Saudi Arabia,36973555,yes,no,yes,ReadID list 2023
+SEN,Senegal,18931966,yes,yes,no,ReadID list 2023
+SRB,Serbia,6549143,yes,no,yes,ReadID list 2023
+SYC,Seychelles,122730,yes,no,yes,ReadID list 2023
+SLE,Sierra Leone,8819794,yes,yes,no,ReadID list 2023
+SGP,Singapore,6111175,yes,no,yes,ReadID list 2023
+SXM,Sint Maarten (Netherlands),43923,yes,no,no,holders of the parent state passport
+SVK,Slovak Republic,5413813,yes,yes,yes,ReadID list 2023
+SVN,Slovenia,2130986,yes,yes,no,ReadID list 2023
+SLB,Solomon Islands,838645,unclear,no,no,not found in sources used
+SOM,Somalia,19654739,yes,no,no,ReadID list 2023
+ZAF,South Africa,64747319,no,no,no,"planned, not issued"
+SSD,South Sudan,12188788,yes,no,no,ReadID list 2023
+ESP,Spain,49355143,yes,yes,yes,ReadID list 2023
+LKA,Sri Lanka,21756000,no,no,no,planned (target 2026)
+SDN,Sudan,51662147,yes,no,yes,ReadID list 2023
+SUR,Suriname,639850,yes,yes,no,since 2025
+SWE,Sweden,10596620,yes,yes,yes,ReadID list 2023
+CHE,Switzerland,9092436,yes,no,yes,ReadID list 2023
+SYR,Syrian Arab Republic,25620427,yes,no,no,since 2023
+TWN,Taiwan,23400000,yes,no,no,ReadID list 2023
+TJK,Tajikistan,10786734,yes,no,no,ReadID list 2023
+TZA,Tanzania,70545865,yes,no,yes,ReadID list 2023
+THA,Thailand,71619863,yes,no,yes,ReadID list 2023
+TLS,Timor-Leste,1418517,yes,no,no,ReadID list 2023
+TGO,Togo,8591626,yes,no,yes,ReadID list 2023
+TON,Tonga,103742,unclear,no,no,not found in sources used
+TTO,Trinidad and Tobago,1367764,unclear,no,no,not found in sources used
+TUN,Tunisia,12348573,no,no,no,planned
+TUR,Turkiye,85878556,yes,no,yes,ReadID list 2023
+TKM,Turkmenistan,7618847,yes,no,yes,ReadID list 2023
+TCA,Turks and Caicos Islands,46855,yes,no,no,ReadID list 2023
+TUV,Tuvalu,9492,unclear,no,no,not found in sources used
+VIR,US Virgin Islands,103792,yes,no,no,holders of the parent state passport
+UGA,Uganda,51384894,yes,no,yes,ReadID list 2023
+UKR,Ukraine,38980376,yes,yes,yes,ReadID list 2023
+ARE,United Arab Emirates,11513149,yes,no,yes,ReadID list 2023
+GBR,United Kingdom,69487000,yes,no,yes,ReadID list 2023
+USA,United States,341784857,yes,no,yes,ReadID list 2023
+URY,Uruguay,3384688,yes,yes,no,ReadID list 2023
+UZB,Uzbekistan,37053428,yes,no,yes,ReadID list 2023
+VUT,Vanuatu,335169,yes,no,yes,PKD participant
+VEN,Venezuela,28516896,yes,no,no,ReadID list 2023
+VNM,Viet Nam,101598527,yes,yes,yes,ReadID list 2023
+PSE,West Bank and Gaza,5413596,yes,no,no,since 2022
+YEM,Yemen,41773878,unclear,no,yes,"ICAO PKD participant, but ordinary chip passport not confirmed"
+ZMB,Zambia,21913874,no,no,no,planned
+ZWE,Zimbabwe,16950795,yes,no,yes,ReadID list 2023

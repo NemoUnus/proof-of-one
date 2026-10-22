@@ -47,7 +47,7 @@ You may contribute under any name. We do not ask who you are. If you want to sta
 
 Parts of this project are drafted by disclosed AI agents (see [AGENTS.md](AGENTS.md)); [PROVENANCE.md](PROVENANCE.md) shows which parts and who has reviewed them. If you use AI tools in your own contribution, say so in the pull request. AI-assisted work goes through the same human review as everything else.
 
-Security-critical parts (circuits, contracts, enrolment, the recount tool) are not used with real participants until independent human experts have reviewed them line by line, or written an independent implementation (Decision Log #28).
+Security-critical parts (circuits, contracts, enrolment, the recount tool) are not used in a public pilot with real participants until independent human experts have reviewed them line by line, or written an independent implementation (Decision Log #28). The test network may run on reference code before that review, with test data and clear warnings.
 
 ## Licensing of contributions
 
