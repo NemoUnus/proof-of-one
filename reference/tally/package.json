@@ -1,0 +1,27 @@
+{
+  "name": "@proof-of-one/tally-reference",
+  "version": "0.1.0",
+  "description": "Reference implementation of the Proof of One ballot and tally layer (not for production use)",
+  "main": "src/protocol.js",
+  "scripts": {
+    "test": "node --test --test-force-exit test/*.test.js",
+    "demo": "node bin/demo.js",
+    "recount": "node bin/recount.js"
+  },
+  "keywords": [
+    "voting",
+    "elgamal",
+    "threshold",
+    "zero-knowledge",
+    "proof-of-one"
+  ],
+  "license": "Apache-2.0",
+  "dependencies": {
+    "@noble/hashes": "1.8.0",
+    "circomlibjs": "0.1.7"
+  },
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  }
+}

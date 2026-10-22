@@ -6,7 +6,7 @@ An open, verifiable polling network built on one-person-one-identity.</p>
 
 ---
 
-> **Status: design stage (pre-alpha).** This repository currently contains the whitepaper and protocol specifications only. **Nothing here has been audited. Do not use any part of it with real participants.** See [Staged release](#staged-release).
+> **Status: design stage (pre-alpha).** This repository contains the whitepaper, protocol specifications and a reference implementation of the voting core. **Nothing here has been audited. Do not use any part of it with real participants.** See [Staged release](#staged-release).
 
 ## What is Proof of One?
 
@@ -31,6 +31,16 @@ Participation is free. Topics of sponsored polls are chosen by participants them
 | [Red-team review v0.1](docs/specs/red-team-review-ballot-spec-v0.1.md) | Attacks on the ballot spec and accepted fixes |
 | [Contracts spec v0.1](docs/specs/contracts-v0.1.md) | Smart-contract interfaces, checks and cost estimates |
 | [Decision log](docs/decisions/DECISION_LOG.md) | Every design decision and why it was taken |
+
+## Reference code
+
+Runnable reference implementation of the voting core: [reference/](reference/). **Not for production use.**
+
+| Package | Description |
+|---|---|
+| [reference/tally](reference/tally/) | Encrypted ballots, voter self-verification, threshold decryption with proofs, independent recount tool |
+| [reference/ballot-circuit](reference/ballot-circuit/) | Zero-knowledge ballot proof (Circom/Groth16): only eligible, unique, non-revoked members can cast a well-formed ballot |
+| [reference/contracts](reference/contracts/) | Solidity contract for polls, ballots and results, tested end to end with real proofs |
 
 ## Design in one paragraph
 
