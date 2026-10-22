@@ -20,14 +20,15 @@ Without revealing who the voter is, or how they voted, the phone proves:
 | 6 | Every `v_j` is 0 or 1 and they sum to 1 | Each ballot counts as exactly one vote |
 | 7 | Every `(A_j, B_j)` encrypts `v_j` under the poll's tally key | The encrypted ballot is the ballot that was proven |
 | 8 | The proof is bound to `ctxHash` | It cannot be replayed in another context |
+| 9 | The nine per-poll values (roots, poll id, tally key, policy, context) hash to the public `pollHash` | Only 18 public inputs instead of 26; with storage packing in the contract, about 100,000 gas less per ballot |
 
-The verifier never takes public inputs from the submitter. It rebuilds them from the poll's own parameters and the submitted ciphertexts (`src/ballot.js → publicSignals`), so a proof made for one poll or ballot fails for any other.
+The verifier never takes public inputs from the submitter. It rebuilds them from the poll's own parameters and the submitted ciphertexts (`src/ballot.js → publicSignals`), so a proof made for one poll or ballot fails for any other. The public inputs are `pollHash`, the nullifier and the 16 ciphertext coordinates. `pollHash` is computed once by the contract when the poll is created.
 
 ## Size
 
 | Parameters | Constraints (Groth16, `--O2`) |
 |---|---|
-| Identity tree depth 32, revocation tree depth 32, 4 options | **31,554** |
+| Identity tree depth 32, revocation tree depth 32, 4 options, 18 public inputs | **32,429** |
 
 That is in line with the whitepaper's estimate of about 40,000. With snarkjs (pure JavaScript) on a server CPU, one proof takes about 4–5 seconds. Proving time on phones, for example with a native prover, has not yet been measured.
 
@@ -51,6 +52,7 @@ The tests use the tally code in `../tally`, so run `npm install` there as well.
 | Vote-shifting ballot (+2,−1,0,0) | Cannot be proven |
 | Empty ballot (0,0,0,0) | Cannot be proven |
 | Ciphertexts encrypt a different choice from the one proven | Cannot be proven |
+| Per-poll values changed without changing `pollHash` (e.g. a weaker age policy) | Cannot be proven |
 | Wrong nullifier | Cannot be proven |
 | Person not in the identity tree | Cannot be proven |
 | Revoked member, including with a forged low leaf | Cannot be proven |

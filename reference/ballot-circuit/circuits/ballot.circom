@@ -14,6 +14,13 @@
 //   6. every v_j ∈ {0,1} and Σ v_j = 1                           well-formed one-hot
 //   7. A_j = r_j·G and B_j = v_j·G + r_j·PK for every j           encryption
 //   8. ctxHash is bound to the proof                              no replay elsewhere
+//   9. pollHash = Poseidon(7, Poseidon(idRoot, revRoot, pollId, PK.x, PK.y),
+//                         Poseidon(minAgeBand, minExpiryMonth, requiredNat, ctxHash))
+//
+// PUBLIC INPUTS (18): pollHash, nf, and the 16 ciphertext coordinates. The nine
+// per-poll values are private inputs bound by pollHash, which the contract computes
+// once when the poll is created. This saves about 50,000 gas per ballot compared
+// with making all nine public (docs/specs/implementation-notes-v0.1.md).
 //
 // SECURITY ASSUMPTIONS AND LIMITS
 // - G is Base8, generator of the prime-order subgroup of Baby Jubjub.
@@ -92,17 +99,20 @@ template MulAny() {
 
 template Ballot(depth, revDepth, k) {
     // ------------------------------------------------------------ public inputs
+    signal input pollHash;
+    signal input nf;
+    signal input CA[k][2];           // A_j
+    signal input CB[k][2];           // B_j
+
+    // ------------------------------------------- per-poll values, bound by pollHash
     signal input idRoot;
     signal input revRoot;
     signal input pollId;
-    signal input nf;
     signal input PK[2];
     signal input minAgeBand;
     signal input minExpiryMonth;
     signal input requiredNat;        // 0 = any nationality
     signal input ctxHash;
-    signal input CA[k][2];           // A_j
-    signal input CB[k][2];           // B_j
 
     // ----------------------------------------------------------- private inputs
     signal input s;
@@ -225,9 +235,23 @@ template Ballot(depth, revDepth, k) {
     }
     sum[k] === 1;
 
-    // 8. bind the submission context
-    signal ctxSq;
-    ctxSq <== ctxHash * ctxHash;
+    // 8–9. bind every per-poll value, including the submission context, to pollHash
+    component ph1 = Poseidon(5);
+    ph1.inputs[0] <== idRoot;
+    ph1.inputs[1] <== revRoot;
+    ph1.inputs[2] <== pollId;
+    ph1.inputs[3] <== PK[0];
+    ph1.inputs[4] <== PK[1];
+    component ph2 = Poseidon(4);
+    ph2.inputs[0] <== minAgeBand;
+    ph2.inputs[1] <== minExpiryMonth;
+    ph2.inputs[2] <== requiredNat;
+    ph2.inputs[3] <== ctxHash;
+    component ph = Poseidon(3);
+    ph.inputs[0] <== 7;              // domain tag TAG.POLL
+    ph.inputs[1] <== ph1.out;
+    ph.inputs[2] <== ph2.out;
+    ph.out === pollHash;
 }
 
-component main {public [idRoot, revRoot, pollId, nf, PK, minAgeBand, minExpiryMonth, requiredNat, ctxHash, CA, CB]} = Ballot(32, 32, 4);
+component main {public [pollHash, nf, CA, CB]} = Ballot(32, 32, 4);

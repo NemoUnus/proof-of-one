@@ -114,7 +114,11 @@ test.before(async () => {
   const emptyRevRoot = new RevocationTree(P.hash.H, B.REV_DEPTH).root;
   revocation = await deploy(RR.abi, RR.bytecode, await revokeVerifier.getAddress(), await signer.getAddress(), emptyRevRoot);
   const ballotVerifier = await deploy(BV.abi, BV.bytecode);
-  polls = await deploy(PP.abi, PP.bytecode, await ballotVerifier.getAddress(), await identity.getAddress(), await revocation.getAddress());
+  const p3 = await deploy(poseidonContract.generateABI(3), poseidonContract.createCode(3));
+  const p4 = await deploy(poseidonContract.generateABI(4), poseidonContract.createCode(4));
+  const p5 = await deploy(poseidonContract.generateABI(5), poseidonContract.createCode(5));
+  polls = await deploy(PP.abi, PP.bytecode, await ballotVerifier.getAddress(), await identity.getAddress(), await revocation.getAddress(),
+    await p3.getAddress(), await p4.getAddress(), await p5.getAddress());
   keys = P.dkg(5, 3);
 });
 test.after(async () => { if (globalThis.curve_bn128) await globalThis.curve_bn128.terminate(); });
@@ -148,6 +152,8 @@ test("createPoll: rejects a bad tally key and short polls; snapshot comes from t
   assert.equal(poll.idRoot, await identity.root());
   assert.equal(poll.revRoot, await revocation.root());
   assert.equal(poll.eligible, 4n);
+  const expected = B.pollHashOf(P, { idRoot: poll.idRoot, revRoot: poll.revRoot, pollId, PK: keys.PK, policy: POLICY, ctxHash: await polls.contextHash(pollId) });
+  assert.equal(poll.pollHash, expected, "on-chain pollHash equals the phone's");
 });
 
 test("ballots with valid proofs are accepted; a re-vote replaces the earlier ballot", async () => {

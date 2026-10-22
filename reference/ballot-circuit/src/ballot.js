@@ -17,6 +17,14 @@ function memberLeaf(P, m) {
   return H([idc, attr, m.rn]);
 }
 
+// pollHash binds the nine per-poll values (computed once by the contract at poll creation).
+function pollHashOf(P, { idRoot, revRoot, pollId, PK, policy, ctxHash }) {
+  const H = P.hash.H, [px, py] = P.curve.coords(PK);
+  const h1 = H([idRoot, revRoot, pollId, px, py].map(BigInt));
+  const h2 = H([policy.minAgeBand, policy.minExpiryMonth, policy.requiredNat, ctxHash].map(BigInt));
+  return H([7n, h1, h2]); // domain tag TAG.POLL
+}
+
 // Everything the phone needs to submit one ballot.
 function buildBallot(P, { pollId, PK, policy, ctxHash, member, leafIndex, idTree, revTree, choice, k = K }) {
   const C = P.curve;
@@ -25,8 +33,9 @@ function buildBallot(P, { pollId, PK, policy, ctxHash, member, leafIndex, idTree
   const idp = idTree.path(leafIndex);
   const rev = revTree.nonMembership(member.rn);
   const pt = (X) => C.coords(X).map(String);
+  const pollHash = pollHashOf(P, { idRoot: idTree.root, revRoot: revTree.root, pollId, PK, policy, ctxHash });
   const input = {
-    idRoot: idTree.root.toString(), revRoot: revTree.root.toString(), pollId: pollId.toString(), nf: nf.toString(),
+    pollHash: pollHash.toString(), idRoot: idTree.root.toString(), revRoot: revTree.root.toString(), pollId: pollId.toString(), nf: nf.toString(),
     PK: pt(PK), minAgeBand: String(policy.minAgeBand), minExpiryMonth: String(policy.minExpiryMonth),
     requiredNat: String(policy.requiredNat), ctxHash: ctxHash.toString(),
     CA: enc.C.map((c) => pt(c.A)), CB: enc.C.map((c) => pt(c.B)),
@@ -45,19 +54,18 @@ async function prove(input, zkey) {
   return snarkjs.groth16.fullProve(input, WASM, zkey);
 }
 
-// The public inputs the verifier must use, in circuit declaration order. They are
-// rebuilt from the poll's own parameters and the submitted ballot — never taken from
-// the submitter — so a proof for one poll or ballot cannot be reused for another.
+// The public inputs the verifier must use, in circuit declaration order: pollHash, nf,
+// then the ciphertexts. They are rebuilt from the poll's own parameters and the
+// submitted ballot — never taken from the submitter — so a proof for one poll or ballot
+// cannot be reused for another.
 function publicSignals(P, { idRoot, revRoot, pollId, nf, PK, policy, ctxHash, C }) {
   const pt = (X) => P.curve.coords(X).map(String);
-  return [
-    idRoot, revRoot, pollId, nf, ...pt(PK), policy.minAgeBand, policy.minExpiryMonth, policy.requiredNat, ctxHash,
-    ...C.flatMap((c) => pt(c.A)), ...C.flatMap((c) => pt(c.B)),
-  ].map(String);
+  const pollHash = pollHashOf(P, { idRoot, revRoot, pollId, PK, policy, ctxHash });
+  return [pollHash, nf, ...C.flatMap((c) => pt(c.A)), ...C.flatMap((c) => pt(c.B))].map(String);
 }
 
 async function verify(vkey, signals, proof) {
   return snarkjs.groth16.verify(vkey, signals, proof);
 }
 
-module.exports = { K, DEPTH, REV_DEPTH, WASM, memberLeaf, buildBallot, prove, publicSignals, verify };
+module.exports = { K, DEPTH, REV_DEPTH, WASM, memberLeaf, pollHashOf, buildBallot, prove, publicSignals, verify };

@@ -3,6 +3,10 @@ pragma solidity ^0.8.24;
 
 import {BabyJubjub} from "./BabyJubjub.sol";
 
+interface IPoseidon3 { function poseidon(uint256[3] calldata input) external pure returns (uint256); }
+interface IPoseidon4 { function poseidon(uint256[4] calldata input) external pure returns (uint256); }
+interface IPoseidon5 { function poseidon(uint256[5] calldata input) external pure returns (uint256); }
+
 interface IIdentityRegistry {
     function root() external view returns (uint256);
     function leafCount() external view returns (uint256);
@@ -19,7 +23,7 @@ interface IBallotVerifier {
         uint256[2] calldata a,
         uint256[2][2] calldata b,
         uint256[2] calldata c,
-        uint256[26] calldata pub
+        uint256[18] calldata pub
     ) external view returns (bool);
 }
 
@@ -52,6 +56,7 @@ contract ProofOfOnePolls {
         uint64 openTime;
         uint64 closeTime;
         bytes32 metadataHash;
+        uint256 pollHash;   // binds the nine per-poll values the ballot proof uses
         State state;
     }
 
@@ -66,6 +71,9 @@ contract ProofOfOnePolls {
     IBallotVerifier public immutable verifier;
     IIdentityRegistry public immutable identity;
     IRevocationRegistry public immutable revocation;
+    IPoseidon3 public immutable poseidon3;
+    IPoseidon4 public immutable poseidon4;
+    IPoseidon5 public immutable poseidon5;
 
     /// @notice What a poll creator chooses. Snapshot roots and the eligible count are NOT
     ///         chosen by the creator; they are read from the registries.
@@ -82,11 +90,11 @@ contract ProofOfOnePolls {
     uint256 public pollCount;
     mapping(uint256 => Poll) private _polls;
     mapping(uint256 => Result) private _results;
-    mapping(uint256 => mapping(uint256 => bytes32)) public latestBallot; // pollId => nf => ballot hash
-    mapping(uint256 => mapping(uint256 => uint16)) public ballotCount;   // pollId => nf => submissions
+    struct Slot { bytes28 ballotHash; uint32 count; }         // one storage slot per nullifier
+    struct Counters { uint128 distinctVoters; uint128 totalSubmissions; } // one slot per poll
+    mapping(uint256 => mapping(uint256 => Slot)) public ballots; // pollId => nf => latest ballot
     mapping(uint256 => bytes32) public ballotChain;
-    mapping(uint256 => uint256) public distinctVoters;
-    mapping(uint256 => uint256) public totalSubmissions;
+    mapping(uint256 => Counters) private _counters;
 
     event PollCreated(uint256 indexed pollId, address creator, uint256 idRoot, uint256 revRoot, uint64 openTime, uint64 closeTime, bytes32 metadataHash);
     event Ballot(uint256 indexed pollId, uint256 indexed nf, uint256[16] ciphertexts, uint16 count);
@@ -107,11 +115,24 @@ contract ProofOfOnePolls {
     error ChallengePeriodRunning();
     error DeadlineNotReached();
 
-    constructor(IBallotVerifier verifier_, IIdentityRegistry identity_, IRevocationRegistry revocation_) {
+    constructor(
+        IBallotVerifier verifier_,
+        IIdentityRegistry identity_,
+        IRevocationRegistry revocation_,
+        IPoseidon3 p3,
+        IPoseidon4 p4,
+        IPoseidon5 p5
+    ) {
         verifier = verifier_;
         identity = identity_;
         revocation = revocation_;
+        poseidon3 = p3;
+        poseidon4 = p4;
+        poseidon5 = p5;
     }
+
+    function distinctVoters(uint256 pollId) public view returns (uint256) { return _counters[pollId].distinctVoters; }
+    function totalSubmissions(uint256 pollId) public view returns (uint256) { return _counters[pollId].totalSubmissions; }
 
     // ------------------------------------------------------------------ polls
 
@@ -134,6 +155,11 @@ contract ProofOfOnePolls {
         s.openTime = p.openTime;
         s.closeTime = p.closeTime;
         s.metadataHash = p.metadataHash;
+        // pollHash = Poseidon(7, Poseidon(idRoot, revRoot, pollId, PK.x, PK.y),
+        //                       Poseidon(minAgeBand, minExpiryMonth, requiredNat, contextHash))
+        uint256 h1 = poseidon5.poseidon([s.idRoot, s.revRoot, pollId, p.tallyPK[0], p.tallyPK[1]]);
+        uint256 h2 = poseidon4.poseidon([uint256(p.minAgeBand), uint256(p.minExpiryMonth), uint256(p.requiredNat), contextHash(pollId)]);
+        s.pollHash = poseidon3.poseidon([uint256(7), h1, h2]);
         s.state = State.Open;
         emit PollCreated(pollId, msg.sender, s.idRoot, s.revRoot, p.openTime, p.closeTime, p.metadataHash);
     }
@@ -160,35 +186,30 @@ contract ProofOfOnePolls {
     ) external {
         Poll storage p = _polls[pollId];
         if (p.state != State.Open || block.timestamp < p.openTime || block.timestamp >= p.closeTime) revert PollNotOpen();
-        uint16 n = ballotCount[pollId][nf];
-        if (n >= p.maxRevotes) revert RevoteCapReached();
+        Slot memory slot = ballots[pollId][nf];
+        if (slot.count >= p.maxRevotes) revert RevoteCapReached();
 
-        // Public inputs are rebuilt from the poll's own parameters, never taken from the caller.
-        uint256[26] memory pub;
-        pub[0] = p.idRoot;
-        pub[1] = p.revRoot;
-        pub[2] = pollId;
-        pub[3] = nf;
-        pub[4] = p.tallyPK[0];
-        pub[5] = p.tallyPK[1];
-        pub[6] = p.minAgeBand;
-        pub[7] = p.minExpiryMonth;
-        pub[8] = p.requiredNat;
-        pub[9] = contextHash(pollId);
-        for (uint256 i = 0; i < 16; i++) pub[10 + i] = ct[i];
+        // Public inputs: the poll's own pollHash, the nullifier and the ciphertexts.
+        uint256[18] memory pub;
+        pub[0] = p.pollHash;
+        pub[1] = nf;
+        for (uint256 i = 0; i < 16; i++) pub[2 + i] = ct[i];
         if (!verifier.verifyProof(pa, pb, pc, pub)) revert InvalidProof();
 
-        if (n == 0) distinctVoters[pollId]++;
-        ballotCount[pollId][nf] = n + 1;
+        Counters memory cnt = _counters[pollId];
+        if (slot.count == 0) cnt.distinctVoters++;
         // Same encoding as the reference tally: per option j, A_j.x, A_j.y, B_j.x, B_j.y
         bytes memory enc;
         for (uint256 j = 0; j < K; j++) {
             enc = abi.encodePacked(enc, ct[2 * j], ct[2 * j + 1], ct[8 + 2 * j], ct[8 + 2 * j + 1]);
         }
         bytes32 h = keccak256(enc);
-        latestBallot[pollId][nf] = h;
-        ballotChain[pollId] = keccak256(abi.encodePacked(ballotChain[pollId], nf, h, totalSubmissions[pollId]++));
-        emit Ballot(pollId, nf, ct, n + 1);
+        uint32 n = slot.count + 1;
+        ballots[pollId][nf] = Slot(bytes28(h), n);
+        ballotChain[pollId] = keccak256(abi.encodePacked(ballotChain[pollId], nf, h, uint256(cnt.totalSubmissions)));
+        cnt.totalSubmissions++;
+        _counters[pollId] = cnt;
+        emit Ballot(pollId, nf, ct, uint16(n));
     }
 
     // ---------------------------------------------------------------- results
@@ -203,8 +224,8 @@ contract ProofOfOnePolls {
         if (r.finalBallotChain != ballotChain[pollId]) revert ChainMismatch();
         uint256 sum;
         for (uint256 j = 0; j < K; j++) sum += r.counts[j];
-        if (sum != distinctVoters[pollId]) revert CountsMismatch();      // one-hot ballots
-        if (distinctVoters[pollId] > p.eligible) revert TooManyVoters(); // bound check (C5)
+        if (sum != distinctVoters(pollId)) revert CountsMismatch();      // one-hot ballots
+        if (distinctVoters(pollId) > p.eligible) revert TooManyVoters(); // bound check (C5)
         Result storage s = _results[pollId];
         s.counts = r.counts;
         s.finalBallotChain = r.finalBallotChain;

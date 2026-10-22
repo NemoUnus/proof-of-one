@@ -68,6 +68,12 @@ test("ciphertexts must encrypt the proven choice", async () => {
   await witnessFails({ ...b.input, v: ["1", "0", "0", "0"] });
 });
 
+test("per-poll values cannot be changed without changing pollHash", async () => {
+  const b = ballotFor(members[0], 1);
+  await witnessFails({ ...b.input, pollHash: (BigInt(b.input.pollHash) + 1n).toString() });
+  await witnessFails({ ...b.input, minAgeBand: "0" }); // weaker policy than the one in pollHash
+});
+
 test("wrong nullifier cannot be proven", async () => {
   const b = ballotFor(members[0], 1);
   await witnessFails({ ...b.input, nf: (b.nf + 1n).toString() });
