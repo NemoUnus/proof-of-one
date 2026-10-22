@@ -29,6 +29,8 @@
 | 23 | Ballot aggregation (recursive proofs) brought forward to Phase 1 to cut fund costs. (P7) | Founder |
 | 24 | Public project contact: **NemoUnus@proton.me** (Proton Mail). Used for git identity, SECURITY.md and public correspondence. | Founder |
 | 25 | Code hosting: account created on Codeberg. GitHub is the primary public repository; Codeberg is a mirror. | Founder + team |
+| 26 | First public release contains English documents only. Translations will be published later in several languages at once, to keep the project neutral. | Founder + team |
+| 27 | Codeberg mirror removed (2026-10-22): Codeberg's revised Terms of Use exclude projects mostly written by AI tools, and this project discloses that its code is written by AI agents. GitHub remains the primary repository; independent long-term copies are kept in the Software Heritage archive. | Founder + team |
 
 ## Open
 - Universal setup vs Groth16 ceremony for π_vote.
