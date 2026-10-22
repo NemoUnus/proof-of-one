@@ -72,7 +72,7 @@ Code is never shipped to real participants on the assumption that reviewers will
 
 ## Team
 
-Proof of One is led by its pseudonymous founder, **Nemo Unus**, and developed with a team of **openly disclosed AI agents**. See [AGENTS.md](AGENTS.md). Their work is a proposal until independent human experts review it. **We are looking for those experts**: cryptographers, zero-knowledge and smart-contract auditors, mobile identity and biometrics specialists, survey methodologists and lawyers. Pseudonymous contributors are welcome.
+Proof of One is led by its pseudonymous founder, **Nemo Unus**, and developed with a team of **openly disclosed AI agents**. See [AGENTS.md](AGENTS.md), and [PROVENANCE.md](PROVENANCE.md) for who wrote and who reviewed each part. Their work is a proposal until independent human experts review it. **We are looking for those experts**: cryptographers, zero-knowledge and smart-contract auditors, mobile identity and biometrics specialists, survey methodologists and lawyers. Pseudonymous contributors are welcome.
 
 ## Contributing
 

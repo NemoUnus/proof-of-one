@@ -31,6 +31,8 @@
 | 25 | Code hosting: account created on Codeberg. GitHub is the primary public repository; Codeberg is a mirror. | Founder + team |
 | 26 | First public release contains English documents only. Translations will be published later in several languages at once, to keep the project neutral. | Founder + team |
 | 27 | Codeberg mirror removed (2026-10-22): Codeberg's revised Terms of Use exclude projects mostly written by AI tools, and this project discloses that its code is written by AI agents. GitHub remains the primary repository; independent long-term copies are kept in the Software Heritage archive. | Founder + team |
+| 28 | **Growing human contribution.** The founder writes key parts himself and reviews every change before it is published; the team gives a plain-language explanation of each technical change for that review. A public [PROVENANCE.md](../../PROVENANCE.md) shows who wrote and who reviewed each part. Work only humans can do is published as `help wanted` issues. Security-critical parts are reviewed line by line by independent human experts, or reimplemented independently, before use with real participants. The AI agents' contribution stays fully credited. | Founder |
+| 29 | **Ballot aggregation path** ([design](../specs/ballot-aggregation-v0.1.md)): (1) batched verification, implemented; (2) prototype recursive aggregation with a universal-setup proof system, starting with a phone benchmark, decided together with issue #7; zkVM aggregation as fallback; (3) ballot rollup later, with its own review. Optimistic batches are not pursued. | Founder + team |
 
 ## Open
 - Universal setup vs Groth16 ceremony for π_vote.
