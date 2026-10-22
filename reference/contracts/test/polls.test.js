@@ -21,6 +21,7 @@ const E = require("../../enrolment-circuit/src/enrolment");
 const BALLOT_ZKEY = path.join(__dirname, "..", "..", "ballot-circuit", "setup", "ballot_test.zkey");
 const REG_ZKEY = path.join(__dirname, "..", "..", "enrolment-circuit", "setup", "registration_test.zkey");
 const BATCH_ZKEY = path.join(__dirname, "..", "..", "enrolment-circuit", "setup", "batch_test.zkey");
+const REVOKE_ZKEY = path.join(__dirname, "..", "..", "enrolment-circuit", "setup", "revoke_test.zkey");
 const Z2 = [0n, 0n], Z22 = [[0n, 0n], [0n, 0n]];
 const art = (n) => JSON.parse(fs.readFileSync(path.join(__dirname, "..", "build", n + ".json"), "utf8"));
 const ATTRS = { ageBand: 3, natCode: 250, sexCode: 1, expiryMonth: 24400 };
@@ -83,18 +84,6 @@ async function insertNextBatch() {
   return { tx: identity.insertBatch(newRoot, p.a, p.b, p.c), newRoot, p };
 }
 
-// --- the enclave operator's witness for an on-chain revocation
-function revocationWitness(rt, x) {
-  const H = P.hash.H;
-  const li = rt.lowIndex(x), low = rt.entries[li];
-  const lowSiblings = rt.tree.path(li).siblings;
-  const saved = rt.tree.leaves[li];
-  rt.tree.leaves[li] = H([low.value, x]); // tree after the low-leaf update
-  const newSiblings = rt.tree.path(rt.tree.leaves.length).siblings;
-  rt.tree.leaves[li] = saved;
-  return { lowIndex: li, lowValue: low.value, lowNext: low.next, lowSiblings, newSiblings };
-}
-
 async function makeBallot(person, choice, id, view) {
   const m = { ...person.member, index: view.index.get(person.leaf.toString()) };
   const b = B.buildBallot(P, { pollId: BigInt(id), PK: keys.PK, policy: POLICY, ctxHash: await polls.contextHash(id), member: m, leafIndex: m.index, idTree: view.ids, revTree: view.rev, choice });
@@ -117,11 +106,13 @@ test.before(async () => {
   const deploy = async (abi, bytecode, ...args) => { const c = await new ethers.ContractFactory(abi, bytecode, signer).deploy(...args); await c.waitForDeployment(); return c; };
   poseidon = await deploy(poseidonContract.generateABI(2), poseidonContract.createCode(2));
   enclave = E.createEnclave(P, { epochs: 4 });
-  const RV = art("RegistrationVerifier"), BIV = art("BatchInsertVerifier"), BV = art("Groth16Verifier"), IR = art("IdentityRegistry"), RR = art("RevocationRegistry"), PP = art("ProofOfOnePolls");
+  const RV = art("RegistrationVerifier"), BIV = art("BatchInsertVerifier"), RKV = art("RevokeVerifier"), BV = art("Groth16Verifier"), IR = art("IdentityRegistry"), RR = art("RevocationRegistry"), PP = art("ProofOfOnePolls");
   const regVerifier = await deploy(RV.abi, RV.bytecode);
   const batchVerifier = await deploy(BIV.abi, BIV.bytecode);
   identity = await deploy(IR.abi, IR.bytecode, await poseidon.getAddress(), await regVerifier.getAddress(), await batchVerifier.getAddress(), 4, enclave.keySetRoot, await signer.getAddress());
-  revocation = await deploy(RR.abi, RR.bytecode, await poseidon.getAddress(), await signer.getAddress());
+  const revokeVerifier = await deploy(RKV.abi, RKV.bytecode);
+  const emptyRevRoot = new RevocationTree(P.hash.H, B.REV_DEPTH).root;
+  revocation = await deploy(RR.abi, RR.bytecode, await revokeVerifier.getAddress(), await signer.getAddress(), emptyRevRoot);
   const ballotVerifier = await deploy(BV.abi, BV.bytecode);
   polls = await deploy(PP.abi, PP.bytecode, await ballotVerifier.getAddress(), await identity.getAddress(), await revocation.getAddress());
   keys = P.dkg(5, 3);
@@ -185,9 +176,10 @@ test("re-enrolment: the old identity is revoked on-chain and cannot vote in late
   assert.equal(alice2.revokeOld, alice.member.rn);
 
   const before = await syncTrees();
-  const w = revocationWitness(before.rev, alice2.revokeOld);
-  await reverts(revocation.revoke.staticCall(alice2.revokeOld, 1, w.lowIndex, w.lowValue, w.lowNext, w.lowSiblings, w.lowSiblings), revocation, "SlotNotEmpty");
-  gas.revoke = await used(revocation.revoke(alice2.revokeOld, 1, w.lowIndex, w.lowValue, w.lowNext, w.lowSiblings, w.newSiblings));
+  const { input, newRoot } = E.buildRevoke(P, before.rev, alice2.revokeOld);
+  const rp = sp((await E.proveRevoke(input, REVOKE_ZKEY)).proof);
+  await reverts(revocation.revoke.staticCall(alice2.revokeOld, 1, newRoot + 1n, rp.a, rp.b, rp.c), revocation, "InvalidProof");
+  gas.revoke = await used(revocation.revoke(alice2.revokeOld, 1, newRoot, rp.a, rp.b, rp.c));
   assert.equal(await revocation.revokedCount(), 1n);
 
   people.push(alice2, await enrol(), await enrol(), await enrol());

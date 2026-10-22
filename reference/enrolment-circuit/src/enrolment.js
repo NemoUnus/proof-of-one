@@ -25,6 +25,7 @@ const WASM = path.join(__dirname, "..", "build", "registration_js", "registratio
 const RN_LIMIT = 1n << 252n;
 const BATCH_K = 2;                       // reference batch size B = 2^k = 4
 const BATCH_WASM = path.join(__dirname, "..", "build", "batch_insert_js", "batch_insert.wasm");
+const REVOKE_WASM = path.join(__dirname, "..", "build", "revoke_js", "revoke.wasm");
 
 let eddsa = null;
 async function init() { if (!eddsa) eddsa = await buildEddsa(); return eddsa; }
@@ -165,4 +166,30 @@ function buildBatchInsert(P, tree, leaves, k = BATCH_K) {
 }
 const proveBatch = (input, zkey) => snarkjs.groth16.fullProve(input, BATCH_WASM, zkey);
 
-module.exports = { TAG, KEY_DEPTH, WASM, BATCH_K, BATCH_WASM, init, newMember, leafOf, createEnclave, buildRegistration, prove, createRegistry, leavesHash, buildBatchInsert, proveBatch };
+// ------------------------------------------- revocation update proof π_revoke
+// Witness for adding handle `rn` to the indexed revocation tree `rt` (RevocationTree).
+function buildRevoke(P, rt, rn) {
+  const H = P.hash.H;
+  rn = BigInt(rn);
+  const li = rt.lowIndex(rn);
+  if (li < 0) throw new Error("handle already revoked");
+  const low = rt.entries[li];
+  const lowSiblings = rt.tree.path(li).siblings;
+  const saved = rt.tree.leaves[li];
+  rt.tree.leaves[li] = H([low.value, rn]);                 // tree after the low-leaf update
+  const nextIndex = rt.tree.leaves.length;
+  const newSiblings = rt.tree.path(nextIndex).siblings;
+  rt.tree.leaves[li] = saved;
+  const after = new RevocationTree(H, rt.tree.depth);      // same insertions, plus rn
+  for (const e of rt.entries.slice(1)) after.revoke(e.value);
+  after.revoke(rn);
+  const input = {
+    oldRoot: rt.root.toString(), newRoot: after.root.toString(), rn: rn.toString(), nextIndex: String(nextIndex),
+    lowValue: low.value.toString(), lowNext: low.next.toString(), lowIndex: String(li),
+    lowSiblings: lowSiblings.map(String), newSiblings: newSiblings.map(String),
+  };
+  return { input, newRoot: after.root };
+}
+const proveRevoke = (input, zkey) => snarkjs.groth16.fullProve(input, REVOKE_WASM, zkey);
+
+module.exports = { TAG, KEY_DEPTH, WASM, BATCH_K, BATCH_WASM, REVOKE_WASM, buildRevoke, proveRevoke, init, newMember, leafOf, createEnclave, buildRegistration, prove, createRegistry, leavesHash, buildBatchInsert, proveBatch };

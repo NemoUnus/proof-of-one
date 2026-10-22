@@ -20,3 +20,7 @@ npx snarkjs groth16 setup ../build/batch_insert.r1cs pot15_final.ptau batch_0.zk
 npx snarkjs zkey contribute batch_0.zkey batch_test.zkey --name="TEST ONLY" -e="$(head -c 64 /dev/urandom | base64)"
 npx snarkjs zkey export verificationkey batch_test.zkey vkey_batch_test.json
 rm -f batch_0.zkey
+npx snarkjs groth16 setup ../build/revoke.r1cs pot15_final.ptau revoke_0.zkey
+npx snarkjs zkey contribute revoke_0.zkey revoke_test.zkey --name="TEST ONLY" -e="$(head -c 64 /dev/urandom | base64)"
+npx snarkjs zkey export verificationkey revoke_test.zkey vkey_revoke_test.json
+rm -f revoke_0.zkey

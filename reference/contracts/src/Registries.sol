@@ -114,75 +114,51 @@ contract IdentityRegistry {
     }
 }
 
+interface IRevokeVerifier {
+    function verifyProof(uint256[2] calldata a, uint256[2][2] calldata b, uint256[2] calldata c, uint256[4] calldata pub)
+        external view returns (bool);
+}
+
 /// @title RevocationRegistry (reference)
 /// @notice Indexed (sorted linked-list) Merkle tree of revoked handles `rn`. A ballot proves
 ///         that its hidden handle is NOT in this tree. Only the enclave operator can revoke;
 ///         every revocation is public with a reason code and counted (red-team change C1).
-/// @dev The operator supplies Merkle paths; the contract checks them against the current
-///      root, so it never needs to store the tree. The spec requires an enclave signature
-///      instead of a trusted address. Not audited.
+/// @dev Each update carries a revocation proof (π_revoke) that rn fits a gap in the sorted
+///      list, that the low leaf is updated correctly and that rn is appended at nextIndex.
+///      The contract supplies oldRoot and nextIndex from its own state. The spec requires an
+///      enclave signature instead of a trusted operator address. Not audited.
 contract RevocationRegistry {
     uint256 public constant DEPTH = 32;
-    uint256 public constant RN_LIMIT = 1 << 252;
-    IPoseidon2 public immutable poseidon;
+    IRevokeVerifier public immutable verifier;
     address public immutable enclaveOperator;
 
     uint256 public root;
     uint256 public nextIndex;
     uint256 public revokedCount;
-    uint256[DEPTH + 1] public zeros;
     mapping(uint256 => bool) public isHistoricalRoot;
 
-    event Revoked(uint256 indexed rn, uint8 reason, uint256 index, uint256 lowIndex);
+    event Revoked(uint256 indexed rn, uint8 reason, uint256 index);
 
     error NotOperator();
-    error OutOfRange();
-    error NotInGap();
-    error BadLowLeafProof();
-    error SlotNotEmpty();
+    error InvalidProof();
 
-    constructor(IPoseidon2 poseidon_, address enclaveOperator_) {
-        poseidon = poseidon_;
+    /// @param initialRoot root of the tree holding only the sentinel leaf Poseidon(0, 0) at index 0
+    constructor(IRevokeVerifier verifier_, address enclaveOperator_, uint256 initialRoot) {
+        verifier = verifier_;
         enclaveOperator = enclaveOperator_;
-        for (uint256 i = 0; i < DEPTH; i++) zeros[i + 1] = poseidon.poseidon([zeros[i], zeros[i]]);
-        // sentinel leaf (0, 0) at index 0
-        uint256 cur = poseidon.poseidon([uint256(0), uint256(0)]);
-        for (uint256 i = 0; i < DEPTH; i++) cur = poseidon.poseidon([cur, zeros[i]]);
-        root = cur;
+        root = initialRoot;
         nextIndex = 1;
-        isHistoricalRoot[root] = true;
+        isHistoricalRoot[initialRoot] = true;
     }
 
-    function revoke(
-        uint256 rn,
-        uint8 reason,
-        uint256 lowIndex,
-        uint256 lowValue,
-        uint256 lowNext,
-        uint256[DEPTH] calldata lowSiblings,
-        uint256[DEPTH] calldata newSiblings
-    ) external {
+    function revoke(uint256 rn, uint8 reason, uint256 newRoot, uint256[2] calldata a, uint256[2][2] calldata b, uint256[2] calldata c) external {
         if (msg.sender != enclaveOperator) revert NotOperator();
-        if (rn == 0 || rn >= RN_LIMIT) revert OutOfRange();
-        if (!(lowValue < rn && (lowNext == 0 || rn < lowNext))) revert NotInGap();
-        // 1. the low leaf is in the current tree
-        if (_rootFrom(poseidon.poseidon([lowValue, lowNext]), lowIndex, lowSiblings) != root) revert BadLowLeafProof();
-        // 2. update the low leaf to point to rn
-        uint256 r1 = _rootFrom(poseidon.poseidon([lowValue, rn]), lowIndex, lowSiblings);
-        // 3. the next slot is empty under the updated tree; append (rn, lowNext) there
         uint256 idx = nextIndex;
-        if (_rootFrom(0, idx, newSiblings) != r1) revert SlotNotEmpty();
-        root = _rootFrom(poseidon.poseidon([rn, lowNext]), idx, newSiblings);
+        if (!verifier.verifyProof(a, b, c, [root, newRoot, rn, idx])) revert InvalidProof();
+        root = newRoot;
         nextIndex = idx + 1;
         revokedCount++;
-        isHistoricalRoot[root] = true;
-        emit Revoked(rn, reason, idx, lowIndex);
-    }
-
-    function _rootFrom(uint256 leaf, uint256 index, uint256[DEPTH] calldata siblings) private view returns (uint256 cur) {
-        cur = leaf;
-        for (uint256 i = 0; i < DEPTH; i++) {
-            cur = (index >> i) & 1 == 0 ? poseidon.poseidon([cur, siblings[i]]) : poseidon.poseidon([siblings[i], cur]);
-        }
+        isHistoricalRoot[newRoot] = true;
+        emit Revoked(rn, reason, idx);
     }
 }

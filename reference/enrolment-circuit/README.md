@@ -1,4 +1,4 @@
-# Proof of One — unlinkable registration and batch insertion (reference)
+# Proof of One — unlinkable registration, batch insertion and revocation (reference)
 
 > **Reference code for review and testing only. Not audited. The included trusted setup is TEST-ONLY and insecure.**
 
@@ -25,6 +25,10 @@ The enclave knows `cm`, `rn` and the attributes, but not `idc`, `salt` or `ρ`. 
 
 Inserting leaves by hashing on-chain costs about 1 million gas per leaf (see the implementation notes). `circuits/batch_insert.circom` instead proves that a full batch of B = 2^k registered leaves was written, in order, into the empty aligned subtree at the next position of the identity tree. Its public inputs are only the old root, the new root, the start index and the chain hash of the leaves, which the contract keeps as leaves are registered. The prover therefore cannot change, drop, reorder or overwrite leaves. Anyone may submit the proof.
 
+## Revocation update proof π_revoke
+
+`circuits/revoke.circom` proves that a handle `rn` is added correctly to the indexed revocation tree. It shows that `rn` lies in a gap of the sorted list, so it is not already revoked, that the low leaf is updated to point to `rn`, and that `(rn, next)` is appended at the next free slot, which must be empty. The contract supplies the old root and the next index from its own state.
+
 ## Size
 
 | Circuit | Constraints (`--O2`) |
@@ -32,6 +36,7 @@ Inserting leaves by hashing on-chain costs about 1 million gas per leaf (see the
 | π_reg (key-set tree depth 8, i.e. up to 256 enclave keys) | **9,171** |
 | π_batch, B = 4 (reference parameters) | **16,227** |
 | π_batch, B = 1,024 (realistic batch; compiled for measurement only) | **501,947** |
+| π_revoke (revocation tree depth 32) | **32,521** |
 
 ## Run it
 
@@ -61,12 +66,17 @@ The tests also use [`../tally`](../tally/) and [`../ballot-circuit`](../ballot-c
 | Batch aimed at an occupied subtree | Cannot be proven (existing leaves cannot be overwritten) |
 | Misaligned batch start | Cannot be proven |
 | Different chain hash, or leaves reordered by the prover | Cannot be proven / fails against the registered chain hash |
+| Revocation, honest (three handles, including a smaller one) | Proofs verify; roots match the reference tree |
+| Revoking the same handle twice | Impossible: no gap exists, and replaying the old witness fails |
+| Appending into an occupied slot | Cannot be proven |
+| Zero or out-of-range handle | Cannot be proven |
+| Proof used with a different new root | Verification fails |
 
 ## Not implemented
 
 - Document reading, the document-validity proof, liveness, face matching and duplicate search. The enclave receives a `fingerprint` that stands for "this person".
 - Enclave attestation, threshold or MPC operation of the enclave, the cooling-off period, random delays and network anonymity.
-- Revocation-tree updates proven by a SNARK. The on-chain registries are in [`../contracts`](../contracts/).
+- The on-chain registries that verify these proofs are in [`../contracts`](../contracts/).
 
 ## Authorship and review status
 

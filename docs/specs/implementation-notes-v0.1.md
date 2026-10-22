@@ -11,6 +11,7 @@ These notes record where the implementation confirmed the specifications, where 
 | Ballot proof π_vote, 4 options, trees of depth 32 | about 40,000 constraints | **31,554** | Includes revocation non-membership (C1), which the original estimate did not |
 | Registration proof π_reg, key-set depth 8 | 12,000–18,000 | **9,171** | EdDSA-Poseidon verification dominates |
 | Batch insertion proof π_batch, depth 32 | — | **16,227** (4 leaves); **501,947** (1,024 leaves) | Four public inputs regardless of batch size |
+| Revocation update proof π_revoke, depth 32 | — | **32,521** | Four Merkle paths and two range comparisons |
 | π_vote proving time | "seconds on phones" | 4–5 s on a server CPU (snarkjs, JavaScript) | Phone measurement still needed; native provers are expected to be faster |
 
 ## 2. Measured gas (reference contracts, unoptimised)
@@ -25,11 +26,12 @@ These notes record where the implementation confirmed the specifications, where 
 | Insert identities, on-chain hashing | ~650,000 per leaf (naive) | **~1,050,000 per leaf** |
 | Insert a batch with π_batch (any batch size) | ~400,000 per batch | **293,548 per batch** |
 | Revoke, on-chain path checks | — | **4,027,982** |
+| Revoke with π_revoke | — | **294,646** |
 
 **Consequences:**
 
 1. A ballot costs about 27% more than estimated. The cost estimates in contracts spec §10 and whitepaper §8.9 should be updated. Ballot aggregation (Decision Log #23) and hashing the public inputs into one value become more important.
-2. On-chain hashing for insertion and revocation is not viable. **Batch insertion with π_batch is now implemented** and cuts insertion from about 1,050,000 gas per leaf to 293,548 per batch, which is under 300 gas per leaf for a batch of 1,024. Revocation updates still need the same treatment.
+2. On-chain hashing for insertion and revocation is not viable. **Batch insertion with π_batch is now implemented** and cuts insertion from about 1,050,000 gas per leaf to 293,548 per batch, which is under 300 gas per leaf for a batch of 1,024. **Revocation with π_revoke is also implemented**: 294,646 gas instead of 4,027,982.
 
 ## 3. Details the specifications must state explicitly
 
@@ -45,6 +47,7 @@ These notes record where the implementation confirmed the specifications, where 
 | N8 | **Without π_vote, the tally checks cannot detect a vote-shifting ballot** such as (+2, −1, 0, 0). Every path that accepts ballots must verify the proof. | tally |
 | N9 | **The eligible-identity count** used for the bound check is `leafCount − revokedCount` at the snapshot. | contracts |
 | N10 | **Batch insertion binding:** the registry keeps a Poseidon chain hash of each batch as leaves are registered, and π_batch must match it. Batches are full, aligned and inserted in order; the target subtree is proven empty, with the empty-subtree root computed in the circuit. | enrolment-circuit, contracts |
+| N11 | **Initial revocation root:** RevocationRegistry takes the root of the sentinel-only tree as a constructor argument instead of hashing it on-chain. Deployers and auditors must check that it equals the root of a depth-32 tree holding only Poseidon(0, 0); the tests do. | contracts |
 
 ## 4. Open issues found during implementation
 
