@@ -31,6 +31,7 @@ Participation is free. Topics of sponsored polls are chosen by participants them
 | [Ballot and enrolment spec v0.1](docs/specs/ballot-and-enrolment-v0.1.md) | Encrypted ballots, public tally, unlinkable enrolment |
 | [Red-team review v0.1](docs/specs/red-team-review-ballot-spec-v0.1.md) | Attacks on the ballot spec and accepted fixes |
 | [Contracts spec v0.1](docs/specs/contracts-v0.1.md) | Smart-contract interfaces, checks and cost estimates |
+| [Implementation notes v0.1](docs/specs/implementation-notes-v0.1.md) | Measured sizes and gas, and lessons from the reference code |
 | [Decision log](docs/decisions/DECISION_LOG.md) | Every design decision and why it was taken |
 
 ## Reference code
@@ -42,7 +43,7 @@ Runnable reference implementation of the voting core: [reference/](reference/). 
 | [reference/tally](reference/tally/) | Encrypted ballots, voter self-verification, threshold decryption with proofs, independent recount tool |
 | [reference/ballot-circuit](reference/ballot-circuit/) | Zero-knowledge ballot proof (Circom/Groth16): only eligible, unique, non-revoked members can cast a well-formed ballot |
 | [reference/enrolment-circuit](reference/enrolment-circuit/) | Unlinkable registration: the registration service cannot tell which registry entry belongs to whom; lost identities can be revoked without revealing which |
-| [reference/contracts](reference/contracts/) | Solidity contract for polls, ballots and results, tested end to end with real proofs |
+| [reference/contracts](reference/contracts/) | Solidity registries, polls, ballots and results — the full on-chain flow, tested with real proofs |
 
 ## Design in one paragraph
 
