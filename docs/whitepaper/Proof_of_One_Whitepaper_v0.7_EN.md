@@ -138,9 +138,15 @@ From stable fields of DG1 the phone derives a **document fingerprint** through a
 
 ### 6.7 Layer 2 — face uniqueness
 
-Layer 1 does not stop a person who holds two different documents. Layer 2 compares the new face template with existing templates. Version 0.4 limited this search to members with the same date of birth and sex. Red-team review showed that this is unsafe against an issuer of documents, which can print a different birth date in each document for the same person. Version 0.5 therefore removes date of birth from the search: duplicates are searched **across all members** (or within sex only), using an approximate-nearest-neighbour index and a strict threshold for candidates.
+Layer 1 already stops anyone enrolling twice with the same or a renewed document. Layer 2 is needed only for a person who holds two different genuine documents. Large-scale face search is fast: the best algorithms search 12 million faces in under a millisecond [43]. Its weakness is accuracy. With a 12-million gallery, even the best algorithms in 2026 miss about 1% of true duplicates when false alarms are held at 1 in 1,000 searches [44]. At 100 million members, that false-alarm rate would wrongly flag about 100,000 honest people. Errors also grow as photos age. The search is therefore designed to ask as little of the face as possible (Decision Log #33) [41]:
 
-Searching a large population increases the chance that two different people look alike. The final method and threshold will be chosen only after the accuracy study measures false-match and false-reject rates at one million, ten million and one hundred million members. A one-way hash of the face cannot replace this comparison: a hash destroys similarity, so two scans of the same face would produce unrelated values, and a coarsened template would be guessable from a public photograph.
+1. Enrolment first asks whether the person has already enrolled with another document. If so, they are guided to add it to their identity (6.12).
+2. The main search compares the new face only with members of the **same birth date and sex**, a group of a few thousand people even at 100 million members, so false alarms become negligible.
+3. A second search covers **all members with a very strict threshold**, so that only near-certain matches are reported. Version 0.4 used birth-date grouping alone, and the red team showed that an issuer could then evade detection by printing a different birth date in each document; this second search closes that gap.
+4. Statistics by document issuer reveal abnormal patterns, and thresholds favour honest people: a wrongly refused person can ask for a second review.
+5. The stored template is refreshed whenever a member adds or renews a document, so it ages with the member.
+
+Searching a large population increases the chance that two different people look alike. The final method and thresholds will be chosen only after the accuracy study measures false-match and false-reject rates at one million, ten million and one hundred million members, by time between photos and for phone selfies. A one-way hash of the face cannot replace this comparison: a hash destroys similarity, so two scans of the same face would produce unrelated values, and a coarsened template would be guessable from a public photograph.
 
 | Stage | Protected comparison | Trust assumption |
 |---|---|---|
@@ -389,6 +395,8 @@ vote(pollId, nf, C, ctxHash, proof)
 
 Members never need a crypto wallet or tokens. The phone sends its ballot through a relay service that pays the transaction fee (an ERC-4337 paymaster or equivalent [27]). Because the proof is bound to the ballot, the relay cannot change it. The app connects through an anonymising network with censorship-circumvention transports [34], so neither relays nor network observers learn the member’s IP address. Several independent relays operate, and a member can always submit directly.
 
+**Access under network restrictions** (Decision Log #34) [42]. Using an ordinary VPN or circumvention tool must never break enrolment or voting. No Proof of One service blocks VPN, Tor or proxy users or checks where a connection comes from. The app includes circumvention transports of its own and also works through the member's own VPN. Core functions do not depend on Google or Apple servers, accounts, phone numbers or SMS: device integrity is checked with hardware key attestation, which can be verified offline. The app is available from several independent sources, and the addresses of its services come from a signed list that is updated when an address is blocked. Ballots can be prepared offline and sent when a connection is available.
+
 ### 8.7 Closing, tallying and publishing
 
 1. At the close time no further ballots are accepted. The last ballot per nullifier counts.
@@ -615,7 +623,7 @@ A project that asks people to trust it must be checked by people. The founder ha
 - **Work only people can do is published as open invitations:** measuring the ballot proof on real low-cost phones, line-by-line review of the circuits and contracts, an independent recount tool written by people, and a legal review of licences and AI authorship.
 - **Security-critical parts** — circuits, contracts, enrolment and the recount tool — are reviewed line by line by independent human experts, or reimplemented independently, before the first public pilot with real participants. The test network may run on reference code before that review, with test data and clear warnings.
 
-The first human measurement was made by the founder: the ballot proof on a phone, in 3.5 seconds (7.7).
+The first human measurement was made by the founder: the ballot proof on a phone, in 3.5 seconds (7.7). Several design changes in this version also came from him: several nationalities on one identity (6.12), asking about earlier enrolment, birth-date grouping and template refresh in the face search (6.7), and access under network restrictions (8.6).
 
 ## 14. Governance, Legal and Ethical Considerations
 
@@ -662,9 +670,10 @@ The first human measurement was made by the founder: the ballot proof on a phone
 10. **Cost.** Ballot gas is measured and batching cuts it by about 3.8 times, but free participation still depends on voluntary funding and gas prices. Recursive aggregation would need substantial server capacity (8.11).
 11. **Reference code status.** All proofs use test-only trusted setups; a real deployment needs a large public ceremony or a universal-setup proof system. The trustee key generation in the reference code is not yet robust against misbehaving trustees, and the generated verifier contracts carry a licence that must be resolved before release.
 12. **Document coverage and platform dependence.** Not every country issues chip documents or publishes signing certificates; NFC, camera access and attestation depend on Apple and Google policies, and distribution outside app stores is limited on iOS.
-13. **Camera authenticity.** The live face feed is trusted on the basis of attestation and presentation-attack detection, not cryptographic proof.
-14. **Representativeness.** Weighting improves estimates but cannot fully correct for who chooses to join.
-15. **Name.** “Proof of One” must be checked for trademark and domain conflicts before launch.
+13. **Network restrictions.** Where app stores or services are blocked, access depends on circumvention tools that may stop working; on iOS, distribution depends on the app store in each region. Having the app installed may itself carry risk in some places, which needs human expert review before any high-risk use.
+14. **Camera authenticity.** The live face feed is trusted on the basis of attestation and presentation-attack detection, not cryptographic proof.
+15. **Representativeness.** Weighting improves estimates but cannot fully correct for who chooses to join.
+16. **Name.** “Proof of One” must be checked for trademark and domain conflicts before launch.
 
 ## 18. Conclusion
 
@@ -712,6 +721,10 @@ Proof of One combines a government-signed identity document, a live face match a
 - [38] ICAO, “ePassport basics” — more than 140 issuing States and over one billion ePassports in circulation.
 - [39] Proof of One, “Several nationalities, one identity — specification v0.1”, October 2026 — docs/specs in the project repository.
 - [40] Proof of One, “Ballot aggregation v0.1 — design and first measurements”, October 2026 — docs/specs in the project repository.
+- [41] Proof of One, “Face uniqueness at scale — specification v0.1”, October 2026 — docs/specs in the project repository.
+- [42] Proof of One, “Access under network restrictions — specification v0.1”, October 2026 — docs/specs in the project repository.
+- [43] NIST IR 8271, “Face Recognition Vendor Test (FRVT) Part 2: Identification”, 2019.
+- [44] NIST Face Recognition Technology Evaluation (FRTE) 1:N, results reported August 2026.
 
 ## Glossary
 
