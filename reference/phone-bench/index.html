@@ -63,7 +63,7 @@ pre { font-family: var(--font-mono); font-size: .8rem; background: var(--bg); bo
     <h2 id="what" class="eyebrow">What is measured</h2>
     <dl class="spec">
       <dt>Proof</dt><dd>π_vote, Groth16 on BN254</dd>
-      <dt>Size</dt><dd>32,535 constraints, 4 options</dd>
+      <dt>Size</dt><dd>32,607 constraints, 4 options</dd>
       <dt>Trees</dt><dd>identity depth 32, revocation depth 32</dd>
       <dt>Prover</dt><dd>snarkjs 0.7.5 in the browser (WebAssembly)</dd>
       <dt>Download</dt><dd>about 24 MB, once</dd>
@@ -161,7 +161,7 @@ pre { font-family: var(--font-mono); font-size: .8rem; background: var(--bg); bo
       const uaPlat = navigator.userAgentData?.platform || "";
       report = [
         "Proof of One phone benchmark v0.1",
-        "proof: pi_vote, 32,535 constraints, Groth16, snarkjs 0.7.5 (browser)",
+        "proof: pi_vote, 32,607 constraints, Groth16, snarkjs 0.7.5 (browser)",
         "runs: " + times.map(secs).join(", ") + "  (median " + secs(median) + ")",
         "verified: " + (lastOk ? "yes" : "NO"),
         "download: " + secs(dl),

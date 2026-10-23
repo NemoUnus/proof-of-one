@@ -131,7 +131,7 @@ function buildRegistration(P, enclave, member, credential) {
   const kp = enclave.keyTree.path(credential.keyIndex);
   const input = {
     leaf: leaf.toString(), cn: m.cn.toString(), keySetRoot: enclave.keySetRoot.toString(),
-    s: m.s.toString(), ageBand: String(m.ageBand), sexCode: String(m.sexCode),
+    s: m.s.toString(), birthDay: String(m.birthDay), sexCode: String(m.sexCode),
     nat: A.slots(m).map((d) => d.nat.toString()), exp: A.slots(m).map((d) => d.expiry.toString()), salt: m.salt.toString(), rho: m.rho.toString(), rn: m.rn.toString(),
     epoch: credential.epoch.toString(), Ax: credential.A[0].toString(), Ay: credential.A[1].toString(),
     R8x: credential.R8[0].toString(), R8y: credential.R8[1].toString(), S: credential.S.toString(),

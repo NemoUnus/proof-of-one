@@ -5,13 +5,15 @@
 //
 // STATEMENT (all private values stay on the phone):
 //   1. P = s·G and idc = Poseidon(P.x, P.y)                     identity
-//   2. leaf = Poseidon(idc, Poseidon(ageBand, sexCode, nat_0, exp_0, nat_1, exp_1,
+//   2. leaf = Poseidon(idc, Poseidon(birthDay, sexCode, nat_0, exp_0, nat_1, exp_1,
 //                                    nat_2, exp_2, salt), rn)
 //      and leaf is in the identity tree with root `idRoot`       membership
 //      (up to 3 verified documents, each with nationality and expiry; Decision #30)
 //   3. rn is NOT in the revocation tree with root `revRoot`       not revoked
 //   4. nf = Poseidon(1, pollId, s)                               one ballot per poll
-//   5. ageBand ≥ minAgeBand, and ONE document, chosen privately by the phone, has
+//   5. minBirthDay ≤ birthDay ≤ maxBirthDay (the poll's age range as birth dates, so
+//      an age never goes out of date; Decision #37), and ONE document, chosen
+//      privately by the phone, has
 //      nat ≠ 0, exp ≥ minExpiryMonth, and nat == requiredNat
 //      unless requiredNat == 0                                   eligibility
 //      (which document, and the member's other nationalities, stay hidden)
@@ -19,7 +21,7 @@
 //   7. A_j = r_j·G and B_j = v_j·G + r_j·PK for every j           encryption
 //   8. ctxHash is bound to the proof                              no replay elsewhere
 //   9. pollHash = Poseidon(7, Poseidon(idRoot, revRoot, pollId, PK.x, PK.y),
-//                         Poseidon(minAgeBand, minExpiryMonth, requiredNat, ctxHash))
+//                         Poseidon(maxBirthDay, minBirthDay, minExpiryMonth, requiredNat, ctxHash))
 //
 // PUBLIC INPUTS (18): pollHash, nf, and the 16 ciphertext coordinates. The nine
 // per-poll values are private inputs bound by pollHash, which the contract computes
@@ -113,14 +115,15 @@ template Ballot(depth, revDepth, k) {
     signal input revRoot;
     signal input pollId;
     signal input PK[2];
-    signal input minAgeBand;
+    signal input maxBirthDay;        // born on or before (day number since 1900-01-01)
+    signal input minBirthDay;        // born on or after; 0 = no upper age limit
     signal input minExpiryMonth;
     signal input requiredNat;        // 0 = any nationality
     signal input ctxHash;
 
     // ----------------------------------------------------------- private inputs
     signal input s;
-    signal input ageBand;
+    signal input birthDay;           // day number since 1900-01-01, hidden
     signal input sexCode;
     signal input nat[3];             // nationality per document; 0 = empty slot
     signal input exp[3];             // expiry month per document
@@ -147,7 +150,7 @@ template Ballot(depth, revDepth, k) {
 
     // 2. membership
     component attr = Poseidon(9);
-    attr.inputs[0] <== ageBand;
+    attr.inputs[0] <== birthDay;
     attr.inputs[1] <== sexCode;
     for (var d = 0; d < 3; d++) {
         attr.inputs[2 + 2 * d] <== nat[d];
@@ -197,10 +200,14 @@ template Ballot(depth, revDepth, k) {
     nfH.out === nf;
 
     // 5. eligibility policy
-    component ageOk = GreaterEqThan(16);
-    ageOk.in[0] <== ageBand;
-    ageOk.in[1] <== minAgeBand;
-    ageOk.out === 1;
+    component oldEnough = LessEqThan(32);
+    oldEnough.in[0] <== birthDay;
+    oldEnough.in[1] <== maxBirthDay;
+    oldEnough.out === 1;
+    component youngEnough = GreaterEqThan(32);
+    youngEnough.in[0] <== birthDay;
+    youngEnough.in[1] <== minBirthDay;
+    youngEnough.out === 1;
     // the selected document: docSel is one-hot, natSel/expSel are its fields
     signal selNat[3];
     signal selExp[3];
@@ -269,11 +276,12 @@ template Ballot(depth, revDepth, k) {
     ph1.inputs[2] <== pollId;
     ph1.inputs[3] <== PK[0];
     ph1.inputs[4] <== PK[1];
-    component ph2 = Poseidon(4);
-    ph2.inputs[0] <== minAgeBand;
-    ph2.inputs[1] <== minExpiryMonth;
-    ph2.inputs[2] <== requiredNat;
-    ph2.inputs[3] <== ctxHash;
+    component ph2 = Poseidon(5);
+    ph2.inputs[0] <== maxBirthDay;
+    ph2.inputs[1] <== minBirthDay;
+    ph2.inputs[2] <== minExpiryMonth;
+    ph2.inputs[3] <== requiredNat;
+    ph2.inputs[4] <== ctxHash;
     component ph = Poseidon(3);
     ph.inputs[0] <== 7;              // domain tag TAG.POLL
     ph.inputs[1] <== ph1.out;

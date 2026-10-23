@@ -9,12 +9,14 @@ const fs = require("fs");
 const snarkjs = require("snarkjs");
 const { create } = require("../../tally/src/protocol");
 const B = require("../src/ballot");
+const A = require("../src/attrs");
 const { IncrementalTree, RevocationTree } = require("../src/trees");
 const { createVerifiedPoll } = require("../src/submit");
 
 const ZKEY = path.join(__dirname, "..", "setup", "ballot_test.zkey");
 const VKEY = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "setup", "vkey_test.json"), "utf8"));
-const POLICY = { minAgeBand: 2, minExpiryMonth: 24330, requiredNat: 0 };
+const TODAY = [2026, 10, 23];
+const POLICY = { ...A.ageRange(TODAY, { minAge: 18 }), minExpiryMonth: 24330, requiredNat: 0 };
 const POLL = 1001n, CTX = 777n;
 
 let P, keys, idTree, revTree, members;
@@ -30,12 +32,15 @@ test.before(async () => {
   idTree = new IncrementalTree(P.hash.H, B.DEPTH);
   revTree = new RevocationTree(P.hash.H, B.REV_DEPTH);
   members = [
-    { s: C.randScalar(), ageBand: 4, natCode: 250, sexCode: 1, expiryMonth: 24400, salt: C.randScalar(), rn: handle() },
-    { s: C.randScalar(), ageBand: 1, natCode: 250, sexCode: 2, expiryMonth: 24400, salt: C.randScalar(), rn: handle() }, // under age band
-    { s: C.randScalar(), ageBand: 5, natCode: 250, sexCode: 2, expiryMonth: 24400, salt: C.randScalar(), rn: handle() }, // will be revoked
+    { s: C.randScalar(), birthDay: A.dayNumber(1985, 3, 14), natCode: 250, sexCode: 1, expiryMonth: 24400, salt: C.randScalar(), rn: handle() },
+    { s: C.randScalar(), birthDay: A.dayNumber(2010, 6, 1), natCode: 250, sexCode: 2, expiryMonth: 24400, salt: C.randScalar(), rn: handle() }, // under 18
+    { s: C.randScalar(), birthDay: A.dayNumber(1970, 1, 1), natCode: 250, sexCode: 2, expiryMonth: 24400, salt: C.randScalar(), rn: handle() }, // will be revoked
     // two nationalities (Decision #30); the second document has expired for polls requiring 24330
-    { s: C.randScalar(), ageBand: 3, sexCode: 1, docs: [{ nat: 250, expiry: 24400 }, { nat: 364, expiry: 24320 }], salt: C.randScalar(), rn: handle() },
-    { s: C.randScalar(), ageBand: 3, sexCode: 2, docs: [{ nat: 250, expiry: 24400 }, { nat: 124, expiry: 24500 }], salt: C.randScalar(), rn: handle() },
+    { s: C.randScalar(), birthDay: A.dayNumber(1990, 7, 7), sexCode: 1, docs: [{ nat: 250, expiry: 24400 }, { nat: 364, expiry: 24320 }], salt: C.randScalar(), rn: handle() },
+    { s: C.randScalar(), birthDay: A.dayNumber(1992, 2, 29), sexCode: 2, docs: [{ nat: 250, expiry: 24400 }, { nat: 124, expiry: 24500 }], salt: C.randScalar(), rn: handle() },
+    // Decision #37: turns 18 on the poll date; and a young adult for an age-range poll
+    { s: C.randScalar(), birthDay: A.dayNumber(2008, 10, 23), natCode: 250, sexCode: 1, expiryMonth: 24400, salt: C.randScalar(), rn: handle() },
+    { s: C.randScalar(), birthDay: A.dayNumber(2004, 5, 5), natCode: 250, sexCode: 2, expiryMonth: 24400, salt: C.randScalar(), rn: handle() },
   ];
   for (const m of members) m.index = idTree.insert(B.memberLeaf(P, m));
   revTree.revoke(handle());
@@ -74,7 +79,7 @@ test("ciphertexts must encrypt the proven choice", async () => {
 test("per-poll values cannot be changed without changing pollHash", async () => {
   const b = ballotFor(members[0], 1);
   await witnessFails({ ...b.input, pollHash: (BigInt(b.input.pollHash) + 1n).toString() });
-  await witnessFails({ ...b.input, minAgeBand: "0" }); // weaker policy than the one in pollHash
+  await witnessFails({ ...b.input, maxBirthDay: String(BigInt(b.input.maxBirthDay) + 3650n) }); // weaker age rule than the one in pollHash
 });
 
 test("wrong nullifier cannot be proven", async () => {
@@ -95,8 +100,31 @@ test("revoked member cannot vote (no non-membership witness exists)", async () =
   await witnessFails({ ...ballotFor(members[0], 0).input, rn: members[2].rn.toString(), lowValue: good.lowValue, nextValue: good.nextValue });
 });
 
-test("eligibility policy: member below the minimum age band cannot vote", async () => {
-  await witnessFails(ballotFor(members[1], 0).input);
+test("eligibility policy: a member under the minimum age cannot vote", async () => {
+  assert.throws(() => ballotFor(members[1], 0), /age range/);
+  await witnessFails(ballotFor(members[1], 0, { docIndex: 0 }).input);
+});
+
+// ------------------------------------------------ date of birth (Decision #37)
+const atDate = (on, rule) => ({ ...A.ageRange(on, rule), minExpiryMonth: 24330, requiredNat: 0 });
+const witnessOk = (input) => snarkjs.wtns.calculate(input, B.WASM, { type: "mem" });
+
+test("age is evaluated on each poll's date: a member becomes eligible on their 18th birthday", async () => {
+  const m = members[5];
+  const dayBefore = atDate([2026, 10, 22], { minAge: 18 }), birthday = atDate([2026, 10, 23], { minAge: 18 });
+  assert.throws(() => ballotFor(m, 0, { policy: dayBefore }), /age range/);
+  await witnessFails(ballotFor(m, 0, { policy: dayBefore, docIndex: 0 }).input);
+  await witnessOk(ballotFor(m, 0, { policy: birthday }).input);
+});
+
+test("an age range (18–24): too old or too young cannot be proven; inside the range can", async () => {
+  const youth = atDate(TODAY, { minAge: 18, maxAge: 24 });
+  await witnessOk(ballotFor(members[6], 0, { policy: youth }).input);                  // aged 22
+  await witnessFails(ballotFor(members[0], 0, { policy: youth, docIndex: 0 }).input);  // aged 41
+  await witnessFails(ballotFor(members[1], 0, { policy: youth, docIndex: 0 }).input);  // aged 16
+  // the range is bound by pollHash: widening it after proving fails
+  const b = ballotFor(members[6], 0, { policy: youth });
+  await witnessFails({ ...b.input, minBirthDay: "0" });
 });
 
 test("tampering with a public input after proving makes verification fail", async () => {

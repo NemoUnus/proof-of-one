@@ -43,7 +43,7 @@ expSel ≥ minExpiryMonth
 requiredNat = 0  or  natSel = requiredNat
 ```
 
-Nothing about the other documents, or about which one was used, appears in the public inputs. The public inputs are unchanged: pollHash, nullifier and ciphertexts. The ballot proof grows by 106 constraints, to **32,535**. The registration proof grows to **9,369**.
+Nothing about the other documents, or about which one was used, appears in the public inputs. The public inputs are unchanged: pollHash, nullifier and ciphertexts. The ballot proof grows by 106 constraints, to 32,535 (32,607 after the birth-date change of Decision #37, which replaces `ageBand` below by a hidden `birthDay`). The registration proof grows to **9,369**.
 
 ## 4. Red-team notes
 

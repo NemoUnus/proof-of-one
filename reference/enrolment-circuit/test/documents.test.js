@@ -17,7 +17,7 @@ const ZKEY = path.join(__dirname, "..", "setup", "registration_test.zkey");
 const VKEY = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "setup", "vkey_test.json"), "utf8"));
 const BALLOT_ZKEY = path.join(__dirname, "..", "..", "ballot-circuit", "setup", "ballot_test.zkey");
 const BALLOT_VKEY = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "..", "ballot-circuit", "setup", "vkey_test.json"), "utf8"));
-const FIRST = { ageBand: 3, sexCode: 2, docs: [{ nat: 250, expiry: 24400 }] };
+const FIRST = { birthDay: A.dayNumber(1979, 11, 30), sexCode: 2, docs: [{ nat: 250, expiry: 24400 }] };
 const SECOND = { nat: 124, expiry: 24500 };
 
 let P, enclave;
@@ -64,7 +64,7 @@ test("adding a second nationality: one identity with both, old handle revoked, s
   // The updated identity can vote in the regional poll of either nationality.
   const keys = P.dkg(3, 2);
   const vote = async (who, pollId, requiredNat) => {
-    const policy = { minAgeBand: 2, minExpiryMonth: 24330, requiredNat };
+    const policy = { ...A.ageRange([2026, 10, 23], { minAge: 18 }), minExpiryMonth: 24330, requiredNat };
     const idx = reg.indexOf(who.leaf);
     const bl = B.buildBallot(P, { pollId, PK: keys.PK, policy, ctxHash: 1n, member: { ...who.member, index: idx }, leafIndex: idx, idTree: reg.idTree, revTree: reg.revTree, choice: 0 });
     const { proof } = await B.prove(bl.input, BALLOT_ZKEY);
@@ -73,7 +73,7 @@ test("adding a second nationality: one identity with both, old handle revoked, s
   };
   assert.equal(await vote(b, 601n, 250), true, "region of the first nationality");
   assert.equal(await vote(b, 602n, 124), true, "region of the second nationality");
-  assert.throws(() => B.buildBallot(P, { pollId: 603n, PK: keys.PK, policy: { minAgeBand: 2, minExpiryMonth: 24330, requiredNat: 124 }, ctxHash: 1n,
+  assert.throws(() => B.buildBallot(P, { pollId: 603n, PK: keys.PK, policy: { ...A.ageRange([2026, 10, 23], { minAge: 18 }), minExpiryMonth: 24330, requiredNat: 124 }, ctxHash: 1n,
     member: { ...a.member, index: reg.indexOf(a.leaf) }, leafIndex: reg.indexOf(a.leaf), idTree: reg.idTree, revTree: reg.revTree, choice: 0 }), /revoked|no document/,
     "the old identity is revoked");
 });
@@ -95,5 +95,5 @@ test("renewal replaces the document of the same nationality; at most three docum
   a = A.withDocument(a, { nat: 36, expiry: 24400 });
   assert.equal(A.docsOf(a).length, 3);
   assert.throws(() => A.withDocument(a, { nat: 840, expiry: 24400 }), /at most 3/);
-  assert.throws(() => A.docsOf({ ageBand: 3, sexCode: 1, docs: [{ nat: 250, expiry: 1 }, { nat: 250, expiry: 2 }] }), /one document per nationality/);
+  assert.throws(() => A.docsOf({ birthDay: 30000, sexCode: 1, docs: [{ nat: 250, expiry: 1 }, { nat: 250, expiry: 2 }] }), /one document per nationality/);
 });

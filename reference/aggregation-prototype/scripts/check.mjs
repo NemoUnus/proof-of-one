@@ -8,8 +8,8 @@ const I = JSON.parse(readFileSync(new URL("../../phone-bench/input.json", import
 const b = (a) => a.map((x) => x === "1");
 const inp = (o) => ({
   poll_hash: I.pollHash, nf: I.nf, ca: I.CA, cb: I.CB, id_root: I.idRoot, rev_root: I.revRoot, poll_id: I.pollId, pk: I.PK,
-  min_age: I.minAgeBand, min_exp: I.minExpiryMonth, req_nat: I.requiredNat, ctx: I.ctxHash,
-  s: I.s, age: I.ageBand, sex: I.sexCode, nat: I.nat, exp: I.exp, sel: b(I.docSel), salt: I.salt, rn: I.rn,
+  max_bd: I.maxBirthDay, min_bd: I.minBirthDay, min_exp: I.minExpiryMonth, req_nat: I.requiredNat, ctx: I.ctxHash,
+  s: I.s, birth: I.birthDay, sex: I.sexCode, nat: I.nat, exp: I.exp, sel: b(I.docSel), salt: I.salt, rn: I.rn,
   id_sib: I.idSiblings, id_idx: b(I.idPathIndex), low: I.lowValue, next: I.nextValue, rev_sib: I.revSiblings, rev_idx: b(I.revPathIndex),
   v: b(I.v), r: I.r, ...o });
 const { program } = await compile(createFileManager(new URL("../circuits/ballot_compatible", import.meta.url).pathname));

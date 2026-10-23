@@ -8,7 +8,7 @@ These notes record where the implementation confirmed the specifications, where 
 
 | Item | Spec estimate | Measured | Note |
 |---|---|---|---|
-| Ballot proof π_vote, 4 options, trees of depth 32 | about 40,000 constraints | **32,535** with up to three documents (32,429 with one; 31,554 before `pollHash`) | Includes revocation non-membership (C1), which the original estimate did not |
+| Ballot proof π_vote, 4 options, trees of depth 32 | about 40,000 constraints | **32,607** with up to three documents and a birth-date range (32,535 with an age band; 32,429 with one document; 31,554 before `pollHash`) | Includes revocation non-membership (C1), which the original estimate did not |
 | Registration proof π_reg, key-set depth 8 | 12,000–18,000 | **9,369** with up to three documents (9,171 with one) | EdDSA-Poseidon verification dominates |
 | Batch insertion proof π_batch, depth 32 | — | **16,227** (4 leaves); **501,947** (1,024 leaves) | Four public inputs regardless of batch size |
 | Revocation update proof π_revoke, depth 32 | — | **32,521** | Four Merkle paths and two range comparisons |
@@ -21,11 +21,11 @@ These notes record where the implementation confirmed the specifications, where 
 | Operation | Spec estimate | Measured |
 |---|---|---|
 | Register an identity (π_reg) | ~300,000 | **302,271**; **334,589** with the batch chain hash |
-| A voter's first ballot | ~420,000 | **390,086**; the poll's very first ballot **424,298** (533,615 with 26 public inputs, before `pollHash` and packed storage) |
-| Re-vote | ~400,000 | **372,913** (442,997 before) |
+| A voter's first ballot | ~420,000 | **392,084**; the poll's very first ballot **426,296** (533,615 with 26 public inputs, before `pollHash` and packed storage) |
+| Re-vote | ~400,000 | **374,839** (442,997 before) |
 | Groth16 verification of π_vote alone | — | **303,022** (78% of a ballot) |
-| Batch of n ballots (`voteBatch`) | — | **about 347,000 + 101,000 · n**, measured for n = 1, 2, 4, 7; +34,000 for the poll's first batch |
-| Create poll (subgroup check of the tally key; `pollHash`, once per poll) | — | **874,687** |
+| Batch of n ballots (`voteBatch`) | — | **about 349,000 + 101,000 · n**, measured for n = 1, 2, 4, 7; +34,000 for the poll's first batch |
+| Create poll (subgroup check of the tally key; `pollHash`, once per poll) | — | **921,874** (874,687 before the birth-date range) |
 | Publish result | ~300,000 | **158,118** |
 | Insert identities, on-chain hashing | ~650,000 per leaf (naive) | **~1,050,000 per leaf** |
 | Insert a batch with π_batch (any batch size) | ~400,000 per batch | **293,548 per batch** |
@@ -57,6 +57,8 @@ These notes record where the implementation confirmed the specifications, where 
 | N14 | **Batch weights from the complete call data.** Batch verification is sound only if the random weights are fixed after every proof and input; they are derived from keccak256 of the full call data. | contracts |
 | N15 | **Several documents per identity:** eligibility uses a private one-hot document selector; an empty slot (nationality 0) can never be selected, and the selector costs about 100 constraints. Attribute order is fixed in one shared module (`attrs.js`). | ballot-circuit, enrolment-circuit |
 | N16 | **Hash and curve choice decides the cost in other proof systems.** The same ballot statement is about 7 times larger in UltraHonk with Poseidon and Baby Jubjub than with that system's native Poseidon2 and Grumpkin. Any move to recursive aggregation must weigh a redesign of the primitives. | aggregation-prototype |
+| N17 | **Ages as birth-date ranges.** The identity stores the date of birth as a day number; a poll's age rule is a range of birth days computed for the poll date and bound into `pollHash`. Inputs to the 32-bit comparators are below 2^32 because the enclave signs the date and the contract stores the range as `uint32`. | ballot-circuit, contracts |
+| N18 | **Headroom of the test parameters.** The ballot proof (32,607 constraints plus 18 public inputs) is close to the 2^15 limit of the test powers-of-tau file. The next increase needs a 2^16 file. | ballot-circuit |
 
 ## 4. Open issues found during implementation
 

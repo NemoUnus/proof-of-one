@@ -28,7 +28,7 @@ Participation is free. Topics of sponsored polls are chosen by participants them
 | Document | Description |
 |---|---|
 | [One-page summary (PDF)](docs/summary/Proof_of_One_Summary_EN.pdf) · [Markdown](docs/summary/SUMMARY.en.md) | Plain-language overview — start here |
-| [Whitepaper v0.7 (PDF)](docs/whitepaper/Proof_of_One_Whitepaper_v0.7_EN.pdf) · [Markdown](docs/whitepaper/Proof_of_One_Whitepaper_v0.7_EN.md) | Full design, with measured sizes and costs from the reference code: identity, cryptography, ledger, polling, governance, limits |
+| [Whitepaper v0.8 (PDF)](docs/whitepaper/Proof_of_One_Whitepaper_v0.8_EN.pdf) · [Markdown](docs/whitepaper/Proof_of_One_Whitepaper_v0.8_EN.md) | Full design, with measured sizes and costs from the reference code: identity, cryptography, ledger, polling, governance, limits |
 | [Threat model v0.1](docs/specs/threat-model-v0.1.md) | Adversary with the resources of a state |
 | [Ballot and enrolment spec v0.1](docs/specs/ballot-and-enrolment-v0.1.md) | Encrypted ballots, public tally, unlinkable enrolment |
 | [Red-team review v0.1](docs/specs/red-team-review-ballot-spec-v0.1.md) | Attacks on the ballot spec and accepted fixes |
@@ -38,6 +38,7 @@ Participation is free. Topics of sponsored polls are chosen by participants them
 | [Several nationalities v0.1](docs/specs/several-nationalities-v0.1.md) | One identity with up to three verified nationalities: one vote in each region, one in global polls |
 | [Face uniqueness at scale v0.1](docs/specs/face-uniqueness-at-scale-v0.1.md) | What large-scale face search can do, and the search procedure that follows |
 | [Access under network restrictions v0.1](docs/specs/censorship-resistant-access-v0.1.md) | Keeping enrolment and voting usable where access is restricted |
+| [Date of birth and private verification v0.1](docs/specs/birth-date-and-private-verification-v0.1.md) | Hidden date of birth instead of a fixed age band; age and personhood checks for other services without tracking |
 | [Who can enrol? Document coverage v0.1](docs/research/document-coverage-v0.1.md) · [data (CSV)](docs/research/document-coverage-v0.1.csv) | Which countries issue chip documents a phone can read, and what share of people can take part today |
 | [Decision log](docs/decisions/DECISION_LOG.md) | Every design decision and why it was taken |
 

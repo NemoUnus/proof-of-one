@@ -24,8 +24,9 @@ const BATCH_ZKEY = path.join(__dirname, "..", "..", "enrolment-circuit", "setup"
 const REVOKE_ZKEY = path.join(__dirname, "..", "..", "enrolment-circuit", "setup", "revoke_test.zkey");
 const Z2 = [0n, 0n], Z22 = [[0n, 0n], [0n, 0n]];
 const art = (n) => JSON.parse(fs.readFileSync(path.join(__dirname, "..", "build", n + ".json"), "utf8"));
-const ATTRS = { ageBand: 3, natCode: 250, sexCode: 1, expiryMonth: 24400 };
-const POLICY = { minAgeBand: 2, minExpiryMonth: 24330, requiredNat: 0 };
+const A = require("../../ballot-circuit/src/attrs");
+const ATTRS = { birthDay: A.dayNumber(1983, 9, 2), natCode: 250, sexCode: 1, expiryMonth: 24400 };
+const POLICY = { ...A.ageRange([2026, 10, 23], { minAge: 18 }), minExpiryMonth: 24330, requiredNat: 0 };
 
 let P, provider, signer, poseidon, identity, revocation, polls, enclave, keys, ballotVerifier, ballotBatchVerifier, gas = {};
 let people = [], pollId, ctx, firstPollEvents;
@@ -94,7 +95,7 @@ const send = (b, id) => polls.vote(id, b.nf, ctArray(b.C), b.sp.a, b.sp.b, b.sp.
 const sendStatic = (b, id) => polls.vote.staticCall(id, b.nf, ctArray(b.C), b.sp.a, b.sp.b, b.sp.c);
 const pollParams = async (over = {}) => {
   const t = await now();
-  return { tallyPK: pt(keys.PK), minAgeBand: POLICY.minAgeBand, minExpiryMonth: POLICY.minExpiryMonth, requiredNat: POLICY.requiredNat,
+  return { tallyPK: pt(keys.PK), maxBirthDay: POLICY.maxBirthDay, minBirthDay: POLICY.minBirthDay, minExpiryMonth: POLICY.minExpiryMonth, requiredNat: POLICY.requiredNat,
     maxRevotes: 3, openTime: t, closeTime: t + 48n * 3600n + 60n, metadataHash: ethers.ZeroHash, ...over };
 };
 
@@ -116,10 +117,9 @@ test.before(async () => {
   ballotVerifier = await deploy(BV.abi, BV.bytecode);
   ballotBatchVerifier = await deploy(BBV.abi, BBV.bytecode);
   const p3 = await deploy(poseidonContract.generateABI(3), poseidonContract.createCode(3));
-  const p4 = await deploy(poseidonContract.generateABI(4), poseidonContract.createCode(4));
   const p5 = await deploy(poseidonContract.generateABI(5), poseidonContract.createCode(5));
   polls = await deploy(PP.abi, PP.bytecode, await ballotVerifier.getAddress(), await ballotBatchVerifier.getAddress(), await identity.getAddress(), await revocation.getAddress(),
-    await p3.getAddress(), await p4.getAddress(), await p5.getAddress());
+    await p3.getAddress(), await p5.getAddress());
   keys = P.dkg(5, 3);
 });
 test.after(async () => { if (globalThis.curve_bn128) await globalThis.curve_bn128.terminate(); });

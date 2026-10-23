@@ -22,7 +22,7 @@ function memberLeaf(P, m) {
 function pollHashOf(P, { idRoot, revRoot, pollId, PK, policy, ctxHash }) {
   const H = P.hash.H, [px, py] = P.curve.coords(PK);
   const h1 = H([idRoot, revRoot, pollId, px, py].map(BigInt));
-  const h2 = H([policy.minAgeBand, policy.minExpiryMonth, policy.requiredNat, ctxHash].map(BigInt));
+  const h2 = H([policy.maxBirthDay, policy.minBirthDay ?? 0, policy.minExpiryMonth, policy.requiredNat, ctxHash].map(BigInt));
   return H([7n, h1, h2]); // domain tag TAG.POLL
 }
 
@@ -32,7 +32,7 @@ function pollHashOf(P, { idRoot, revRoot, pollId, PK, policy, ctxHash }) {
 function buildBallot(P, { pollId, PK, policy, ctxHash, member, leafIndex, idTree, revTree, choice, k = K, docIndex }) {
   const C = P.curve;
   const di = docIndex ?? A.selectDoc(member, policy);
-  if (di < 0) throw new Error("no document satisfies this poll's policy");
+  if (di < 0 && docIndex === undefined) throw new Error(A.inAgeRange(member, policy) ? "no document satisfies this poll's policy" : "outside this poll's age range");
   const sl = A.slots(member);
   const enc = P.encryptBallot(PK, k, choice);
   const nf = P.nullifier(pollId, member.s);
@@ -42,10 +42,10 @@ function buildBallot(P, { pollId, PK, policy, ctxHash, member, leafIndex, idTree
   const pollHash = pollHashOf(P, { idRoot: idTree.root, revRoot: revTree.root, pollId, PK, policy, ctxHash });
   const input = {
     pollHash: pollHash.toString(), idRoot: idTree.root.toString(), revRoot: revTree.root.toString(), pollId: pollId.toString(), nf: nf.toString(),
-    PK: pt(PK), minAgeBand: String(policy.minAgeBand), minExpiryMonth: String(policy.minExpiryMonth),
+    PK: pt(PK), maxBirthDay: String(policy.maxBirthDay), minBirthDay: String(policy.minBirthDay ?? 0), minExpiryMonth: String(policy.minExpiryMonth),
     requiredNat: String(policy.requiredNat), ctxHash: ctxHash.toString(),
     CA: enc.C.map((c) => pt(c.A)), CB: enc.C.map((c) => pt(c.B)),
-    s: member.s.toString(), ageBand: String(member.ageBand), sexCode: String(member.sexCode),
+    s: member.s.toString(), birthDay: String(member.birthDay), sexCode: String(member.sexCode),
     nat: sl.map((d) => d.nat.toString()), exp: sl.map((d) => d.expiry.toString()), docSel: sl.map((_, i) => (i === di ? "1" : "0")),
     salt: member.salt.toString(), rn: member.rn.toString(),
     idSiblings: idp.siblings.map(String), idPathIndex: idp.pathIndex.map(String),

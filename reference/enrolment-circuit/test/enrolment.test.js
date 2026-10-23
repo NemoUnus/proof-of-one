@@ -12,12 +12,13 @@ const snarkjs = require("snarkjs");
 const { create } = require("../../tally/src/protocol");
 const E = require("../src/enrolment");
 const B = require("../../ballot-circuit/src/ballot");
+const A = require("../../ballot-circuit/src/attrs");
 
 const ZKEY = path.join(__dirname, "..", "setup", "registration_test.zkey");
 const VKEY = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "setup", "vkey_test.json"), "utf8"));
 const BALLOT_ZKEY = path.join(__dirname, "..", "..", "ballot-circuit", "setup", "ballot_test.zkey");
 const BALLOT_VKEY = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "..", "ballot-circuit", "setup", "vkey_test.json"), "utf8"));
-const ATTRS = { ageBand: 3, natCode: 250, sexCode: 2, expiryMonth: 24400 };
+const ATTRS = { birthDay: A.dayNumber(1988, 4, 12), natCode: 250, sexCode: 2, expiryMonth: 24400 };
 
 let P, enclave;
 const fp = () => BigInt("0x" + crypto.randomBytes(31).toString("hex")); // stands for a recognised person
@@ -70,10 +71,10 @@ test("a key outside the published key set cannot be used", async () => {
   await witnessFails({ ...input, keySetRoot: enclave.keySetRoot.toString() });
 });
 
-test("attributes cannot be changed after signing (e.g. a higher age band)", async () => {
+test("attributes cannot be changed after signing (e.g. an earlier date of birth)", async () => {
   const m = E.newMember(P, ATTRS);
   const { credential } = enclave.issue({ fingerprint: fp(), attrs: ATTRS, cm: m.cm });
-  const { input } = E.buildRegistration(P, enclave, { ...m, ageBand: 5 }, credential);
+  const { input } = E.buildRegistration(P, enclave, { ...m, birthDay: ATTRS.birthDay - 3650 }, credential);
   await witnessFails(input);
 });
 
@@ -104,7 +105,7 @@ test("end to end: register → batch → vote; re-enrolment revokes the old iden
   const alice = await enrol(reg), bob = await enrol(reg), carol = await enrol(reg);
   reg.insertBatch();
   const keys = P.dkg(3, 2);
-  const policy = { minAgeBand: 2, minExpiryMonth: 24330, requiredNat: 0 };
+  const policy = { ...A.ageRange([2026, 10, 23], { minAge: 18 }), minExpiryMonth: 24330, requiredNat: 0 };
   const vote = async (who, pollId) => {
     const m = { ...who.member, index: reg.indexOf(who.leaf) };
     const b = B.buildBallot(P, { pollId, PK: keys.PK, policy, ctxHash: 1n, member: m, leafIndex: m.index, idTree: reg.idTree, revTree: reg.revTree, choice: 1 });

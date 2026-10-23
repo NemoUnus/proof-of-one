@@ -5,7 +5,7 @@
 //
 // CONTEXT
 // At enrolment the enclave saw the person's document and face, checked uniqueness,
-// and signed  msg = Poseidon(5, ageBand, sexCode, nat_0, exp_0, nat_1, exp_1, nat_2, exp_2,
+// and signed  msg = Poseidon(5, birthDay, sexCode, nat_0, exp_0, nat_1, exp_1, nat_2, exp_2,
 //                             cm, rn, epoch)   (up to 3 documents; Decision #30)
 // where cm = Poseidon(4, idc, salt, ρ) HIDES the identity commitment idc.
 // Later, in a separate session, the phone registers (leaf, cn) on the ledger with
@@ -14,7 +14,7 @@
 //
 // STATEMENT
 //   1. P = s·G and idc = Poseidon(P.x, P.y)
-//   2. leaf = Poseidon(idc, Poseidon(ageBand, sexCode, nat_0, exp_0, nat_1, exp_1,
+//   2. leaf = Poseidon(idc, Poseidon(birthDay, sexCode, nat_0, exp_0, nat_1, exp_1,
 //                                    nat_2, exp_2, salt), rn)
 //      — the same leaf format the ballot circuit proves membership of
 //   3. cm = Poseidon(4, idc, salt, ρ) and cn = Poseidon(3, ρ)
@@ -62,7 +62,7 @@ template Registration(keyDepth) {
     signal input keySetRoot;
     // private
     signal input s;
-    signal input ageBand;
+    signal input birthDay;           // day number since 1900-01-01 (Decision #37)
     signal input sexCode;
     signal input nat[3];
     signal input exp[3];
@@ -87,7 +87,7 @@ template Registration(keyDepth) {
 
     // 2. leaf
     component attr = Poseidon(9);
-    attr.inputs[0] <== ageBand;
+    attr.inputs[0] <== birthDay;
     attr.inputs[1] <== sexCode;
     for (var d = 0; d < 3; d++) {
         attr.inputs[2 + 2 * d] <== nat[d];
@@ -114,7 +114,7 @@ template Registration(keyDepth) {
     // 4. enclave signature on the credential message
     component msg = Poseidon(12);
     msg.inputs[0] <== 5;             // domain tag TAG.CREDENTIAL_MSG
-    msg.inputs[1] <== ageBand;
+    msg.inputs[1] <== birthDay;
     msg.inputs[2] <== sexCode;
     for (var d = 0; d < 3; d++) {
         msg.inputs[3 + 2 * d] <== nat[d];

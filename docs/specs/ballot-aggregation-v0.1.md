@@ -141,8 +141,8 @@ Decision Log #29 asks for a prototype of recursive aggregation with a universal-
 
 | Circuit | UltraHonk gates |
 |---|---|
-| Ballot proof with the current hash and curve (Poseidon, Baby Jubjub) | 146,686 |
-| Same statement with the proof system's native hash and curve (Poseidon2, Grumpkin) | 20,031 |
+| Ballot proof with the current hash and curve (Poseidon, Baby Jubjub) | 146,770 |
+| Same statement with the proof system's native hash and curve (Poseidon2, Grumpkin) | 20,038 |
 | Aggregator verifying 2 ballot proofs | 1,471,871 (about 750,000 per verified proof) |
 
 **What this means:**

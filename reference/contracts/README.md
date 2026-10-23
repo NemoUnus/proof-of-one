@@ -76,10 +76,10 @@ The tests run on ganache, an in-process EVM. They use **real** Groth16 proofs fo
 | `register` (π_reg verification, storage, chain hash) | 334,601 | about 300,000 |
 | `insertBatch`, 4 leaves, with π_batch | **293,548** (was 4,205,814 with on-chain hashing) | about 400,000 per batch |
 | `revoke`, with π_revoke | **294,646** (was 4,027,982 with on-chain hashing) | — |
-| `createPoll` (subgroup check of the tally key and `pollHash`, once per poll) | 874,687 | — |
-| `vote`, a voter's first ballot | **390,086** (the poll's very first ballot: 424,298; was 533,603 with 26 public inputs) | about 420,000 |
-| `vote`, re-vote | **372,913** (was 442,985) | about 400,000 |
-| `voteBatch`, n ballots | **about 347,000 + 101,000 · n** (measured for n = 1, 2, 4, 7) | — |
+| `createPoll` (subgroup check of the tally key and `pollHash`, once per poll) | 921,874 (874,687 before the birth-date range) | — |
+| `vote`, a voter's first ballot | **392,084** (the poll's very first ballot: 426,296; was 533,603 with 26 public inputs) | about 420,000 |
+| `vote`, re-vote | **374,839** (was 442,985) | about 400,000 |
+| `voteBatch`, n ballots | **about 349,000 + 101,000 · n** (measured for n = 1, 2, 4, 7) | — |
 | `publish` | 158,118 | about 300,000 |
 
 A ballot now costs about what the spec estimated, and less in batches: about 106,000 gas per ballot in a batch of 64. Two changes produced this: the nine per-poll values are bound by one `pollHash` instead of nine public inputs, and storage is packed (latest ballot and counter in one slot; both poll counters in one slot). Ballot aggregation is the next large reduction.

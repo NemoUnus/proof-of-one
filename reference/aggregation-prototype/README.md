@@ -16,13 +16,13 @@ Decision Log #29, step 2, is a prototype of recursive ballot aggregation using a
 
 | Circuit | Gates | Padded size |
 |---|---|---|
-| Ballot proof, compatible | **146,686** | 2^18 |
-| Ballot proof, native | **20,031** | 2^15 |
+| Ballot proof, compatible | **146,770** | 2^18 |
+| Ballot proof, native | **20,038** | 2^15 |
 | Aggregator, 1 proof | 704,745 | 2^20 |
 | Aggregator, 2 proofs | **1,471,871** | 2^21 |
 | Aggregator, 4 proofs | 3,006,122 | 2^22 |
 
-For comparison, the Circom ballot proof has 32,535 constraints. Gates and constraints are counted differently, so compare them only roughly.
+For comparison, the Circom ballot proof has 32,607 constraints. Sizes are for the statement with a birth-date range (Decision #37); the aggregator does not depend on it. Gates and constraints are counted differently, so compare them only roughly.
 
 **What follows:**
 

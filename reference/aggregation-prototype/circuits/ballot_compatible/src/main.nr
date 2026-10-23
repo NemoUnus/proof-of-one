@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Proof of One — ballot proof π_vote, Noir port for size measurement (prototype).
 // Same statement as reference/ballot-circuit/circuits/ballot.circom (Decision #30 version).
-use poseidon::poseidon::bn254::{hash_2, hash_3, hash_4, hash_5, hash_9};
+use poseidon::poseidon::bn254::{hash_2, hash_3, hash_5, hash_9};
 
 global GX: Field = 5299619240641551281634865583518297030282874472190772894086521144482721001553;
 global GY: Field = 16950150798460657717958625567821834550301663161624707787222815936182638968203;
@@ -39,8 +39,8 @@ fn merkle_root<let D: u32>(leaf: Field, sib: [Field; D], idx: [bool; D]) -> Fiel
 fn main(
     poll_hash: pub Field, nf: pub Field, ca: pub [[Field; 2]; 4], cb: pub [[Field; 2]; 4],
     id_root: Field, rev_root: Field, poll_id: Field, pk: [Field; 2],
-    min_age: u32, min_exp: u32, req_nat: Field, ctx: Field,
-    s: Field, age: u32, sex: Field, nat: [Field; 3], exp: [u32; 3], sel: [bool; 3], salt: Field, rn: Field,
+    max_bd: u32, min_bd: u32, min_exp: u32, req_nat: Field, ctx: Field,
+    s: Field, birth: u32, sex: Field, nat: [Field; 3], exp: [u32; 3], sel: [bool; 3], salt: Field, rn: Field,
     id_sib: [Field; 32], id_idx: [bool; 32],
     low: Field, next: Field, rev_sib: [Field; 32], rev_idx: [bool; 32],
     v: [bool; 4], r: [Field; 4],
@@ -50,7 +50,7 @@ fn main(
     let p = mul(s, g);
     let idc = hash_2([p.x, p.y]);
     // 2. membership
-    let attr = hash_9([age as Field, sex, nat[0], exp[0] as Field, nat[1], exp[1] as Field, nat[2], exp[2] as Field, salt]);
+    let attr = hash_9([birth as Field, sex, nat[0], exp[0] as Field, nat[1], exp[1] as Field, nat[2], exp[2] as Field, salt]);
     let leaf = hash_3([idc, attr, rn]);
     assert(merkle_root(leaf, id_sib, id_idx) == id_root);
     // 3. not revoked
@@ -60,7 +60,8 @@ fn main(
     // 4. nullifier
     assert(hash_3([1, poll_id, s]) == nf);
     // 5. eligibility with one privately selected document
-    assert(age >= min_age);
+    assert(birth <= max_bd);
+    assert(birth >= min_bd);
     let mut nsel: Field = 0; let mut esel: u32 = 0; let mut count: u32 = 0;
     for d in 0..3 { if sel[d] { nsel = nat[d]; esel = exp[d]; count += 1; } }
     assert(count == 1);
@@ -81,6 +82,6 @@ fn main(
     assert(sum == 1);
     // 8–9. pollHash
     let h1 = hash_5([id_root, rev_root, poll_id, pk[0], pk[1]]);
-    let h2 = hash_4([min_age as Field, min_exp as Field, req_nat, ctx]);
+    let h2 = hash_5([max_bd as Field, min_bd as Field, min_exp as Field, req_nat, ctx]);
     assert(hash_3([7, h1, h2]) == poll_hash);
 }

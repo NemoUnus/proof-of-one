@@ -4,7 +4,6 @@ pragma solidity ^0.8.24;
 import {BabyJubjub} from "./BabyJubjub.sol";
 
 interface IPoseidon3 { function poseidon(uint256[3] calldata input) external pure returns (uint256); }
-interface IPoseidon4 { function poseidon(uint256[4] calldata input) external pure returns (uint256); }
 interface IPoseidon5 { function poseidon(uint256[5] calldata input) external pure returns (uint256); }
 
 interface IIdentityRegistry {
@@ -61,7 +60,8 @@ contract ProofOfOnePolls {
         uint256 revRoot;
         uint256 eligible;
         uint256[2] tallyPK;
-        uint32 minAgeBand;
+        uint32 maxBirthDay;     // eligible if born on or before this day (days since 1900-01-01)
+        uint32 minBirthDay;     // and on or after this day; 0 = no upper age limit (Decision #37)
         uint32 minExpiryMonth;
         uint32 requiredNat;
         uint16 maxRevotes;
@@ -85,14 +85,14 @@ contract ProofOfOnePolls {
     IIdentityRegistry public immutable identity;
     IRevocationRegistry public immutable revocation;
     IPoseidon3 public immutable poseidon3;
-    IPoseidon4 public immutable poseidon4;
     IPoseidon5 public immutable poseidon5;
 
     /// @notice What a poll creator chooses. Snapshot roots and the eligible count are NOT
     ///         chosen by the creator; they are read from the registries.
     struct PollParams {
         uint256[2] tallyPK;
-        uint32 minAgeBand;
+        uint32 maxBirthDay;     // eligible if born on or before this day (days since 1900-01-01)
+        uint32 minBirthDay;     // and on or after this day; 0 = no upper age limit (Decision #37)
         uint32 minExpiryMonth;
         uint32 requiredNat;
         uint16 maxRevotes;
@@ -135,7 +135,6 @@ contract ProofOfOnePolls {
         IIdentityRegistry identity_,
         IRevocationRegistry revocation_,
         IPoseidon3 p3,
-        IPoseidon4 p4,
         IPoseidon5 p5
     ) {
         verifier = verifier_;
@@ -143,7 +142,6 @@ contract ProofOfOnePolls {
         identity = identity_;
         revocation = revocation_;
         poseidon3 = p3;
-        poseidon4 = p4;
         poseidon5 = p5;
     }
 
@@ -164,7 +162,8 @@ contract ProofOfOnePolls {
         s.revRoot = revocation.root();
         s.eligible = identity.leafCount() - revocation.revokedCount();
         s.tallyPK = p.tallyPK;
-        s.minAgeBand = p.minAgeBand;
+        s.maxBirthDay = p.maxBirthDay;
+        s.minBirthDay = p.minBirthDay;
         s.minExpiryMonth = p.minExpiryMonth;
         s.requiredNat = p.requiredNat;
         s.maxRevotes = p.maxRevotes == 0 ? 10 : p.maxRevotes;
@@ -172,9 +171,9 @@ contract ProofOfOnePolls {
         s.closeTime = p.closeTime;
         s.metadataHash = p.metadataHash;
         // pollHash = Poseidon(7, Poseidon(idRoot, revRoot, pollId, PK.x, PK.y),
-        //                       Poseidon(minAgeBand, minExpiryMonth, requiredNat, contextHash))
+        //                       Poseidon(maxBirthDay, minBirthDay, minExpiryMonth, requiredNat, contextHash))
         uint256 h1 = poseidon5.poseidon([s.idRoot, s.revRoot, pollId, p.tallyPK[0], p.tallyPK[1]]);
-        uint256 h2 = poseidon4.poseidon([uint256(p.minAgeBand), uint256(p.minExpiryMonth), uint256(p.requiredNat), contextHash(pollId)]);
+        uint256 h2 = poseidon5.poseidon([uint256(p.maxBirthDay), uint256(p.minBirthDay), uint256(p.minExpiryMonth), uint256(p.requiredNat), contextHash(pollId)]);
         s.pollHash = poseidon3.poseidon([uint256(7), h1, h2]);
         s.state = State.Open;
         emit PollCreated(pollId, msg.sender, s.idRoot, s.revRoot, p.openTime, p.closeTime, p.metadataHash);

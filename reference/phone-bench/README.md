@@ -4,8 +4,8 @@
 
 This web page makes the ballot proof π_vote three times on the device that opens it and shows how long each run took. It is the first step of Decision Log #29: before choosing how to aggregate ballots, we need to know how fast real, low-cost phones can prove.
 
-- **What it proves:** one valid ballot from [`input.json`](input.json), built by [`mkinput.js`](mkinput.js) from test data (a member with two nationalities voting in a regional poll).
-- **Prover:** snarkjs 0.7.5 in the browser (WebAssembly), the same proof the reference tests use: 32,535 constraints, Groth16. A native prover in an app is expected to be several times faster, so these results are an upper bound.
+- **What it proves:** one valid ballot from [`input.json`](input.json), built by [`mkinput.js`](mkinput.js) from test data (a member with two nationalities voting in a regional poll with an age limit).
+- **Prover:** snarkjs 0.7.5 in the browser (WebAssembly), the same proof the reference tests use: 32,607 constraints, Groth16. A native prover in an app is expected to be several times faster, so these results are an upper bound.
 - **Privacy:** the page sends nothing. Its result text includes the number of processor cores, the approximate memory the browser reports and, if you type it, the phone model. You decide whether to share it.
 
 ## How to run it

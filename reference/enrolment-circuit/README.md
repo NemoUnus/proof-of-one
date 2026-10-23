@@ -58,7 +58,7 @@ The tests also use [`../tally`](../tally/) and [`../ballot-circuit`](../ballot-c
 | Using a credential twice | Rejected by the registry |
 | Forged enclave signature | Cannot be proven |
 | Signing key outside the published key set | Cannot be proven |
-| Changing attributes after signing (e.g. a higher age band) | Cannot be proven |
+| Changing attributes after signing (e.g. an earlier date of birth) | Cannot be proven |
 | Swapping the revocation handle | Cannot be proven |
 | Same person enrolling twice without the re-enrolment path | Refused by the enclave |
 | Minimum batch | Leaves wait until *K* are pending |
