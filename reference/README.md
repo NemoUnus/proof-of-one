@@ -6,7 +6,7 @@ Four small packages implement the core of the protocol end to end, and two folde
 
 | Package | What it contains | Tests |
 |---|---|---|
-| [`tally/`](tally/) | Encrypted one-hot ballots, nullifiers, trustee key generation, voter self-verification, homomorphic tally, threshold decryption with DLEQ proofs, independent recount tool | 13 |
+| [`tally/`](tally/) | Encrypted one-hot ballots, nullifiers, robust trustee key generation with public complaints, voter self-verification, homomorphic tally, threshold decryption with DLEQ proofs, independent recount tool | 25 |
 | [`ballot-circuit/`](ballot-circuit/) | Zero-knowledge ballot proof π_vote (Circom, Groth16): membership, non-revocation, nullifier, eligibility with up to three nationalities, age range on the poll date, well-formed encrypted ballot, all per-poll values bound by one `pollHash` | 18 |
 | [`enrolment-circuit/`](enrolment-circuit/) | Unlinkable registration proof π_reg, batch insertion proof π_batch and revocation proof π_revoke (Circom, Groth16), enclave credential issuance including added documents, registry rules | 21 |
 | [`phone-bench/`](phone-bench/) | Web page that measures how fast a phone makes the ballot proof | — |

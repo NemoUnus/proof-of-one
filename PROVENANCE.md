@@ -18,7 +18,7 @@ Proof of One is built by people and by disclosed AI agents ([AGENTS.md](AGENTS.m
 |---|---|---|
 | The idea, the founding principles R1 and R2, and every recorded decision ([decision log](docs/decisions/DECISION_LOG.md)) | **Human**: Nemo Unus. Recorded by Hermes (AI agent). | Founder |
 | [Whitepaper](docs/whitepaper/) | AI draft, human-directed | **Founder-reviewed** (read in full, several times); expert review: none yet |
-| [Specifications](docs/specs/): threat model, ballot and enrolment, red-team review, contracts, implementation notes, ballot aggregation, several nationalities, face uniqueness at scale, access under network restrictions, date of birth and private verification | AI draft, human-directed | Expert review: none yet |
+| [Specifications](docs/specs/): threat model, ballot and enrolment, red-team review, contracts, implementation notes, ballot aggregation, several nationalities, face uniqueness at scale, access under network restrictions, date of birth and private verification, trustee key generation | AI draft, human-directed | Expert review: none yet |
 | [Document coverage research](docs/research/) | AI draft, at the founder's request (his idea) | Expert review: none yet; corrections by country welcome |
 | [One-page summary](docs/summary/) | AI draft, human-directed | Founder |
 | [Reference code](reference/): circuits, contracts, tally and recount tool | AI draft | Expert review: none yet |

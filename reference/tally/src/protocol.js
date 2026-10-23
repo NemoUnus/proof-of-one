@@ -4,7 +4,7 @@
 // with red-team changes C5 and C8 and contract checks from docs/specs/contracts-v0.1.md.
 //
 // WHAT THIS CODE DOES
-//   key generation by trustees (joint Feldman DKG), ballot encryption (one-hot,
+//   robust key generation by trustees (GJKR-style DKG, src/dkg.js), ballot encryption (one-hot,
 //   exponential ElGamal), nullifiers, the ledger's latest-ballot-per-nullifier rule
 //   and ballot chain, homomorphic aggregation, threshold partial decryption with
 //   Chaum–Pedersen (DLEQ) proofs, Lagrange combination, discrete-log recovery,
@@ -16,14 +16,12 @@
 //     A dishonest voter could otherwise encrypt e.g. 2 and −1. The contract check
 //     Σ counts == distinctVoters catches some but NOT all such ballots.
 //   - Enrolment, Merkle membership, revocation, relays, network privacy.
-//   - Robust DKG: joint-Feldman can let a malicious trustee bias the public key
-//     (Gennaro–Jarecki–Krawczyk–Rabin 1999). Production must use GJKR-style DKG
-//     with complaint handling.
 // Reference code for review only. Not constant-time. Do not use with real people.
 
 "use strict";
 const curve = require("./curve");
 const hash = require("./hash");
+const dkgLib = require("./dkg");
 
 async function create() {
   const C = await curve.init();
@@ -38,35 +36,16 @@ async function create() {
   const nullifier = (pollId, s) => H([TAG.NULLIFIER, pollId, s]);
 
   // ------------------------------------------------------------ trustee DKG
-  // Joint-Feldman DKG for a t-of-n key. Each trustee i deals a random polynomial
-  // f_i of degree t−1, publishes commitments A_ik = a_ik·G and sends f_i(j) to j.
-  // Trustee j's share: x_j = Σ_i f_i(j). Public key PK = Σ_i A_i0.
-  function dkg(n, t) {
+  // Robust t-of-n key generation (src/dkg.js). dkg(n, t) runs a full session with n
+  // honest trustees in one process, as the other tests and the simulation need;
+  // dkgProtocol exposes the trustee, the session and the public transcript check.
+  const dkgProtocol = dkgLib.build(C, Hs);
+  function dkg(n, t, pollId = 0n) {
     if (!(t >= 1 && t <= n)) throw new Error("need 1 ≤ t ≤ n");
-    const polys = [], commits = [];
-    for (let i = 0; i < n; i++) {
-      const a = Array.from({ length: t }, () => randScalar());
-      polys.push(a);
-      commits.push(a.map((ak) => mul(G, ak)));
-    }
-    const evalPoly = (a, x) => a.reduceRight((acc, ak) => mod(acc * x + ak), 0n);
-    const shares = [];
-    for (let j = 1; j <= n; j++) {
-      let xj = 0n;
-      for (let i = 0; i < n; i++) {
-        const sij = evalPoly(polys[i], BigInt(j));
-        // Recipient-side Feldman check: s_ij·G == Σ_k A_ik · j^k
-        if (!eq(mul(G, sij), commitEval(commits[i], BigInt(j)))) throw new Error("bad share");
-        xj = mod(xj + sij);
-      }
-      shares.push({ index: j, x: xj });
-    }
-    const PK = commits.reduce((acc, ci) => add(acc, ci[0]), O);
-    const publicShares = shares.map(({ index }) => ({
-      index,
-      PK: commits.reduce((acc, ci) => add(acc, commitEval(ci, BigInt(index))), O),
-    }));
-    return { PK, shares, publicShares, t, n };
+    const trustees = Array.from({ length: n }, (_, i) => dkgProtocol.newTrustee(i + 1));
+    const out = dkgProtocol.run({ pollId, trustees, t });
+    if (!out.ok || !out.finished.every((f) => f.ok)) throw new Error("key generation failed: " + out.error);
+    return { PK: out.PK, shares: out.finished.map((f) => f.share), publicShares: out.publicShares, t, n, transcript: out.transcript, hash: out.hash };
   }
   function commitEval(ci, x) {
     let acc = O, xp = 1n;
@@ -262,7 +241,7 @@ async function create() {
   }
 
   return {
-    curve: C, hash: Hs, nullifier, dkg, encryptBallot, reencrypt, ballotHash, createLedger, replay,
+    curve: C, hash: Hs, nullifier, dkg, dkgProtocol, encryptBallot, reencrypt, ballotHash, createLedger, replay,
     aggregate, partialDecrypt, verifyPartial, combine, discreteLog, checkResult, recount,
     voterCheckRecorded, voterCheckCounted,
   };

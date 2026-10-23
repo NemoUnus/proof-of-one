@@ -39,6 +39,7 @@ Participation is free. Topics of sponsored polls are chosen by participants them
 | [Face uniqueness at scale v0.1](docs/specs/face-uniqueness-at-scale-v0.1.md) | What large-scale face search can do, and the search procedure that follows |
 | [Access under network restrictions v0.1](docs/specs/censorship-resistant-access-v0.1.md) | Keeping enrolment and voting usable where access is restricted |
 | [Date of birth and private verification v0.1](docs/specs/birth-date-and-private-verification-v0.1.md) | Hidden date of birth instead of a fixed age band; age and personhood checks for other services without tracking |
+| [Trustee key generation v0.1](docs/specs/trustee-key-generation-v0.1.md) | How the trustees make each poll's key so that no one can bias it, cheaters are caught publicly and the tally survives absent trustees |
 | [Who can enrol? Document coverage v0.1](docs/research/document-coverage-v0.1.md) · [data (CSV)](docs/research/document-coverage-v0.1.csv) | Which countries issue chip documents a phone can read, and what share of people can take part today |
 | [Decision log](docs/decisions/DECISION_LOG.md) | Every design decision and why it was taken |
 

@@ -15,7 +15,7 @@ Requires Node.js 20 or later.
 
 ```bash
 npm install
-npm test                                  # 13 tests, including attack cases (about 2 minutes)
+npm test                                  # 25 tests, including attack cases (about 4 minutes)
 node bin/demo.js 40 transcript.json       # simulate a poll and write its public transcript
 node bin/recount.js transcript.json       # independent recount from the transcript only
 ```
@@ -29,7 +29,7 @@ Edit any number in `transcript.json`, such as a published count or a trustee's p
 | Baby Jubjub group helpers, point validation (curve + subgroup) | `src/curve.js` | §1 |
 | Domain-separated Poseidon, keccak ballot chain | `src/hash.js` | §1, contracts §7 |
 | Nullifier `nf = Poseidon(TAG, pollId, s)` | `src/protocol.js` | §1 |
-| Trustee key generation, t-of-n (joint Feldman) | `src/protocol.js` | §3 |
+| Robust trustee key generation, t-of-n (GJKR-style, public complaints, rebuilding of dealers that withdraw) | `src/dkg.js` | [trustee-key-generation-v0.1](../../docs/specs/trustee-key-generation-v0.1.md) |
 | One-hot ballot, exponential ElGamal | `src/protocol.js` | §4.1 |
 | Ledger: latest ballot per nullifier, re-vote cap, distinct voters, ballot chain | `src/protocol.js` | §4.3, contracts §7 |
 | Voter verification (recorded as cast, counted as recorded) | `src/protocol.js` | §5 |
@@ -41,7 +41,7 @@ Edit any number in `transcript.json`, such as a published count or a trustee's p
 ## What is NOT implemented — and why it matters
 
 - **The zero-knowledge ballot proof (π_vote)** is not part of this package. Here, ballots are *assumed* well-formed and to come from eligible members. The last test shows why the proof is essential: without it, a ballot encrypting (+2, −1, 0, 0) cancels another voter's vote, and the contract check Σ counts = distinct voters cannot detect it. The proof is implemented in [`../ballot-circuit`](../ballot-circuit/), which shows that such a ballot cannot be proven.
-- **Robust key generation.** Joint-Feldman key generation can let a malicious trustee bias the public key (Gennaro, Jarecki, Krawczyk and Rabin, 1999). A real deployment needs a robust distributed key generation with complaint handling. Here all trustees are simulated in one process.
+- **Networked trustees.** Key generation is complete as a protocol, but all trustees run in one process over a simulated public board. A trustee client with round deadlines on the ledger is future work.
 - **Enrolment, membership proofs, revocation, relays and network privacy.**
 - **Share deletion** after the challenge period. This is a trust assumption, not code.
 
@@ -69,6 +69,19 @@ Edit any number in `transcript.json`, such as a published count or a trustee's p
 | Ledger rules | Re-vote cap and invalid-point rejection |
 | Nullifiers | Stable within a poll, different across polls |
 | Known limitation | Why π_vote is required |
+| **Key generation** (`test/dkg.test.js`, 12 tests) | |
+| Honest session | All trustees agree; anyone rebuilds the key and public shares from the transcript; any t shares give the same secret |
+| Wrong share | A public complaint disqualifies the dealer |
+| False complaint | Rejected and recorded; the honest dealer stays |
+| Forged complaint proof | Ignored |
+| Small-subgroup point | The dealer is disqualified |
+| Rogue key | A dealer cannot pick its commitment to cancel the others |
+| Wrong Feldman values | The dealer is rebuilt; the key cannot be shifted |
+| Dealer withdraws | Its contribution is rebuilt, so walking away cannot change the key |
+| Wrong revealed shares | Ignored during a rebuild |
+| Too few honest dealers | The session fails openly |
+| Edited transcript | Gives another hash and another key |
+| Absent and cheating trustees at the tally | The recount names the cheater and is exact |
 
 ## Authorship and review status
 

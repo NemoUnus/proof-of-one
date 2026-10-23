@@ -15,6 +15,11 @@ const { keccak_256 } = require("@noble/hashes/sha3");
 const TAG = Object.freeze({
   NULLIFIER: 1n, // nf = H(TAG, pollId, s)
   DLEQ: 2n, // Fiat–Shamir challenge of a Chaum–Pedersen proof
+  // 3–8 are used by enrolment, the poll hash and service identifiers.
+  DKG_CTX: 9n, // trustee key generation: session context
+  DKG_PAD: 10n, // trustee key generation: share encryption pad
+  DKG_DLEQ: 11n, // trustee key generation: complaint key proof
+  DKG_GEN: 12n, // trustee key generation: second generator H
 });
 
 let poseidon = null;

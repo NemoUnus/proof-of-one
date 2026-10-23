@@ -59,11 +59,11 @@ These notes record where the implementation confirmed the specifications, where 
 | N16 | **Hash and curve choice decides the cost in other proof systems.** The same ballot statement is about 7 times larger in UltraHonk with Poseidon and Baby Jubjub than with that system's native Poseidon2 and Grumpkin. Any move to recursive aggregation must weigh a redesign of the primitives. | aggregation-prototype |
 | N17 | **Ages as birth-date ranges.** The identity stores the date of birth as a day number; a poll's age rule is a range of birth days computed for the poll date and bound into `pollHash`. Inputs to the 32-bit comparators are below 2^32 because the enclave signs the date and the contract stores the range as `uint32`. | ballot-circuit, contracts |
 | N18 | **Headroom of the test parameters.** The ballot proof (32,607 constraints plus 18 public inputs) is close to the 2^15 limit of the test powers-of-tau file. The next increase needs a 2^16 file. | ballot-circuit |
+| N19 | **Robust trustee key generation.** The joint-Feldman key generation of the first reference tally let a trustee that spoke last bias the key. It is replaced by GJKR-style key generation with hiding commitments, complaints that anyone can settle from the transcript, and rebuilding of dealers that withdraw ([trustee-key-generation-v0.1](trustee-key-generation-v0.1.md)). Hash tags 9–12 are used for it. | tally |
 
 ## 4. Open issues found during implementation
 
 - **Licence of generated verifiers:** snarkjs-generated Solidity verifiers carry GPL-3.0, which conflicts with the planned Apache-2.0 licence for contracts. Options are a differently licensed verifier template or a licence decision. *Needs human legal review.*
-- **Joint-Feldman key generation** is used in the reference tally. Production needs a robust distributed key generation (GJKR-style) with complaint handling.
 - **Trusted setup:** all proofs use TEST-ONLY single-contributor setups (issue #7).
 - **Dependencies:** `npm audit` reports advisories in transitive dependencies of circomlibjs and ganache. They have not been assessed.
 
