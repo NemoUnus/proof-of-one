@@ -86,6 +86,7 @@ Each trustee does about `2t + n` point multiplications to deal and about `n + t`
 
 ## 7. Open points for expert review
 
+- **Threshold choice.** The whitepaper's example uses 9 trustees with threshold 6: up to 5 colluding trustees cannot decrypt, but more than 3 misbehaving or absent trustees stop the session or the tally. Threshold 5 would make both numbers 4. The founder chose to keep 6 for now, favouring resistance to collusion, and asks reviewers for their view.
 - The Fiat–Shamir and encryption hashes reduce Poseidon outputs modulo ℓ. The bias is below 2^-90, and it is noted, not removed.
 - The derivation of `H` (try-and-increment) is simple and public but not constant-time. It runs once and involves no secret.
 - The reference contracts accept the tally key from the poll creator. Attaching it with `t`-of-`n` trustee signatures and the transcript hash, as [contracts-v0.1](contracts-v0.1.md) §6 specifies, is not yet in the reference contracts.
