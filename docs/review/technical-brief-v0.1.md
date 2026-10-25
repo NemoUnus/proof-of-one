@@ -113,10 +113,10 @@ Run them: [`reference/README.md`](../../reference/README.md). Node.js 20; no oth
 
 1. **Enrolment unlinkability** with an enclave that knows `cm` and `rn` (§3.1). Is Poseidon used as a commitment, a PRF and a random oracle in ways that are each justified?
 2. **π_vote completeness.** Any missing constraint is a forged vote. The comparators assume inputs below 2^32 because the enclave signs the date and the contract stores `uint32`; is that enough?
-3. **The CSCA trust list.** A field test by the founder read a real passport chip on a phone, but a commercial verifier could not build the certificate chain, although the issuing country is an ICAO PKD participant ([document coverage §4](../research/document-coverage-v0.1.md#4-other-limits)). How should an open project obtain, publish and audit the certificates it trusts?
+3. **The CSCA trust list.** A field test by the founder read a real passport chip on a phone, but a commercial verifier could not build the certificate chain, although the issuing country is an ICAO PKD participant ([document coverage §4](../research/document-coverage-v0.1.md#4-other-limits)). How should an open project obtain, publish and audit the certificates it trusts? ([issue #14](https://github.com/NemoUnus/proof-of-one/issues/14))
 4. **Face search at global scale.** False matches grow with the size of the database; the procedure in [face-uniqueness-at-scale](../specs/face-uniqueness-at-scale-v0.1.md) asks the person about earlier enrolment and uses birth-date blocking. Is it sound and fair?
 5. **Batched verification** with weights derived from calldata chosen by the submitter. Is the Fiat–Shamir argument correct here?
-6. **Trustee threshold.** With 9 trustees and threshold 6, secrecy holds against 5 colluders but more than 3 misbehaving trustees stop the tally. The founder chose this for now and asks for views.
+6. **Trustee threshold.** With 9 trustees and threshold 6, secrecy holds against 5 colluders but more than 3 misbehaving trustees stop the tally. The founder chose this for now and asks for views ([issue #13](https://github.com/NemoUnus/proof-of-one/issues/13)).
 7. **Coercion and participation privacy.** The receipt window helps the voter and also a coercer; whether a member took part in a poll is not hidden.
 
 ## 7. How to respond
