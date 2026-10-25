@@ -13,7 +13,7 @@ These notes record where the implementation confirmed the specifications, where 
 | Batch insertion proof π_batch, depth 32 | — | **16,227** (4 leaves); **501,947** (1,024 leaves) | Four public inputs regardless of batch size |
 | Revocation update proof π_revoke, depth 32 | — | **32,521** | Four Merkle paths and two range comparisons |
 | π_vote proving time | "seconds on phones" | 4–5 s on a server CPU (snarkjs, Node.js); about 10 s in a browser on 2 server cores; **3.5 s in the browser of an iPhone 14** (first phone measurement, by the founder) | Phones: [phone benchmark](../../reference/phone-bench/); native provers are expected to be faster |
-| π_vote in Noir/UltraHonk (same hash and curve) | — | **146,686 gates**; with native Poseidon2/Grumpkin **20,031** | [aggregation prototype](../../reference/aggregation-prototype/); size only |
+| π_vote in Noir/UltraHonk (same hash and curve) | — | **146,770 gates**; with native Poseidon2/Grumpkin **20,038** | [aggregation prototype](../../reference/aggregation-prototype/); size only |
 | Verifying one ballot proof inside an aggregation proof | — | **about 750,000 gates** | Server-side cost of recursive aggregation |
 
 ## 2. Measured gas (reference contracts, unoptimised)
@@ -26,7 +26,7 @@ These notes record where the implementation confirmed the specifications, where 
 | Groth16 verification of π_vote alone | — | **303,022** (78% of a ballot) |
 | Batch of n ballots (`voteBatch`) | — | **about 349,000 + 101,000 · n**, measured for n = 1, 2, 4, 7; +34,000 for the poll's first batch |
 | Create poll (subgroup check of the tally key; `pollHash`, once per poll) | — | **921,874** (874,687 before the birth-date range) |
-| Publish result | ~300,000 | **158,118** |
+| Publish result | ~300,000 | **158,145** |
 | Insert identities, on-chain hashing | ~650,000 per leaf (naive) | **~1,050,000 per leaf** |
 | Insert a batch with π_batch (any batch size) | ~400,000 per batch | **293,548 per batch** |
 | Revoke, on-chain path checks | — | **4,027,982** |

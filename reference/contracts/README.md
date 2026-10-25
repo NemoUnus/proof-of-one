@@ -80,7 +80,7 @@ The tests run on ganache, an in-process EVM. They use **real** Groth16 proofs fo
 | `vote`, a voter's first ballot | **392,084** (the poll's very first ballot: 426,296; was 533,603 with 26 public inputs) | about 420,000 |
 | `vote`, re-vote | **374,839** (was 442,985) | about 400,000 |
 | `voteBatch`, n ballots | **about 349,000 + 101,000 · n** (measured for n = 1, 2, 4, 7) | — |
-| `publish` | 158,118 | about 300,000 |
+| `publish` | 158,145 | about 300,000 |
 
 A ballot now costs about what the spec estimated, and less in batches: about 106,000 gas per ballot in a batch of 64. Two changes produced this: the nine per-poll values are bound by one `pollHash` instead of nine public inputs, and storage is packed (latest ballot and counter in one slot; both poll counters in one slot). Ballot aggregation is the next large reduction.
 

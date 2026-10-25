@@ -59,6 +59,7 @@ India (1.46 billion) and Pakistan (255 million) are counted as *switching over*.
 ## 4. Other limits
 
 - **Certificates.** In 2023 one commercial reader could verify the chips of 116 of the 171 issuing countries and territories by default, about 68%. Membership of the ICAO PKD has since grown to 107 participants. A document whose certificates cannot be obtained can be read but not proven genuine, so it cannot be used for enrolment.
+- **Field test (October 2026).** The founder read his own passport with a free commercial reader app on an iPhone 14. The chip opened and the data and photo were read, but the signature check reported *could not build a chain to trust anchor*: the app did not hold the issuing country's signing certificate (CSCA), although that country is listed as an ICAO PKD participant. PKD membership alone therefore does not mean that every verifier holds the certificate. Proof of One needs a published, auditable list of the CSCA certificates its enclave trusts, with the source of each (ICAO PKD, national master lists), and must refuse enrolment openly for documents it cannot verify. The country is not named here, to protect the founder's anonymity.
 - **Phones.** Reading the chip needs a phone with NFC. Most mid-range and better Android phones, and iPhones since iOS 13, can do this. Many of the cheapest phones cannot. This must be measured in the target regions.
 - **Age and validity.** Only adults with a valid, unexpired document can enrol (Decision #30 keeps expiry per document).
 

@@ -47,7 +47,8 @@ cd ../contracts   && npm install && npm test
 ## Most important open items
 
 - A real trusted setup (a large public ceremony) or a universal-setup proof system ([issue #7](https://github.com/NemoUnus/proof-of-one/issues/7)).
-- A robust distributed key generation for the trustees.
+- A networked trustee client for the key generation, which is now robust but simulated in one process ([trustee key generation](../docs/specs/trustee-key-generation-v0.1.md)).
+- A published, auditable list of the country signing certificates (CSCA) that enrolment trusts ([document coverage §4](../docs/research/document-coverage-v0.1.md#4-other-limits)).
 - Enrolment front end: document-validity proof, liveness and face matching in an attested enclave.
 - Prover performance on phones.
 - Independent human review of everything here.

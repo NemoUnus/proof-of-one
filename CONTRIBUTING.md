@@ -6,7 +6,7 @@ Thank you for considering a contribution. Proof of One may one day be used by pe
 
 The project is at the design stage. The most valuable contributions are:
 
-1. **Critical review** of the [whitepaper](docs/whitepaper/) and [specifications](docs/specs/): errors, attacks, unclear statements, overstated claims.
+1. **Critical review** of the [whitepaper](docs/whitepaper/) and [specifications](docs/specs/): errors, attacks, unclear statements, overstated claims. The [reviewer's guide](REVIEWING.md) lists the questions that matter most.
 2. **Expert knowledge** in cryptography, zero-knowledge proofs, smart-contract security, mobile identity (ICAO 9303, NFC, liveness), biometrics accuracy, survey methodology, data-protection law.
 3. **Translations** of the summary documents.
 

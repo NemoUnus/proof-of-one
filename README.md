@@ -8,6 +8,8 @@ An open, verifiable polling network built on one-person-one-identity.</p>
 
 > **Status: design stage (pre-alpha).** This repository contains the whitepaper, protocol specifications and a reference implementation of the voting core. **Nothing here has been audited. Do not use any part of it with real participants.** See [Staged release](#staged-release).
 
+> **Reviewers wanted.** If you work in cryptography, zero-knowledge proofs, smart-contract security, e-voting, biometrics or data-protection law, the [reviewer's guide](REVIEWING.md) and the [technical brief](docs/review/technical-brief-v0.1.md) show where your critique matters most.
+
 ## What is Proof of One?
 
 Online opinion can no longer be trusted. Bots and AI agents can create thousands of convincing respondents, one person can answer many times, and nobody outside the organiser can check that a published result is the true count.
@@ -28,6 +30,7 @@ Participation is free. Topics of sponsored polls are chosen by participants them
 | Document | Description |
 |---|---|
 | [One-page summary (PDF)](docs/summary/Proof_of_One_Summary_EN.pdf) · [Markdown](docs/summary/SUMMARY.en.md) | Plain-language overview — start here |
+| [Technical brief for reviewers](docs/review/technical-brief-v0.1.md) | Claims, constructions, trust assumptions, measurements and known weak points, in 15 minutes |
 | [Whitepaper v0.8 (PDF)](docs/whitepaper/Proof_of_One_Whitepaper_v0.8_EN.pdf) · [Markdown](docs/whitepaper/Proof_of_One_Whitepaper_v0.8_EN.md) | Full design, with measured sizes and costs from the reference code: identity, cryptography, ledger, polling, governance, limits |
 | [Threat model v0.1](docs/specs/threat-model-v0.1.md) | Adversary with the resources of a state |
 | [Ballot and enrolment spec v0.1](docs/specs/ballot-and-enrolment-v0.1.md) | Encrypted ballots, public tally, unlinkable enrolment |
