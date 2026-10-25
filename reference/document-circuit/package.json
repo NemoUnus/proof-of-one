@@ -1,0 +1,24 @@
+{
+  "name": "@proof-of-one/document-circuit",
+  "version": "0.1.0",
+  "description": "Reference document-validity proof (π_doc) for Proof of One: ICAO 9303 passive authentication in zero knowledge (not for production use)",
+  "main": "src/document.js",
+  "scripts": {
+    "build": "mkdir -p build && circom2 circuits/document.circom --r1cs --wasm --sym --O2 -l node_modules -o build",
+    "test": "node --test --test-force-exit test/*.test.js",
+    "setup:test": "bash scripts/setup-test.sh"
+  },
+  "license": "Apache-2.0",
+  "dependencies": {
+    "@zk-email/circuits": "6.3.4",
+    "circom2": "0.2.22",
+    "circomlib": "2.0.5",
+    "circomlibjs": "0.1.7",
+    "node-forge": "1.3.1",
+    "snarkjs": "0.7.5"
+  },
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  }
+}

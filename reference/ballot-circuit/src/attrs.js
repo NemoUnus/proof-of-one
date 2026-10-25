@@ -12,6 +12,9 @@
 //   fields = [birthDay, sexCode, nat_0, exp_0, nat_1, exp_1, nat_2, exp_2]
 //   attr   = Poseidon(...fields, salt)
 //
+// Nationality codes are the three ICAO letters packed as one number,
+// 65536·c1 + 256·c2 + c3 (natCode("FRA")), exactly as the document-validity proof
+// π_doc outputs them. Tests may use any positive number.
 // Older single-document attributes { natCode, expiryMonth } are accepted and treated
 // as one document.
 "use strict";
@@ -32,6 +35,12 @@ function ageRange(on, { minAge = 0, maxAge } = {}) {
   const maxBirthDay = dayNumber(y - minAge, m, d);
   const minBirthDay = maxAge === undefined ? 0 : dayNumber(y - maxAge - 1, m, d) + 1;
   return { maxBirthDay, minBirthDay };
+}
+
+// The packed nationality code of an ICAO three-letter code (e.g. "FRA", "D<<").
+function natCode(alpha3) {
+  if (typeof alpha3 !== "string" || alpha3.length !== 3) throw new Error("three letters expected");
+  return BigInt(alpha3.charCodeAt(0) * 65536 + alpha3.charCodeAt(1) * 256 + alpha3.charCodeAt(2));
 }
 
 function docsOf(a) {
@@ -81,4 +90,4 @@ function inAgeRange(a, policy) {
   return b <= BigInt(policy.maxBirthDay) && b >= BigInt(policy.minBirthDay ?? 0);
 }
 
-module.exports = { MAX_DOCS, dayNumber, ageRange, inAgeRange, docsOf, slots, attrFields, attrHash, selectDoc, withDocument };
+module.exports = { MAX_DOCS, dayNumber, natCode, ageRange, inAgeRange, docsOf, slots, attrFields, attrHash, selectDoc, withDocument };

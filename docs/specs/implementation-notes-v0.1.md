@@ -10,6 +10,7 @@ These notes record where the implementation confirmed the specifications, where 
 |---|---|---|---|
 | Ballot proof π_vote, 4 options, trees of depth 32 | about 40,000 constraints | **32,607** with up to three documents and a birth-date range (32,535 with an age band; 32,429 with one document; 31,554 before `pollHash`) | Includes revocation non-membership (C1), which the original estimate did not |
 | Registration proof π_reg, key-set depth 8 | 12,000–18,000 | **9,369** with up to three documents (9,171 with one) | EdDSA-Poseidon verification dominates |
+| Document-validity proof π_doc (TD3 passport, SHA-256, RSA-2048) | — | **577,678** (SHA-256 about 366,000; RSA-2048 185,903) | Once per enrolment; needs a native prover on phones ([spec](document-validity-proof-v0.1.md)) |
 | Batch insertion proof π_batch, depth 32 | — | **16,227** (4 leaves); **501,947** (1,024 leaves) | Four public inputs regardless of batch size |
 | Revocation update proof π_revoke, depth 32 | — | **32,521** | Four Merkle paths and two range comparisons |
 | π_vote proving time | "seconds on phones" | 4–5 s on a server CPU (snarkjs, Node.js); about 10 s in a browser on 2 server cores; **3.5 s in the browser of an iPhone 14** (first phone measurement, by the founder) | Phones: [phone benchmark](../../reference/phone-bench/); native provers are expected to be faster |
@@ -60,6 +61,7 @@ These notes record where the implementation confirmed the specifications, where 
 | N17 | **Ages as birth-date ranges.** The identity stores the date of birth as a day number; a poll's age rule is a range of birth days computed for the poll date and bound into `pollHash`. Inputs to the 32-bit comparators are below 2^32 because the enclave signs the date and the contract stores the range as `uint32`. | ballot-circuit, contracts |
 | N18 | **Headroom of the test parameters.** The ballot proof (32,607 constraints plus 18 public inputs) is close to the 2^15 limit of the test powers-of-tau file. The next increase needs a 2^16 file. | ballot-circuit |
 | N19 | **Robust trustee key generation.** The joint-Feldman key generation of the first reference tally let a trustee that spoke last bias the key. It is replaced by GJKR-style key generation with hiding commitments, complaints that anyone can settle from the transcript, and rebuilding of dealers that withdraw ([trustee-key-generation-v0.1](trustee-key-generation-v0.1.md)). Hash tags 9–12 are used for it. | tally |
+| N20 | **Nationality and signer encodings.** Nationality codes are the three ICAO letters packed as one number (`natCode("FRA")`), so no country table is needed inside a circuit. Document signers are checked against CSCA certificates by a public tool and enter π_doc as leaves of a DSC tree, so the phone does not verify the CSCA signature. | document-circuit, ballot-circuit |
 
 ## 4. Open issues found during implementation
 
