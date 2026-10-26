@@ -62,13 +62,13 @@ The tree is rebuilt on a fixed schedule, for example weekly. Each build publishe
 - A certificate found to be compromised is added to a public **exclusion list** with a reason code and date. The next build drops it and every DSC it issued.
 - Identities enrolled under an excluded certificate are revoked through the normal revocation registry, and the count is published.
 
-## 6. Documents that cannot be verified (decision needed)
+## 6. Documents that cannot be verified (Decision Log #39: option A)
 
 When a person's document is genuine but its CSCA is not in the list, three answers are possible:
 
 | Option | What happens | Assessment |
 |---|---|---|
-| **A. Refuse openly (proposed)** | The app says the document cannot be verified yet, explains why, lets the person ask to be notified, and the public coverage page shows the country as "not yet verifiable" | Keeps the guarantee intact; honest; creates pressure to find a source |
+| **A. Refuse openly (decided, #39)** | The app says the document cannot be verified yet, explains why, lets the person ask to be notified, and the public coverage page shows the country as "not yet verifiable" | Keeps the guarantee intact; honest; creates pressure to find a source |
 | B. Provisional identity | Enrol with an "unverified" flag, excluded from polls by default | Weakens the core guarantee; a forged document could enter this way |
 | C. Manual review | A person checks the document | Impossible without seeing the document; contradicts anonymity |
 
