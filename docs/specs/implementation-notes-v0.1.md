@@ -62,6 +62,7 @@ These notes record where the implementation confirmed the specifications, where 
 | N18 | **Headroom of the test parameters.** The ballot proof (32,607 constraints plus 18 public inputs) is close to the 2^15 limit of the test powers-of-tau file. The next increase needs a 2^16 file. | ballot-circuit |
 | N19 | **Robust trustee key generation.** The joint-Feldman key generation of the first reference tally let a trustee that spoke last bias the key. It is replaced by GJKR-style key generation with hiding commitments, complaints that anyone can settle from the transcript, and rebuilding of dealers that withdraw ([trustee-key-generation-v0.1](trustee-key-generation-v0.1.md)). Hash tags 9–12 are used for it. | tally |
 | N20 | **Nationality and signer encodings.** Nationality codes are the three ICAO letters packed as one number (`natCode("FRA")`), so no country table is needed inside a circuit. Document signers are checked against CSCA certificates by a public tool and enter π_doc as leaves of a DSC tree, so the phone does not verify the CSCA signature. | document-circuit, ballot-circuit |
+| N21 | **Trust list: references, not copies.** The published list holds fingerprints and sources, never certificates, because the ICAO PKD terms forbid republishing. Master lists are accepted only under pinned anchors whose fingerprints were checked on the issuing authority's website ([trust-list-v0.1](trust-list-v0.1.md)). | document-circuit |
 
 ## 4. Open issues found during implementation
 

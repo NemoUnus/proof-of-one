@@ -9,7 +9,7 @@ Five small packages implement the core of the protocol end to end, and two folde
 | [`tally/`](tally/) | Encrypted one-hot ballots, nullifiers, robust trustee key generation with public complaints, voter self-verification, homomorphic tally, threshold decryption with DLEQ proofs, independent recount tool | 25 |
 | [`ballot-circuit/`](ballot-circuit/) | Zero-knowledge ballot proof π_vote (Circom, Groth16): membership, non-revocation, nullifier, eligibility with up to three nationalities, age range on the poll date, well-formed encrypted ballot, all per-poll values bound by one `pollHash` | 18 |
 | [`enrolment-circuit/`](enrolment-circuit/) | Unlinkable registration proof π_reg, batch insertion proof π_batch and revocation proof π_revoke (Circom, Groth16), enclave credential issuance including added documents, registry rules | 21 |
-| [`document-circuit/`](document-circuit/) | Document-validity proof π_doc (Circom, Groth16): ICAO 9303 passive authentication of a passport chip in zero knowledge (RSA-2048, SHA-256), tree of checked document signers, expiry, attribute outputs; synthetic test passports | 14 |
+| [`document-circuit/`](document-circuit/) | Document-validity proof π_doc (Circom, Groth16): ICAO 9303 passive authentication of a passport chip in zero knowledge (RSA-2048, SHA-256), tree of checked document signers, expiry, attribute outputs; synthetic test passports; the trust list of country signing certificates | 20 |
 | [`phone-bench/`](phone-bench/) | Web page that measures how fast a phone makes the ballot proof | — |
 | [`aggregation-prototype/`](aggregation-prototype/) | Ballot proof and aggregator in Noir (UltraHonk) for size measurements of recursive aggregation | check script |
 | [`contracts/`](contracts/) | Solidity identity and revocation registries, polls, ballots and results; single and batched ballot submission; full on-chain flow tested with real proofs | 9 |
@@ -50,7 +50,7 @@ cd ../contracts   && npm install && npm test
 
 - A real trusted setup (a large public ceremony) or a universal-setup proof system ([issue #7](https://github.com/NemoUnus/proof-of-one/issues/7)).
 - A networked trustee client for the key generation, which is now robust but simulated in one process ([trustee key generation](../docs/specs/trustee-key-generation-v0.1.md)).
-- A published, auditable list of the country signing certificates (CSCA) that enrolment trusts ([document coverage §4](../docs/research/document-coverage-v0.1.md#4-other-limits)).
+- Sources for the country signing certificates of chip-passport countries missing from the first trust list ([trust list](../docs/specs/trust-list-v0.1.md)).
 - Enrolment front end: other document signature suites, liveness and face matching in an attested enclave. The document-validity proof exists for RSA-2048 and SHA-256 ([spec](../docs/specs/document-validity-proof-v0.1.md)).
 - Prover performance on phones.
 - Independent human review of everything here.

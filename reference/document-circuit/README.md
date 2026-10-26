@@ -13,7 +13,7 @@ Requires Node.js 20 or later.
 ```bash
 npm install
 npm run build        # compile the circuit (about 1 minute)
-npm test             # 13 witness tests, including attacks (about 50 s)
+npm test             # 13 witness tests including attacks, and 5 trust-list tests (about 1 minute)
 npm run setup:test   # optional: TEST-ONLY setup (slow), then npm test also makes a real proof
 ```
 
@@ -26,7 +26,10 @@ The setup script can take an existing 2^20 powers-of-tau file as its argument: `
 | `circuits/document.circom` | The circuit: DG1 and DG2 hashes, `eContent` digest, RSA signature, DSC tree membership, expiry, attribute outputs |
 | `src/icao.js` | Synthetic ICAO 9303 documents (MRZ, DG1, DG2, LDS security object, signed attributes, RSA signature) with test CSCA and DSC certificates; the public tool that checks each DSC against the trusted CSCAs and builds the DSC tree |
 | `src/document.js` | Builds the circuit input on the phone; expected outputs; witness, prove, verify |
-| `test/document.test.js` | Tests |
+| `test/document.test.js` | Tests of the proof |
+| `src/trustlist.js` | The trust list ([spec](../../docs/specs/trust-list-v0.1.md)): reads and checks CSCA master lists against pinned anchors, merges sources into a list of references, checks document signers |
+| `bin/trust-list.js` | Builds the published trust list from master lists you downloaded yourself and prints its `listHash` |
+| `test/trustlist.test.js` | Tests of the trust list; one test reads a real master list placed in `test/data/` (not committed) |
 
 ## Measured
 
@@ -58,6 +61,8 @@ This proof runs once per enrolment, not per vote. It is too heavy for a phone's 
 | Groth16 proof (needs the setup) | Verifies; changing today's date, the commitment or an output fails |
 
 Every rejection is checked to come from a failed circuit constraint.
+
+**Trust list tests:** a signed master list is read; an altered list, a list signed by another key, or a signer from an untrusted anchor is refused; sources merge into one list whose hash does not depend on their order; excluded and expired certificates drop out; a document signer is accepted only from a CSCA of its own country. On the real German master list (1 October 2026): 609 certificates, signature valid under the pinned German anchor, 602 valid CA certificates from 117 countries.
 
 ## Dependencies and licences
 

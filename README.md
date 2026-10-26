@@ -43,6 +43,7 @@ Participation is free. Topics of sponsored polls are chosen by participants them
 | [Access under network restrictions v0.1](docs/specs/censorship-resistant-access-v0.1.md) | Keeping enrolment and voting usable where access is restricted |
 | [Date of birth and private verification v0.1](docs/specs/birth-date-and-private-verification-v0.1.md) | Hidden date of birth instead of a fixed age band; age and personhood checks for other services without tracking |
 | [Document-validity proof v0.1](docs/specs/document-validity-proof-v0.1.md) | Proving in zero knowledge that a passport chip was signed by its issuing state, without revealing the document |
+| [Trust list v0.1](docs/specs/trust-list-v0.1.md) · [first list](docs/research/trust-list-2026-10-26.json) | Which country signing certificates enrolment trusts, where each comes from, and how anyone can rebuild the list |
 | [Trustee key generation v0.1](docs/specs/trustee-key-generation-v0.1.md) | How the trustees make each poll's key so that no one can bias it, cheaters are caught publicly and the tally survives absent trustees |
 | [Who can enrol? Document coverage v0.1](docs/research/document-coverage-v0.1.md) · [data (CSV)](docs/research/document-coverage-v0.1.csv) | Which countries issue chip documents a phone can read, and what share of people can take part today |
 | [Decision log](docs/decisions/DECISION_LOG.md) | Every design decision and why it was taken |

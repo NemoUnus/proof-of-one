@@ -18,7 +18,7 @@ Proof of One is built by people and by disclosed AI agents ([AGENTS.md](AGENTS.m
 |---|---|---|
 | The idea, the founding principles R1 and R2, and every recorded decision ([decision log](docs/decisions/DECISION_LOG.md)) | **Human**: Nemo Unus. Recorded by Hermes (AI agent). | Founder |
 | [Whitepaper](docs/whitepaper/) | AI draft, human-directed | **Founder-reviewed** (read in full, several times); expert review: none yet |
-| [Specifications](docs/specs/): threat model, ballot and enrolment, red-team review, contracts, implementation notes, ballot aggregation, several nationalities, face uniqueness at scale, access under network restrictions, date of birth and private verification, trustee key generation, document-validity proof | AI draft, human-directed | Expert review: none yet |
+| [Specifications](docs/specs/): threat model, ballot and enrolment, red-team review, contracts, implementation notes, ballot aggregation, several nationalities, face uniqueness at scale, access under network restrictions, date of birth and private verification, trustee key generation, document-validity proof, trust list | AI draft, human-directed | Expert review: none yet |
 | [Document coverage research](docs/research/) | AI draft, at the founder's request (his idea) | Expert review: none yet; corrections by country welcome |
 | [One-page summary](docs/summary/) | AI draft, human-directed | Founder |
 | [Reference code](reference/): circuits, contracts, tally and recount tool | AI draft | Expert review: none yet |
@@ -26,6 +26,7 @@ Proof of One is built by people and by disclosed AI agents ([AGENTS.md](AGENTS.m
 | Repository policies: README, CONTRIBUTING, SECURITY, CODE_OF_CONDUCT, LICENSING, REVIEWING; [technical brief](docs/review/technical-brief-v0.1.md) | AI draft, human-directed | Founder |
 | First phone measurement of the ballot proof (iPhone 14, 3.5 s) | **Human**: Nemo Unus, with the [phone benchmark](reference/phone-bench/) | — |
 | Field test of reading a passport chip on a phone, which found a missing country certificate in a commercial verifier ([document coverage §4](docs/research/document-coverage-v0.1.md#4-other-limits)) | **Human**: Nemo Unus | — |
+| Download of the German CSCA master list for the first trust list (26 October 2026) | **Human**: Nemo Unus | — |
 | Design proposals: several nationalities on one identity (Decision #30); asking about earlier enrolment, birth-date blocking and face-template refresh (Decision #33); access under network restrictions (Decision #34); age verification as a funding source (Decisions #36, #37) | **Human**: Nemo Unus; analysed and refined with the AI agents | — |
 
 ## Expert reviews received

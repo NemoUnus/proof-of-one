@@ -149,4 +149,26 @@ function buildDscTree(H, Tree, depth, countries) {
   return { tree, index, rejected };
 }
 
-module.exports = { tlv, oid, seq, set, octet, int, sha256, OID, PREFIX, checkDigit, mrzTD3, dg1Of, rsaKey, cert, createCountry, issueDocument, verifyDsc, modulusChunks, dscLeaf, buildDscTree, ALG };
+// ------------------------------------------------------------------ CSCA master lists
+// A CSCA master list as ICAO 9303 part 12 defines it: CMS SignedData whose content
+// (id-icao-cscaMasterList) is SEQUENCE { version 0, SET OF Certificate }, signed by a
+// master-list signer certificate that the issuing country's CSCA issued.
+const certDer = (c) => Buffer.from(forge.asn1.toDer(forge.pki.certificateToAsn1(c)).getBytes(), "binary");
+function createMasterList(issuer, cscaCerts, { tamper = false, signWith = null } = {}) {
+  const signerKey = rsaKey();
+  const signerCert = cert({ subjectCN: "Master List Signer " + issuer.code + " (TEST ONLY)", country: issuer.code.slice(0, 2), key: signerKey, issuer: issuer.csca, serial: "7f" });
+  const eContent = seq(int(0), set(...cscaCerts.map(certDer)));
+  const listBytes = tamper ? Buffer.concat([eContent.subarray(0, eContent.length - 1), Buffer.from([eContent[eContent.length - 1] ^ 1])]) : eContent;
+  const attrs = [seq(oid(OID.contentType), set(oid("2.23.136.1.1.2"))), seq(oid(OID.messageDigest), set(octet(sha256(eContent))))];
+  const signedAttrs = set(...attrs);
+  const sig = crypto.sign("sha256", signedAttrs, { key: (signWith || signerKey).privateKey, padding: crypto.constants.RSA_PKCS1_PADDING });
+  const signerInfo = seq(int(3), tlv(0x80, crypto.randomBytes(20)), seq(oid(OID.sha256)),
+    tlv(0xa0, ...attrs), seq(oid("1.2.840.113549.1.1.11"), Buffer.from([0x05, 0x00])), octet(sig));
+  const signedData = seq(int(3), set(seq(oid(OID.sha256))),
+    seq(oid("2.23.136.1.1.2"), tlv(0xa0, octet(listBytes))),
+    tlv(0xa0, certDer(signerCert), certDer(issuer.csca.cert)),
+    set(signerInfo));
+  return seq(oid("1.2.840.113549.1.7.2"), tlv(0xa0, signedData));
+}
+
+module.exports = { createMasterList, certDer, tlv, oid, seq, set, octet, int, sha256, OID, PREFIX, checkDigit, mrzTD3, dg1Of, rsaKey, cert, createCountry, issueDocument, verifyDsc, modulusChunks, dscLeaf, buildDscTree, ALG };
