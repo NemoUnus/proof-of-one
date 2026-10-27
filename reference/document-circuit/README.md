@@ -37,7 +37,7 @@ The setup script can take an existing 2^20 powers-of-tau file as its argument: `
 |---|---|
 | Constraints | **577,678** (SHA-256 about 366,000; RSA-2048 185,903; the rest about 26,000) |
 | Witness generation | about 3 s on a server core |
-| Groth16 proving | not measured yet: the TEST-ONLY setup needs a 2^20 powers-of-tau file, which takes more than two hours to make on a 2-core machine. Run `npm run setup:test` on a faster machine; the last test prints the time. |
+| Groth16 proving | **about 11–12 s on 2 server cores** (arkworks; peak memory 1.9 GB; verification 3–4 ms), with a TEST-ONLY random setup: see [`../prove-bench`](../prove-bench/). The snarkjs setup (`npm run setup:test`) needs a 2^20 powers-of-tau file. Phone times: schedule 0.8 |
 
 This proof runs once per enrolment, not per vote. It is too heavy for a phone's web browser; the phone app needs a native prover.
 

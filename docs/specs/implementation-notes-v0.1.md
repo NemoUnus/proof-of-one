@@ -14,6 +14,7 @@ These notes record where the implementation confirmed the specifications, where 
 | Batch insertion proof π_batch, depth 32 | — | **16,227** (4 leaves); **501,947** (1,024 leaves) | Four public inputs regardless of batch size |
 | Revocation update proof π_revoke, depth 32 | — | **32,521** | Four Merkle paths and two range comparisons |
 | π_vote proving time | "seconds on phones" | 4–5 s on a server CPU (snarkjs, Node.js); about 10 s in a browser on 2 server cores; **3.5 s in the browser of an iPhone 14** (first phone measurement, by the founder) | Phones: [phone benchmark](../../reference/phone-bench/); native provers are expected to be faster |
+| π_doc proving time | — | **11.1–12.1 s on 2 server cores** (arkworks, TEST-ONLY random setup; peak memory 1.9 GB; verification 3–4 ms) | [prove-bench](../../reference/prove-bench/); phones still to be measured (0.8) |
 | π_vote in Noir/UltraHonk (same hash and curve) | — | **146,770 gates**; with native Poseidon2/Grumpkin **20,038** | [aggregation prototype](../../reference/aggregation-prototype/); size only |
 | Verifying one ballot proof inside an aggregation proof | — | **about 750,000 gates** | Server-side cost of recursive aggregation |
 
@@ -63,6 +64,7 @@ These notes record where the implementation confirmed the specifications, where 
 | N19 | **Robust trustee key generation.** The joint-Feldman key generation of the first reference tally let a trustee that spoke last bias the key. It is replaced by GJKR-style key generation with hiding commitments, complaints that anyone can settle from the transcript, and rebuilding of dealers that withdraw ([trustee-key-generation-v0.1](trustee-key-generation-v0.1.md)). Hash tags 9–12 are used for it. | tally |
 | N20 | **Nationality and signer encodings.** Nationality codes are the three ICAO letters packed as one number (`natCode("FRA")`), so no country table is needed inside a circuit. Document signers are checked against CSCA certificates by a public tool and enter π_doc as leaves of a DSC tree, so the phone does not verify the CSCA signature. | document-circuit, ballot-circuit |
 | N21 | **Trust list: references, not copies.** The published list holds fingerprints and sources, never certificates, because the ICAO PKD terms forbid republishing. Master lists are accepted only under pinned anchors whose fingerprints were checked on the issuing authority's website ([trust-list-v0.1](trust-list-v0.1.md)). | document-circuit |
+| N22 | **Timing without a powers-of-tau file.** A snarkjs Groth16 key for π_doc needs a 2^20 powers-of-tau file, which the agents' machine could neither download nor make within its time limit. Proving time was therefore measured with arkworks from the same `.r1cs` and witness, after a random circuit-specific setup. The tool checks that the witness satisfies every constraint and that a proof fails against an altered public input. Its keys are TEST-ONLY. | prove-bench, document-circuit |
 
 ## 4. Open issues found during implementation
 

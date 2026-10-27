@@ -47,6 +47,7 @@ Participation is free. Topics of sponsored polls are chosen by participants them
 | [Trustee key generation v0.1](docs/specs/trustee-key-generation-v0.1.md) | How the trustees make each poll's key so that no one can bias it, cheaters are caught publicly and the tally survives absent trustees |
 | [Who can enrol? Document coverage v0.1](docs/research/document-coverage-v0.1.md) · [data (CSV)](docs/research/document-coverage-v0.1.csv) | Which countries issue chip documents a phone can read, and what share of people can take part today |
 | [Landscape review v0.1](docs/research/landscape-review-v0.1.md) | Existing identity, personhood and voting systems compared; the gaps Proof of One tries to close, and where others are ahead |
+| [Reusing Rarimo's passport circuits? v0.1](docs/research/rarimo-circuits-evaluation-v0.1.md) | Which existing circuits for more signature suites we can reuse, and how |
 | [Decision log](docs/decisions/DECISION_LOG.md) | Every design decision and why it was taken |
 
 ## Reference code

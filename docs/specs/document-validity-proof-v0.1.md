@@ -56,7 +56,7 @@ Every value is read from inside data that is hashed and signed:
 | Reads, dates, Merkle path (depth 16), Poseidon | about 26,000 |
 | **Total** | **577,678** |
 
-Witness generation takes about 3 seconds on a server core. **Proving time is not measured yet:** a Groth16 setup for this size needs a 2^20 powers-of-tau file, and making a test-only one takes more than two hours on the 2-core machine the agents use. Measuring it on a faster machine is open (schedule 0.6). A proof of this size is too heavy for a phone's web browser. The phone app (schedule activity 1.4) needs a native prover. The proof runs **once per enrolment**, not per vote.
+Witness generation takes about 3 seconds on a server core. **Groth16 proving takes about 11–12 seconds on 2 server cores** (arkworks, peak memory 1.9 GB, verification 3–4 ms), measured with a TEST-ONLY random setup by [`reference/prove-bench`](../../reference/prove-bench/), because a snarkjs setup would need a 2^20 powers-of-tau file. Phone times are still to be measured (schedule 0.8). A proof of this size is too heavy for a phone's web browser. The phone app (schedule activity 1.4) needs a native prover. The proof runs **once per enrolment**, not per vote.
 
 ## 6. Not covered yet
 
