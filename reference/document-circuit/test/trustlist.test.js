@@ -60,13 +60,21 @@ test("document signers: accepted only when a CSCA of the same country in the lis
   assert.equal(T.checkDsc(list, x509(cross)), null);
 });
 
-test("real data (optional): a CSCA master list file in test/data/, read against the pinned German anchor", { skip: !(fs.existsSync(path.join(__dirname, "data")) && fs.readdirSync(path.join(__dirname, "data")).some((f) => f.endsWith(".ml"))) && "place the German master list (.ml) in test/data/" }, () => {
-  const f = fs.readdirSync(path.join(__dirname, "data")).find((x) => x.endsWith(".ml"));
-  const r = T.readMasterList(fs.readFileSync(path.join(__dirname, "data", f)), { pinned: T.PINNED.DE.map((p) => p.sha256), name: f });
-  const list = T.buildTrustList([r], { today: new Date().toISOString().slice(0, 10) });
-  console.log(`# ${f}: ${r.certs.length} certificates, ${list.entries.length} valid CA entries, ${list.countries.length} countries, listHash ${list.listHash.slice(0, 16)}…`);
+test("real data (optional): CSCA master lists in test/data/, each read against its pinned anchor (German BSI, United Nations CSCA for ICAO)", { skip: !(fs.existsSync(path.join(__dirname, "data")) && fs.readdirSync(path.join(__dirname, "data")).some((f) => f.endsWith(".ml"))) && "place downloaded master lists (.ml) in test/data/" }, () => {
+  const pins = Object.values(T.PINNED).flat().map((p) => p.sha256);
+  const files = fs.readdirSync(path.join(__dirname, "data")).filter((x) => x.endsWith(".ml")).sort();
+  const sources = files.map((f) => T.readMasterList(fs.readFileSync(path.join(__dirname, "data", f)), { pinned: pins, name: f }));
+  for (const r of sources) {
+    console.log(`# ${r.name}: ${r.certs.length} certificates, signer ${r.signer.subject}, anchor ${r.anchor.sha256.slice(0, 12)}…`);
+    assert.ok(pins.includes(r.anchor.sha256));
+  }
+  const list = T.buildTrustList(sources, { today: new Date().toISOString().slice(0, 10) });
+  console.log(`# merged: ${list.entries.length} valid CA entries, ${list.countries.length} countries, listHash ${list.listHash.slice(0, 16)}…`);
   console.log("# CSCA key types:", JSON.stringify(T.keySummary(list)));
   assert.ok(list.countries.length > 50);
-  // The same file against a wrong pin is refused.
-  assert.throws(() => T.readMasterList(fs.readFileSync(path.join(__dirname, "data", f)), { pinned: ["00".repeat(32)] }), /not issued by a trusted anchor/);
+  // The same files against a wrong pin are refused.
+  for (const f of files) assert.throws(() => T.readMasterList(fs.readFileSync(path.join(__dirname, "data", f)), { pinned: ["00".repeat(32)] }), /not issued by a trusted anchor/);
+  // The United Nations CSCA pinned for the ICAO list is itself an entry of the German list.
+  const de = sources.find((r) => r.name.startsWith("DE_"));
+  if (de) assert.ok(de.certs.some((c) => T.describe(c).sha256 === T.PINNED.ICAO[0].sha256), "UN CSCA confirmed by the German list");
 });

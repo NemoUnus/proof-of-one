@@ -11,7 +11,7 @@ A passport is proven genuine by its signature chain: the document signer (DSC) s
 | Source | What it holds | Terms (as published, October 2026) | Use in Proof of One |
 |---|---|---|---|
 | **German CSCA master list** (BSI) | 609 CSCA and link certificates from 119 countries or issuers, version of 1 October 2026; a signed ICAO master list | Use is permitted, including commercial use, on two conditions: the list may not be used for advertising, and its use may not suggest cooperation with the BSI | **Primary source.** Read and verified by the tool. Proof of One states that it uses the list and has no relationship with the BSI. |
-| **ICAO PKD and ICAO master list** | CSCAs of PKD participants (the ICAO master list holds 450 certificates, July 2024 version); DSCs and CRLs | Free to download by hand. Use is limited to "own personal/organizational non-commercial use"; republishing, repackaging and automated download are not allowed | Each operator or reviewer may download it to **check** the list. Proof of One does **not** republish its contents. Whether the enrolment service may rely on it needs legal review (§7). |
+| **ICAO PKD and ICAO master list** | CSCAs of PKD participants (the ICAO master list holds 604 certificates, version of 13 October 2026); DSCs and CRLs | Free to download by hand. Use is limited to "own personal/organizational non-commercial use"; republishing, repackaging and automated download are not allowed | Each operator or reviewer may download it to **check** the list. Proof of One does **not** republish its contents. The ICAO PKD team replied (27 October 2026) that, while the project is non-commercial with no financial exchange, its current use "could be within the Terms and Conditions" (§7.1). |
 | **States' own publications** | Many states publish their CSCA certificates on official websites | Varies by state | Supplementary source; each entry names the page |
 
 ### 2.1 Measured on the German master list (version of 1 October 2026)
@@ -27,6 +27,19 @@ The founder downloaded the list from the BSI website, and the tool read it:
 | CSCA key types | RSA-4096 362; RSA-3072 58; ECDSA brainpoolP384r1 54, P-384 38, P-256 23, brainpoolP256r1 22, P-521 22, brainpoolP512r1 16; RSA-6144 6; RSA-2048 1 |
 
 The CSCA key types matter for the public tool, which handles all of them. π_doc proves the **document signer's** signature, and DSC keys are usually smaller and differ from the CSCA's. Which DSC suites to support next is measured on DSC certificates (§4), not on this table.
+
+### 2.2 Measured with the ICAO master list added (27 October 2026)
+
+The founder downloaded the ICAO master list of 13 October 2026 by hand, under the public terms (§7.1), and the tool read it together with the German list:
+
+| Item | Result |
+|---|---|
+| ICAO master list | 604 certificates. The list's signature is valid. Its signer, the ICAO Master List Signer, was issued by the **United Nations CSCA**. ICAO does not publish that certificate's fingerprint, so the anchor was confirmed another way: the same certificate (`920693cd…d92e4e`) is an entry of the German master list, which is itself verified under the pinned German anchor |
+| Both lists merged, valid on 27 October 2026 | 662 CA certificates from 129 country codes: 86 in both lists, 31 in the German list only, 12 in the ICAO list only |
+| Coverage | **122 of the 186 countries that issue chip passports**: 91% of their population, about 67% of the world's. The German list alone gives 112 (one certificate expired since §2.1). The ICAO list adds ten chip-passport countries, among them Nigeria, Ethiopia, Sudan and Ghana |
+| Still missing | 64 chip-passport countries. Only 8 of them take part in the ICAO PKD (less than 1% of the world population); the rest must come from the states' own publications (§2) |
+
+The merged list is **not published yet**. Entries that come from the ICAO list alone are held back until ICAO answers whether publishing fingerprints is acceptable (§7.1, point 3). The published list remains the one built from the German list ([trust-list-2026-10-26.json](../research/trust-list-2026-10-26.json)). Anyone who downloads both lists can rebuild the merged list with the tool and compare its `listHash` (`a1684c94…6fc561b`).
 
 ## 3. References, not copies
 
@@ -44,7 +57,7 @@ Anyone can download the same sources, run the same tool and compare `listHash`. 
 
 1. The certificate is a CA certificate and has not expired. A CSCA must stay in the list for as long as documents it signed are valid, so only expired CSCAs leave the list on their own.
 2. It comes from a signed master list whose signer was issued by that list's own country CSCA (the **anchor**), or from the issuing state's official website.
-3. The anchor of each master list is pinned by fingerprint in the tool (`PINNED`), checked against the issuing authority's own website, and published with the list. A list signed under any other anchor is refused.
+3. The anchor of each master list is pinned by fingerprint in the tool (`PINNED`), checked against the issuing authority's own website or, where the authority publishes none, against another list already verified (§2.2), and published with the list. A list signed under any other anchor is refused.
 4. Entries with a single source are marked. A second independent source is sought for each of them.
 
 ## 4. Document signers
@@ -74,10 +87,25 @@ When a person's document is genuine but its CSCA is not in the list, three answe
 
 ## 7. Open points
 
-- **Legal:** may the enrolment service rely on ICAO PKD downloads under "organizational non-commercial use", given that businesses will pay for verification (Decision Log #36)? Until answered, PKD material is used only by reviewers to check the list, never by the service.
+- **Legal:** may the enrolment service rely on ICAO PKD downloads once businesses pay for verification (Decision Log #36)? See §7.1. Until that is settled, PKD material is used by reviewers to check the list and by the test network, never by a paid service.
 - **Coverage of document signers:** which key types and signature suites DSCs use. This decides which suites π_doc supports next. It needs DSC certificates (§4).
 - **Missing countries:** a source for the CSCAs of chip-passport countries that are not in the German list.
 - **Anchors:** how the anchor fingerprints are confirmed (several independent fetches of the authority's website; human reviewers).
+
+### 7.1 Reply from the ICAO PKD team (27 October 2026)
+
+The project asked the ICAO PKD team for written permission to use PKD certificates for verification and to publish fingerprints only. The reply, in summary:
+
+- The only route to written permission today is a free **pilot for private-sector use**, limited to **travel-related** use cases. Proof of One is outside its scope.
+- A **paid licensing programme** is planned, expected in 2027. Its use-case limits are not yet set.
+- Because Proof of One is non-commercial and no money changes hands at this stage, its current use **could be within the public Terms and Conditions**. ICAO could not say whether or when that might change.
+- The team will keep the project's contact for notices about the licensing programme.
+
+What follows for the project:
+
+1. During the specification and test-network phases (to Gate 1), operators and reviewers may download the ICAO master list by hand and use it to check and extend the trust list, under the public terms. The rule against republishing still applies: the published list holds references only (§3).
+2. Before any paid service begins (Decision Log #36), the project must either join the licensing programme or rely only on sources whose terms allow it, such as the German master list and states' own publications. This is recorded as a condition of Phase 2.
+3. Whether publishing fingerprints alone is acceptable was asked but not answered directly. The project has asked again in its reply. Until it is answered, entries known only from the ICAO list are not published (§2.2).
 
 ## 8. Reference implementation
 

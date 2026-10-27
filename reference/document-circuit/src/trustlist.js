@@ -88,6 +88,14 @@ const PINNED = {
     note: "German CSCA, certificate 10/24; fingerprint published by the BSI, checked 2026-10-26",
     source: "https://bsi.bund.de/EN/Themen/Oeffentliche-Verwaltung/Elektronische-Identitaeten/Public-Key-Infrastrukturen/CSCA/Root_Cert_Germany/Root_Certificate_node.html",
   }],
+  // The ICAO master list is signed by an ICAO Master List Signer issued by the United Nations
+  // CSCA. ICAO does not publish its fingerprint; it was confirmed instead as an entry of the
+  // German master list, itself verified under the pinned German anchor above.
+  ICAO: [{
+    sha256: "920693cd1283824ffdf48a3579fc35528122f3de46bab2ecdaef402db6d92e4e",
+    note: "United Nations CSCA (valid 2022-06-14 to 2032-06-14); same certificate found in the German master list of 2026-10-01, checked 2026-10-27",
+    source: "https://www.icao.int/icao-pkd/icao-master-list",
+  }],
 };
 
 // Parses and checks a CSCA master list. `anchors` are X509Certificate objects trusted to

@@ -62,7 +62,7 @@ This proof runs once per enrolment, not per vote. It is too heavy for a phone's 
 
 Every rejection is checked to come from a failed circuit constraint.
 
-**Trust list tests:** a signed master list is read; an altered list, a list signed by another key, or a signer from an untrusted anchor is refused; sources merge into one list whose hash does not depend on their order; excluded and expired certificates drop out; a document signer is accepted only from a CSCA of its own country. On the real German master list (1 October 2026): 609 certificates, signature valid under the pinned German anchor, 602 valid CA certificates from 117 countries.
+**Trust list tests:** a signed master list is read; an altered list, a list signed by another key, or a signer from an untrusted anchor is refused; sources merge into one list whose hash does not depend on their order; excluded and expired certificates drop out; a document signer is accepted only from a CSCA of its own country. On the real lists (German master list of 1 October 2026 and ICAO master list of 13 October 2026, each under its pinned anchor): 609 and 604 certificates, merged into 662 valid CA certificates from 129 country codes. The United Nations CSCA that anchors the ICAO list is checked to be an entry of the German list.
 
 ## Dependencies and licences
 
