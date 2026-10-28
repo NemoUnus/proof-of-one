@@ -2,7 +2,7 @@
 
 > **For review and testing only. Not audited. Uses a TEST-ONLY trusted setup. Do not use with real participants.**
 
-Five small packages implement the core of the protocol end to end, and three folders hold measurements for the next design steps. Each is written to be read and attacked, not deployed.
+Five small packages implement the core of the protocol end to end, and four folders hold prototypes and measurements for the next design steps. Each is written to be read and attacked, not deployed.
 
 | Package | What it contains | Tests |
 |---|---|---|
@@ -11,6 +11,7 @@ Five small packages implement the core of the protocol end to end, and three fol
 | [`enrolment-circuit/`](enrolment-circuit/) | Unlinkable registration proof π_reg, batch insertion proof π_batch and revocation proof π_revoke (Circom, Groth16), enclave credential issuance including added documents, registry rules | 21 |
 | [`document-circuit/`](document-circuit/) | Document-validity proof π_doc (Circom, Groth16): ICAO 9303 passive authentication of a passport chip in zero knowledge (RSA-2048, SHA-256), tree of checked document signers, expiry, attribute outputs; synthetic test passports; the trust list of country signing certificates | 20 |
 | [`phone-bench/`](phone-bench/) | Web page that measures how fast a phone makes the ballot proof | — |
+| [`android-prototype/`](android-prototype/) | Android test app (Kotlin, JMRTD): opens a passport chip with PACE or BAC, checks data-group hashes and the security-object signature on the phone, and exports the signer certificate for the trust-list check; built by GitHub Actions | built in CI |
 | [`prove-bench/`](prove-bench/) | Rust tool that times Groth16 proving of any Circom circuit with a TEST-ONLY random setup (used for π_doc) | — |
 | [`aggregation-prototype/`](aggregation-prototype/) | Ballot proof and aggregator in Noir (UltraHonk) for size measurements of recursive aggregation | check script |
 | [`contracts/`](contracts/) | Solidity identity and revocation registries, polls, ballots and results; single and batched ballot submission; full on-chain flow tested with real proofs | 9 |
