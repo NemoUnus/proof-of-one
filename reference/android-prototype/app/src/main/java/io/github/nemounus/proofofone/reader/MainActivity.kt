@@ -7,9 +7,11 @@ import android.graphics.Typeface
 import android.nfc.NfcAdapter
 import android.nfc.Tag
 import android.nfc.tech.IsoDep
+import android.os.Build
 import android.os.Bundle
 import android.text.InputType
 import android.view.View
+import android.view.WindowInsets
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.EditText
@@ -64,8 +66,6 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         col.addView(Button(this).apply { text = "Ready: hold the passport to the phone"; setOnClickListener { arm() } })
         status = TextView(this).apply { setPadding(0, pad, 0, 0); textSize = 16f }
         col.addView(status)
-        report = TextView(this).apply { typeface = Typeface.MONOSPACE; textSize = 12f; setTextIsSelectable(true); setPadding(0, pad, 0, 0) }
-        col.addView(report)
         share = Button(this).apply {
             text = "Share report and signer certificate"; visibility = View.GONE
             setOnClickListener {
@@ -75,7 +75,21 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             }
         }
         col.addView(share)
-        setContentView(ScrollView(this).apply { addView(col) })
+        report = TextView(this).apply { typeface = Typeface.MONOSPACE; textSize = 12f; setTextIsSelectable(true); setPadding(0, pad, 0, 0) }
+        col.addView(report)
+        val scroll = ScrollView(this).apply { addView(col) }
+        // Android 15 draws apps edge to edge: keep the content clear of the status and navigation bars.
+        scroll.setOnApplyWindowInsetsListener { v, insets ->
+            if (Build.VERSION.SDK_INT >= 30) {
+                val b = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.ime())
+                v.setPadding(b.left, b.top, b.right, b.bottom)
+            } else {
+                @Suppress("DEPRECATION")
+                v.setPadding(insets.systemWindowInsetLeft, insets.systemWindowInsetTop, insets.systemWindowInsetRight, insets.systemWindowInsetBottom)
+            }
+            insets
+        }
+        setContentView(scroll)
 
         status.text = when {
             nfc == null -> "This phone has no NFC reader."
