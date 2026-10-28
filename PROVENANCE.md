@@ -38,6 +38,7 @@ Documents checked by a different AI model at the founder's request. This is not 
 | Date | Model | Part | Outcome |
 |---|---|---|---|
 | 2026-10-28 | ChatGPT (OpenAI) | [Landscape review v0.1](docs/research/landscape-review-v0.1.md) | 44 points. Factual errors corrected (Swiss Post test year, Spain court decision wording, ElectionGuard, several unsupported claims); our own ratings and claims scoped down; design questions recorded as open work. See [v0.2 §9](docs/research/landscape-review-v0.2.md#9-changes-in-v02-and-open-questions-from-the-second-model-review) |
+| 2026-10-28 | ChatGPT (OpenAI) | [Trust list specification](docs/specs/trust-list-v0.1.md) | 41 points. Wording and claims corrected (what a signature chain proves, reproducibility, ICAO correspondence status), full trust paths published, `listHash` defined exactly; one misreading noted; open work listed in its §9 |
 
 ## Expert reviews received
 

@@ -160,7 +160,10 @@ function buildTrustList(sources, { today, exclude = [] } = {}) {
     if (!e.sources.includes(s.name)) e.sources.push(s.name);
     byFp.set(d.sha256, e);
   }
-  const entries = [...byFp.values()].sort((a, b) => (a.country + a.sha256).localeCompare(b.country + b.sha256));
+  // Order: country code, then fingerprint, compared as plain ASCII (not locale-dependent).
+  const key = (e) => e.country + e.sha256;
+  const entries = [...byFp.values()].sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0));
+  // listHash = SHA-256 of the lowercase hex fingerprints in that order, joined by "\n" (no trailing newline).
   const listHash = sha256hex(Buffer.from(entries.map((e) => e.sha256).join("\n")));
   const countries = [...new Set(entries.map((e) => e.country))];
   return { entries, listHash, countries };
