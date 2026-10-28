@@ -38,6 +38,7 @@ The founder downloaded the ICAO master list of 13 October 2026 by hand, under th
 | Both lists merged, valid on 27 October 2026 | 662 CA certificates from 129 country codes: 86 in both lists, 31 in the German list only, 12 in the ICAO list only |
 | Coverage | **122 of the 186 countries that issue chip passports**: 91% of their population, about 67% of the world's. The German list alone gives 112 (one certificate expired since §2.1). The ICAO list adds ten chip-passport countries, among them Nigeria, Ethiopia, Sudan and Ghana |
 | Still missing | 64 chip-passport countries. Only 8 of them take part in the ICAO PKD (less than 1% of the world population); the rest must come from the states' own publications (§2) |
+| After two counting corrections (28 October) | **134 of 186** verifiable: Kosovo's certificates use the code `KS`, and eleven territories use their parent state's passport. 52 countries, about 6.5% of the world population, remain; see the [survey of missing countries](../research/missing-countries-survey-v0.1.md) and the [coverage by country](../research/coverage-by-country-2026-10-28.csv) |
 
 The merged list is published as [`trust-list-2026-10-28.json`](../research/trust-list-2026-10-28.json), in the form ICAO suggested (§3.1, Decision Log #40): the ICAO list appears as one reference to the whole file, and only entries carried by the German list are itemised (602 of 662). Anyone who downloads both files, checks their SHA-256 against the published values and runs the tool gets the same `listHash` (`a1684c94…6fc561b`).
 
