@@ -21,7 +21,7 @@ Then tap **Start benchmark**, keep the screen on, and post the result in [issue 
 | Device | Median of 3 runs |
 |---|---|
 | **iPhone 14** (in the browser, 4 cores reported), measured by the founder, 23 Oct 2026 | **3.5 s** (3.6, 3.5, 3.5); proof verified |
-| **Samsung Galaxy S24 Ultra** (Chrome on Android), measured by the founder, 28 Oct 2026 | **3.0 s** (3.2, 2.8, 3.0) |
+| **Samsung Galaxy S24 Ultra** (Chrome on Android), measured by the founder, 28 Oct 2026 | **3.0 s** (3.2, 2.8, 3.0); proof verified; 8 cores, about 8 GB reported |
 | Server, 2 cores, headless Chromium | about 10 s |
 | Server, Node.js (`ballot-circuit` tests) | 4–5 s |
 | Low-cost Android phones | **wanted**: please contribute |
