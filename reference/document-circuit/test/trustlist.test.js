@@ -41,6 +41,15 @@ test("merging sources: one entry per certificate with every source named; the li
   const pub = T.publishable(l1);
   assert.equal(pub.entries.length, 3);
   assert.ok(pub.entries.every((e) => !("cert" in e) && /^[0-9a-f]{64}$/.test(e.sha256)), "references only, no certificate bytes");
+  // A source referenced as a whole (Decision Log #40) is not itemised: its own entries are
+  // left out and its name is not shown on shared entries; listHash still covers everything.
+  const whole = { ...b, name: "whole list", itemise: false, fileSha256: "ab".repeat(32), signer: { subject: "S" }, anchor: { sha256: "cd".repeat(32) } };
+  const l3 = T.buildTrustList([a, whole]), p3 = T.publishable(l3, [a, whole]);
+  assert.equal(p3.totalEntries, 3);
+  assert.equal(p3.itemisedEntries, 2, "the BOR certificate comes only from the whole-list source");
+  assert.ok(p3.entries.every((e) => !e.sources.includes("whole list")));
+  assert.equal(p3.wholeListSources[0].fileSha256, "ab".repeat(32));
+  assert.equal(p3.listHash, l3.listHash);
 });
 
 test("removal: an excluded (for example compromised) certificate, or an expired one, is not in the list", () => {
@@ -67,6 +76,7 @@ test("real data (optional): CSCA master lists in test/data/, each read against i
   for (const r of sources) {
     console.log(`# ${r.name}: ${r.certs.length} certificates, signer ${r.signer.subject}, anchor ${r.anchor.sha256.slice(0, 12)}…`);
     assert.ok(pins.includes(r.anchor.sha256));
+    assert.equal(r.itemise, !r.name.startsWith("ICAO"), "the ICAO list is referenced as a whole (Decision Log #40)");
   }
   const list = T.buildTrustList(sources, { today: new Date().toISOString().slice(0, 10) });
   console.log(`# merged: ${list.entries.length} valid CA entries, ${list.countries.length} countries, listHash ${list.listHash.slice(0, 16)}…`);

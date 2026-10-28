@@ -93,6 +93,9 @@ const PINNED = {
   // German master list, itself verified under the pinned German anchor above.
   ICAO: [{
     sha256: "920693cd1283824ffdf48a3579fc35528122f3de46bab2ecdaef402db6d92e4e",
+    // Decision Log #40: at ICAO's suggestion the ICAO master list is referenced as a whole
+    // (version, file hash, signer), never certificate by certificate.
+    itemise: false,
     note: "United Nations CSCA (valid 2022-06-14 to 2032-06-14); same certificate found in the German master list of 2026-10-01, checked 2026-10-27",
     source: "https://www.icao.int/icao-pkd/icao-master-list",
   }],
@@ -138,7 +141,9 @@ function readMasterList(bytes, { anchors = [], pinned = [], name = "master list"
   // CscaMasterList ::= SEQUENCE { version INTEGER, certList SET OF Certificate }
   const ml = forge.asn1.fromDer(forge.util.createBuffer(eContent.toString("binary")));
   const certs = ml.value[1].value.map((c) => new crypto.X509Certificate(der(c)));
-  return { name, signer: describe(signer), anchor: describe(anchor), certs, digestAlg };
+  const pin = Object.values(PINNED).flat().find((p) => p.sha256 === sha256hex(anchor.raw));
+  return { name, signer: describe(signer), anchor: describe(anchor), certs, digestAlg,
+    fileSha256: sha256hex(Buffer.from(bytes)), itemise: !(pin && pin.itemise === false) };
 }
 
 // Merges sources into one list. Each source: { name, certs: X509Certificate[] }.
@@ -161,10 +166,24 @@ function buildTrustList(sources, { today, exclude = [] } = {}) {
   return { entries, listHash, countries };
 }
 // The published form: references only, never the certificates themselves.
-const publishable = (list) => ({
-  format: "proof-of-one-trust-list/1", listHash: list.listHash, countries: list.countries.length,
-  entries: list.entries.map(({ cert, ...e }) => e),
-});
+// Sources whose terms do not allow itemising (itemise: false, for example the ICAO master
+// list, Decision Log #40) are published as one reference to the whole file; their entries
+// appear only when an itemised source also carries the certificate, and only that source is
+// named. listHash still covers every entry, so anyone with the same files rebuilds it.
+function publishable(list, sources = []) {
+  const whole = new Set(sources.filter((s) => s.itemise === false).map((s) => s.name));
+  const entries = list.entries
+    .map(({ cert, ...e }) => ({ ...e, sources: e.sources.filter((n) => !whole.has(n)) }))
+    .filter((e) => e.sources.length);
+  return {
+    format: "proof-of-one-trust-list/2", listHash: list.listHash, countries: list.countries.length,
+    totalEntries: list.entries.length,
+    wholeListSources: sources.filter((s) => s.itemise === false).map((s) => ({
+      name: s.name, fileSha256: s.fileSha256, signer: s.signer.subject, anchor: s.anchor.sha256, certificates: s.certs.length })),
+    itemisedEntries: entries.length,
+    entries,
+  };
+}
 
 // A document signer is trusted when a CSCA of the same country in the list issued it
 // and its signature verifies.

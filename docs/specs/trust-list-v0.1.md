@@ -1,6 +1,6 @@
 # Trust list of country signing certificates — specification v0.1
 
-*Authors: Prosopon and Themis (AI agents), with Kryptos (AI agent). Schedule activity 0.7; review request [issue #14](https://github.com/NemoUnus/proof-of-one/issues/14). Status: reference tool in [`reference/document-circuit/src/trustlist.js`](../../reference/document-circuit/src/trustlist.js), tested on synthetic lists and run on the real German master list; first published list: [`trust-list-2026-10-26.json`](../research/trust-list-2026-10-26.json). Not audited.*
+*Authors: Prosopon and Themis (AI agents), with Kryptos (AI agent). Schedule activity 0.7; review request [issue #14](https://github.com/NemoUnus/proof-of-one/issues/14). Status: reference tool in [`reference/document-circuit/src/trustlist.js`](../../reference/document-circuit/src/trustlist.js), tested on synthetic lists and run on the real German master list; published lists: [`trust-list-2026-10-26.json`](../research/trust-list-2026-10-26.json) (German list) and [`trust-list-2026-10-28.json`](../research/trust-list-2026-10-28.json) (German and ICAO lists, Decision Log #40). Not audited.*
 
 ## 1. Why
 
@@ -39,7 +39,7 @@ The founder downloaded the ICAO master list of 13 October 2026 by hand, under th
 | Coverage | **122 of the 186 countries that issue chip passports**: 91% of their population, about 67% of the world's. The German list alone gives 112 (one certificate expired since §2.1). The ICAO list adds ten chip-passport countries, among them Nigeria, Ethiopia, Sudan and Ghana |
 | Still missing | 64 chip-passport countries. Only 8 of them take part in the ICAO PKD (less than 1% of the world population); the rest must come from the states' own publications (§2) |
 
-The merged list is **not published yet**. Entries that come from the ICAO list alone are held back until ICAO answers whether publishing fingerprints is acceptable (§7.1, point 3). The published list remains the one built from the German list ([trust-list-2026-10-26.json](../research/trust-list-2026-10-26.json)). Anyone who downloads both lists can rebuild the merged list with the tool and compare its `listHash` (`a1684c94…6fc561b`).
+The merged list is published as [`trust-list-2026-10-28.json`](../research/trust-list-2026-10-28.json), in the form ICAO suggested (§3.1, Decision Log #40): the ICAO list appears as one reference to the whole file, and only entries carried by the German list are itemised (602 of 662). Anyone who downloads both files, checks their SHA-256 against the published values and runs the tool gets the same `listHash` (`a1684c94…6fc561b`).
 
 ## 3. References, not copies
 
@@ -59,6 +59,15 @@ Anyone can download the same sources, run the same tool and compare `listHash`. 
 2. It comes from a signed master list whose signer was issued by that list's own country CSCA (the **anchor**), or from the issuing state's official website.
 3. The anchor of each master list is pinned by fingerprint in the tool (`PINNED`), checked against the issuing authority's own website or, where the authority publishes none, against another list already verified (§2.2), and published with the list. A list signed under any other anchor is refused.
 4. Entries with a single source are marked. A second independent source is sought for each of them.
+
+### 3.1 Sources referenced as a whole (Decision Log #40)
+
+The ICAO PKD team was asked whether publishing per-certificate references would be acceptable. It answered (28 October 2026) that this might contravene the Terms and Conditions' ban on republishing "any portion" of the list, and suggested referencing the use of the whole list instead, since anyone can download it from the ICAO website. The project follows that suggestion:
+
+- A source whose terms do not allow itemising (marked `itemise: false` in `PINNED`) is published as **one reference**: file name and version, SHA-256 of the file, signer and anchor, number of certificates.
+- Entries carried only by such a source are **not itemised**. Entries also carried by an itemised source are listed, naming only the itemised source.
+- `listHash` still covers every entry, so the whole list stays reproducible from the public files.
+- If a certificate known only from a whole-list source must be excluded (§5), the exclusion is agreed with the source's owner before anything about it is published.
 
 ## 4. Document signers
 
@@ -105,7 +114,7 @@ What follows for the project:
 
 1. During the specification and test-network phases (to Gate 1), operators and reviewers may download the ICAO master list by hand and use it to check and extend the trust list, under the public terms. The rule against republishing still applies: the published list holds references only (§3).
 2. Before any paid service begins (Decision Log #36), the project must either join the licensing programme or rely only on sources whose terms allow it, such as the German master list and states' own publications. This is recorded as a condition of Phase 2.
-3. Whether publishing fingerprints alone is acceptable was asked but not answered directly. The project has asked again in its reply. Until it is answered, entries known only from the ICAO list are not published (§2.2).
+3. Whether publishing fingerprints alone is acceptable was asked again. ICAO answered on 28 October 2026 that it might contravene the ban on republishing "any portion" and suggested referencing the whole list instead. The project accepted (§3.1, Decision Log #40).
 
 ## 8. Reference implementation
 

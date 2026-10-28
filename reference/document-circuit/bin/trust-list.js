@@ -16,4 +16,6 @@ const sources = files.map((f) => T.readMasterList(fs.readFileSync(f), { pinned: 
 const list = T.buildTrustList(sources, { today });
 console.error(`${list.entries.length} CA certificates from ${list.countries.length} countries, valid on ${today}`);
 console.error(`listHash ${list.listHash}`);
-process.stdout.write(JSON.stringify({ built: today, sources: sources.map((s) => ({ name: s.name, signer: s.signer.subject, anchor: s.anchor.sha256 })), ...T.publishable(list) }, null, 1) + "\n");
+const pub = T.publishable(list, sources);
+console.error(`${pub.itemisedEntries} entries itemised; ${pub.totalEntries - pub.itemisedEntries} come only from whole-list sources and are not itemised`);
+process.stdout.write(JSON.stringify({ built: today, sources: sources.map((s) => ({ name: s.name, fileSha256: s.fileSha256, signer: s.signer.subject, anchor: s.anchor.sha256, itemised: s.itemise })), ...pub }, null, 1) + "\n");
