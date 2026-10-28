@@ -129,8 +129,16 @@ pre { font-family: var(--font-mono); font-size: .8rem; background: var(--bg); bo
   async function run() {
     $("start").disabled = true; $("verdict").textContent = ""; $("verdict").className = "verdict";
     ["r0", "r1", "r2"].forEach((id) => { $(id).textContent = "–"; });
+    status("Starting…");
+    // Keeping the screen on is optional. Some phones never answer the request (seen on an
+    // iPhone in October 2026), so the benchmark waits at most one second for it.
     let wake = null;
-    try { wake = await navigator.wakeLock?.request("screen"); } catch (e) { /* optional */ }
+    try {
+      wake = await Promise.race([
+        navigator.wakeLock ? navigator.wakeLock.request("screen") : Promise.resolve(null),
+        new Promise((r) => setTimeout(() => r(null), 1000)),
+      ]);
+    } catch (e) { /* optional */ }
     try {
       if (typeof snarkjs === "undefined") throw new Error("the proving library did not load; check the connection and reload");
       status("Downloading proof files…");
