@@ -4,7 +4,7 @@
 
 ## 1. Question
 
-Proof of One's document-validity proof π_doc ([spec](../specs/document-validity-proof-v0.1.md)) supports one signature suite: RSA-2048, PKCS#1 v1.5, SHA-256. Real passports use many more. Rarimo, whose Freedom Tool runs private polls with biometric passports ([landscape review §3.3](landscape-review-v0.1.md)), publishes circuits that cover many of them. Should we reuse them instead of writing each suite ourselves?
+Proof of One's document-validity proof π_doc ([spec](../specs/document-validity-proof-v0.1.md)) supports one signature suite: RSA-2048, PKCS#1 v1.5, SHA-256. Real passports use many more. Rarimo, whose Freedom Tool runs private polls with biometric passports ([landscape review §3.3](landscape-review-v0.2.md)), publishes circuits that cover many of them. Should we reuse them instead of writing each suite ourselves?
 
 ## 2. What was reviewed
 

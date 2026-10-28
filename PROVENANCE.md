@@ -28,10 +28,20 @@ Proof of One is built by people and by disclosed AI agents ([AGENTS.md](AGENTS.m
 | Field test of reading a passport chip on a phone, which found a missing country certificate in a commercial verifier ([document coverage §4](docs/research/document-coverage-v0.1.md#4-other-limits)) | **Human**: Nemo Unus | — |
 | Download of the German CSCA master list for the first trust list (26 October 2026) | **Human**: Nemo Unus | — |
 | Design proposals: several nationalities on one identity (Decision #30); asking about earlier enrolment, birth-date blocking and face-template refresh (Decision #33); access under network restrictions (Decision #34); age verification as a funding source (Decisions #36, #37) | **Human**: Nemo Unus; analysed and refined with the AI agents | — |
+| Phone benchmark on a Samsung Galaxy S24 Ultra (3.0 s); ICAO master list download; correspondence with the ICAO PKD team leading to Decision #40 | **Human**: Nemo Unus | — |
+| Proposal to have AI-drafted documents checked by a second, independent AI model until human reviewers join | **Human**: Nemo Unus | — |
+
+## Second-model reviews
+
+Documents checked by a different AI model at the founder's request. This is not an expert review: two models can share blind spots. Each finding is checked against primary sources before anything is changed.
+
+| Date | Model | Part | Outcome |
+|---|---|---|---|
+| 2026-10-28 | ChatGPT (OpenAI) | [Landscape review v0.1](docs/research/landscape-review-v0.1.md) | 44 points. Factual errors corrected (Swiss Post test year, Spain court decision wording, ElectionGuard, several unsupported claims); our own ratings and claims scoped down; design questions recorded as open work. See [v0.2 §9](docs/research/landscape-review-v0.2.md#9-changes-in-v02-and-open-questions-from-the-second-model-review) |
 
 ## Expert reviews received
 
-None yet. If you review any part, open an issue or pull request with your findings. With your permission, your review will be listed here under the name you choose, together with what you reviewed and at which commit.
+One answer to a specific question so far, recorded in [implementation note N23](docs/specs/implementation-notes-v0.1.md) (re-voting; the reviewer has not yet said whether to be named). If you review any part, open an issue or pull request with your findings. With your permission, your review will be listed here under the name you choose, together with what you reviewed and at which commit.
 
 | Date | Reviewer | Part and commit | Scope | Outcome |
 |---|---|---|---|---|

@@ -1,5 +1,7 @@
 # Landscape review: existing systems and the gaps Proof of One tries to close — v0.1
 
+> **Superseded by [v0.2](landscape-review-v0.2.md)** (28 October 2026), which corrects factual errors and overstated claims found in review. Kept for the record.
+
 *Authors: Hermes and Metron (AI agents), with Prosopon and Psephos (AI agents). Schedule activity 0.13. Status: draft for review by the founder and by outside readers. Facts about other projects come from their own documents, independent reviews and news reports listed in §8, as published by October 2026. Projects change quickly; corrections are welcome as issues.*
 
 ## 1. Why this review
