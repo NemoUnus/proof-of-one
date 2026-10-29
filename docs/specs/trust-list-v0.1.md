@@ -83,13 +83,13 @@ Both paths authenticate a **distribution file** (a master list); a separate chai
 | List signer | `C=DE, O=bund, OU=bsi, serialNumber=0039, CN=CSCA Master List Signer`, SHA-256 `3305905a014daeb0eabd8449875508f4611a992db331c08117f35654a6e4fc81` | `C=UN, O=United Nations, OU=Master List Signers, CN=ICAO Master List Signer`, SHA-256 `087828b1397883672896eed2188090eae2b32c48b9d8ce3c3a1d7f9a1a850db3` |
 | Signer certificate verified under | `C=DE, O=bund, OU=bsi, CN=csca-germany` (valid 2024-10-01 to 2039-01-01) | `C=UN, O=United Nations, OU=Certification Authorities, CN=United Nations CSCA` (valid 2022-06-14 to 2032-06-14) |
 | Anchor fingerprint (SHA-256) | `2084aed7a991b3158e63ad750d3dc38bc6c9dcf5958f28d1162f49884e91ada8` | `920693cd1283824ffdf48a3579fc35528122f3de46bab2ecdaef402db6d92e4e` |
-| Why the anchor is accepted | The BSI publishes this fingerprint on its own website; compared on 26 October 2026 by the AI team, fetching the BSI page once | ICAO states that its list signer is issued by the United Nations CSCA but does not publish the fingerprint. A certificate with this exact fingerprint is a CSCA entry of the German list (the UN issues travel documents), so the German path vouches for it. This makes the ICAO path **depend on the German one** |
+| Why the anchor is accepted | The BSI publishes this fingerprint on its own website; compared on 26 October 2026 by the AI team (fetching the BSI page once) and again on 29 October 2026 by the founder, from a different network and browser: the page lists it for "CSCA-Certificate (Certificate 10/24, self-signed)" | ICAO states that its list signer is issued by the United Nations CSCA but does not publish the fingerprint. A certificate with this exact fingerprint is a CSCA entry of the German list (the UN issues travel documents), so the German path vouches for it. This makes the ICAO path **depend on the German one** |
 
 What this establishes and what it does not:
 
 - It establishes that each file is unaltered and was signed by a key that chains to the stated anchor.
 - It does not establish that every certificate in either list should be accepted for every document. List membership is evidence, not a policy; a full CSCA acceptance profile is open work (§9).
-- The German anchor itself rests on a single check of the BSI website. A second independent check and a governance rule for changes to `PINNED` (who approves, how changes are reviewed and recorded) are open work (§9).
+- The German anchor rests on two checks of the BSI website, by different people over different networks (26 and 29 October 2026). Both read the same website, so they protect against a fault in one fetch, not against a compromise of the website itself; checks by independent human reviewers are still wanted. A governance rule for changes to `PINNED` (who approves, how changes are reviewed and recorded) are open work (§9).
 
 ## 4. Document signers
 
@@ -173,7 +173,7 @@ Open work raised by the review:
 | Revocation | CRL authentication, freshness, behaviour when a CRL is missing or stale (fail safe, not "no revocation") |
 | Historical verification | Separate the active list from an archive of sources, CRLs and timestamps needed to reproduce past decisions |
 | Incidents | Compromise interval versus discovery date; affected enrolments; appeals |
-| Anchor governance | Second independent check of each anchor; approval and review of changes to `PINNED`; key rollover |
+| Anchor governance | Checks of each anchor by independent human reviewers (the German anchor has two checks, §3.2); approval and review of changes to `PINNED`; key rollover |
 | Build manifest | A versioned manifest committing to sources, tool version, policy and exclusions, in addition to `listHash` |
 | Tree consistency | Root publication and expiry, fork and withholding detection, revocation deadlines |
 | Source independence | When two sources count as independent |

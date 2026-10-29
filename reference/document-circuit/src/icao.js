@@ -9,8 +9,9 @@
 //   signed attributes: content type and the hash of the eContent
 //   signature by a document signer (DSC), whose certificate a country signing CA
 //   (CSCA) signed.
-// Only RSA-2048 with PKCS#1 v1.5, SHA-256 and exponent 65537 is produced here; other
-// suites used by real passports are listed in the specification.
+// Two signature suites are produced (SUITES below): suite 1, RSA-2048 PKCS#1 v1.5 with
+// SHA-256 and exponent 65537; suite 2, RSA-3072 PKCS#1 v1.5 with SHA-1 and an unusual
+// exponent, as some passports in use do. Other suites are listed in the specification.
 // TEST DATA ONLY: no real document, person or country key is used anywhere.
 "use strict";
 
@@ -32,21 +33,39 @@ function oid(s) {
 const int = (n) => tlv(0x02, Buffer.from([n]));
 const seq = (...p) => tlv(0x30, ...p), set = (...p) => tlv(0x31, ...p), octet = (b) => tlv(0x04, b);
 const sha256 = (b) => crypto.createHash("sha256").update(b).digest();
+const sha1 = (b) => crypto.createHash("sha1").update(b).digest();
+const digest = (alg, b) => crypto.createHash(alg).update(b).digest();
 
 const OID = {
   sha256: "2.16.840.1.101.3.4.2.1",
+  sha1: "1.3.14.3.2.26",
   contentType: "1.2.840.113549.1.9.3",
   messageDigest: "1.2.840.113549.1.9.4",
   signingTime: "1.2.840.113549.1.9.5",
   ldsSecurityObject: "2.23.136.1.1.1",
 };
 
-// Byte patterns the circuit checks in front of each value it reads.
-const PREFIX = {
-  dg1Hash: Buffer.from([0x30, 0x25, 0x02, 0x01, 0x01, 0x04, 0x20]),
-  dg2Hash: Buffer.from([0x30, 0x25, 0x02, 0x01, 0x02, 0x04, 0x20]),
-  messageDigest: Buffer.concat([Buffer.from([0x30, 0x2f]), oid(OID.messageDigest), Buffer.from([0x31, 0x22, 0x04, 0x20])]),
+// Signature suites of the document-validity proof. Each has its own circuit
+// (circuits/document*.circom) and its own identifier in the leaves of the DSC tree.
+//   alg     first input of the DSC leaf
+//   lds     hash of the data groups (LDS hashAlgorithm); sig: CMS digest and signature hash
+//   k       121-bit limbs of the modulus; fixedE: the only exponent allowed, or null (any
+//           odd exponent 3 <= e < 2^ebits, bound in the leaf)
+const SUITES = {
+  1: { id: 1, alg: 1n, lds: "sha256", sig: "sha256", bits: 2048, k: 17, fixedE: 65537, circuit: "document" },
+  2: { id: 2, alg: 2n, lds: "sha1", sig: "sha1", bits: 3072, k: 26, fixedE: null, ebits: 17, circuit: "document_s2" },
 };
+const HASH_LEN = { sha1: 20, sha256: 32 };
+
+// Byte patterns the circuit checks in front of each value it reads, for a hash of hl bytes.
+function prefixes(hl) {
+  return {
+    dg1Hash: Buffer.from([0x30, 5 + hl, 0x02, 0x01, 0x01, 0x04, hl]),
+    dg2Hash: Buffer.from([0x30, 5 + hl, 0x02, 0x01, 0x02, 0x04, hl]),
+    messageDigest: Buffer.concat([Buffer.from([0x30, 15 + hl]), oid(OID.messageDigest), Buffer.from([0x31, 2 + hl, 0x04, hl])]),
+  };
+}
+const PREFIX = prefixes(32); // suite 1
 
 // ------------------------------------------------------------------ the MRZ
 // TD3 (passport): two lines of 44 characters.
@@ -73,8 +92,8 @@ function mrzTD3({ issuer = "UTO", nationality = "UTO", surname = "ERIKSSON", giv
 const dg1Of = (mrz) => tlv(0x61, tlv([0x5f, 0x1f], Buffer.from(mrz, "ascii")));
 
 // ------------------------------------------------------------------ keys and certificates
-function rsaKey() {
-  const { privateKey, publicKey } = crypto.generateKeyPairSync("rsa", { modulusLength: 2048, publicExponent: 65537 });
+function rsaKey(bits = 2048, e = 65537) {
+  const { privateKey, publicKey } = crypto.generateKeyPairSync("rsa", { modulusLength: bits, publicExponent: e });
   return { privateKey, publicKey, forgePriv: forge.pki.privateKeyFromPem(privateKey.export({ type: "pkcs1", format: "pem" })),
     forgePub: forge.pki.publicKeyFromPem(publicKey.export({ type: "spki", format: "pem" })) };
 }
@@ -88,16 +107,20 @@ function cert({ subjectCN, country, key, issuer, serial, ca }) {
   c.sign(issuer ? issuer.key.forgePriv : key.forgePriv, forge.md.sha256.create());
   return c;
 }
-// A test country: one CSCA and any number of document signers.
-function createCountry(code = "UTO", nDsc = 1) {
+// A test country: one CSCA and any number of document signers, all of one suite.
+// `e` overrides the DSC exponent (suite 2 uses 37817 by default, the exponent of a
+// public Rarimo template).
+function createCountry(code = "UTO", nDsc = 1, { suite = 1, e } = {}) {
+  const S = SUITES[suite];
+  const dscE = e ?? S.fixedE ?? 37817;
   const cscaKey = rsaKey();
   const csca = { key: cscaKey, cert: cert({ subjectCN: "CSCA " + code + " (TEST ONLY)", country: code.slice(0, 2), key: cscaKey, serial: "01", ca: true }) };
   const dscs = [];
   for (let i = 0; i < nDsc; i++) {
-    const k = rsaKey();
-    dscs.push({ key: k, cert: cert({ subjectCN: "DSC " + code + " " + (i + 1) + " (TEST ONLY)", country: code.slice(0, 2), key: k, issuer: csca, serial: "1" + i }) });
+    const k = rsaKey(S.bits, dscE);
+    dscs.push({ suite, key: k, cert: cert({ subjectCN: "DSC " + code + " " + (i + 1) + " (TEST ONLY)", country: code.slice(0, 2), key: k, issuer: csca, serial: "1" + i }) });
   }
-  return { code, csca, dscs };
+  return { code, suite, csca, dscs };
 }
 
 // ------------------------------------------------------------------ a document
@@ -105,14 +128,15 @@ function issueDocument(country, person = {}, { dscIndex = 0, extraGroups = [14],
   const mrz = mrzTD3({ issuer: country.code, nationality: person.nationality ?? country.code, ...person });
   const dg1 = dg1Of(mrz);
   const dg2 = tlv([0x75], tlv([0x7f, 0x61], crypto.randomBytes(1500)));
+  const dsc = country.dscs[dscIndex];
+  const S = SUITES[dsc.suite ?? 1];
   const groups = [[1, dg1], [2, dg2], ...extraGroups.map((n) => [n, tlv(0x60 + n, crypto.randomBytes(40))])];
-  const eContent = seq(int(0), seq(oid(OID.sha256)), seq(...groups.map(([n, b]) => seq(int(n), octet(sha256(b))))));
-  const attrs = [seq(oid(OID.contentType), set(oid(OID.ldsSecurityObject))), seq(oid(OID.messageDigest), set(octet(sha256(eContent))))];
+  const eContent = seq(int(0), seq(oid(OID[S.lds])), seq(...groups.map(([n, b]) => seq(int(n), octet(digest(S.lds, b))))));
+  const attrs = [seq(oid(OID.contentType), set(oid(OID.ldsSecurityObject))), seq(oid(OID.messageDigest), set(octet(digest(S.sig, eContent))))];
   if (signingTime) attrs.push(seq(oid(OID.signingTime), set(tlv(0x17, Buffer.from("260101120000Z")))));
   const signedAttrs = set(...attrs); // signed with the SET tag (0x31), as CMS requires
-  const dsc = country.dscs[dscIndex];
-  const signature = crypto.sign("sha256", signedAttrs, { key: dsc.key.privateKey, padding: crypto.constants.RSA_PKCS1_PADDING });
-  return { mrz, dg1, dg2, eContent, signedAttrs, signature, dscCert: dsc.cert, faceImage: dg2 };
+  const signature = crypto.sign(S.sig, signedAttrs, { key: dsc.key.privateKey, padding: crypto.constants.RSA_PKCS1_PADDING });
+  return { suite: S.id, mrz, dg1, dg2, eContent, signedAttrs, signature, dscCert: dsc.cert, faceImage: dg2 };
 }
 
 // ------------------------------------------------------------------ trust list of document signers
@@ -126,25 +150,33 @@ function verifyDsc(dscCert, cscaCerts) {
   }
   return null;
 }
-const ALG = { RSA2048_SHA256_PKCS1: 1n };
-function modulusChunks(cert, n = 121, k = 17) {
-  const N = BigInt("0x" + cert.publicKey.n.toString(16));
-  if (cert.publicKey.e.toString(10) !== "65537") throw new Error("only e = 65537 is supported");
+const ALG = { RSA2048_SHA256_PKCS1: 1n, RSA3146_SHA1_PKCS1_ANYE: 2n };
+const exponentOf = (cert) => BigInt(cert.publicKey.e.toString(10));
+// The DSC modulus in k limbs of n bits, least significant first. Checks that the key
+// fits the suite: size, and exponent (fixed, or odd, at least 3 and below 2^ebits).
+function modulusChunks(cert, suite = 1, n = 121) {
+  const S = SUITES[suite], k = S.k;
+  const N = BigInt("0x" + cert.publicKey.n.toString(16)), e = exponentOf(cert);
+  if (S.fixedE !== null && e !== BigInt(S.fixedE)) throw new Error(`suite ${suite} requires e = ${S.fixedE}`);
+  if (S.fixedE === null && (e < 3n || e % 2n === 0n || e >= 1n << BigInt(S.ebits))) throw new Error(`suite ${suite}: exponent ${e} not supported`);
   const out = []; let x = N;
   for (let i = 0; i < k; i++) { out.push(x & ((1n << BigInt(n)) - 1n)); x >>= BigInt(n); }
   if (x !== 0n) throw new Error("modulus too large");
   return out;
 }
-function dscLeaf(H, cert) {
-  const c = modulusChunks(cert);
-  return H([ALG.RSA2048_SHA256_PKCS1, H(c.slice(0, 16)), c[16]]);
+// The leaf binds the suite, every limb of the modulus and, where the suite allows any
+// exponent, the exponent (circuits/lib/document_core.circom, step 5).
+function dscLeaf(H, cert, suite = 1) {
+  const S = SUITES[suite], c = modulusChunks(cert, suite);
+  if (S.k === 17 && S.fixedE !== null) return H([S.alg, H(c.slice(0, 16)), c[16]]);
+  return H([S.alg, H(c.slice(0, 16)), H([...c.slice(16), exponentOf(cert)])]);
 }
 function buildDscTree(H, Tree, depth, countries) {
   const tree = new Tree(H, depth), index = new Map(), rejected = [];
   const cscas = countries.map((c) => c.csca.cert);
   for (const c of countries) for (const d of c.dscs) {
     if (!verifyDsc(d.cert, cscas)) { rejected.push(d.cert.subject.getField("CN").value); continue; }
-    index.set(d.cert.serialNumber + "/" + c.code, tree.insert(dscLeaf(H, d.cert)));
+    index.set(d.cert.serialNumber + "/" + c.code, tree.insert(dscLeaf(H, d.cert, d.suite ?? 1)));
   }
   return { tree, index, rejected };
 }
@@ -171,4 +203,4 @@ function createMasterList(issuer, cscaCerts, { tamper = false, signWith = null }
   return seq(oid("1.2.840.113549.1.7.2"), tlv(0xa0, signedData));
 }
 
-module.exports = { createMasterList, certDer, tlv, oid, seq, set, octet, int, sha256, OID, PREFIX, checkDigit, mrzTD3, dg1Of, rsaKey, cert, createCountry, issueDocument, verifyDsc, modulusChunks, dscLeaf, buildDscTree, ALG };
+module.exports = { SUITES, HASH_LEN, prefixes, digest, sha1, exponentOf, createMasterList, certDer, tlv, oid, seq, set, octet, int, sha256, OID, PREFIX, checkDigit, mrzTD3, dg1Of, rsaKey, cert, createCountry, issueDocument, verifyDsc, modulusChunks, dscLeaf, buildDscTree, ALG };
