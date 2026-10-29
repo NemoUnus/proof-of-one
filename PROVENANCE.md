@@ -30,6 +30,7 @@ Proof of One is built by people and by disclosed AI agents ([AGENTS.md](AGENTS.m
 | Design proposals: several nationalities on one identity (Decision #30); asking about earlier enrolment, birth-date blocking and face-template refresh (Decision #33); access under network restrictions (Decision #34); age verification as a funding source (Decisions #36, #37) | **Human**: Nemo Unus; analysed and refined with the AI agents | — |
 | Phone benchmark on a Samsung Galaxy S24 Ultra (3.0 s); ICAO master list download; correspondence with the ICAO PKD team leading to Decision #40 | **Human**: Nemo Unus | — |
 | Proposal to have AI-drafted documents checked by a second, independent AI model until human reviewers join | **Human**: Nemo Unus | — |
+| Proposal to derive the document fingerprint from the personal (national) number carried in the passport, which stays the same across renewals (Decision #43) | **Human**: Nemo Unus | — |
 | Second, independent check of the German master list's anchor fingerprint on the BSI website (29 October 2026, [trust list §3.2](docs/specs/trust-list-v0.1.md)) | **Human**: Nemo Unus | — |
 
 ## Second-model reviews
