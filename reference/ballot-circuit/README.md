@@ -16,7 +16,7 @@ Without revealing who the voter is, or how they voted, the phone proves:
 | 2 | Its identity leaf `Poseidon(idc, attributes, rn)` is in the identity tree at the poll's snapshot root | Only enrolled members can vote |
 | 3 | Its hidden revocation handle `rn` is **not** in the revocation tree, via an indexed-tree low-leaf proof | Lost or replaced identities cannot vote |
 | 4 | `nf = Poseidon(1, pollId, s)` | One ballot per member per poll; re-votes replace earlier ones |
-| 5 | Date of birth within the poll's age range, evaluated on the poll date ([Decision #37](../../docs/specs/birth-date-and-private-verification-v0.1.md)), and one of the member's documents (up to three, one per nationality), chosen privately, is valid until after the poll and has the required nationality | Eligibility, without revealing the attributes or the other nationalities ([Decision #30](../../docs/specs/several-nationalities-v0.1.md)) |
+| 5 | Age band ≥ minimum, document valid until after the poll, nationality as required | Eligibility, without revealing the attributes |
 | 6 | Every `v_j` is 0 or 1 and they sum to 1 | Each ballot counts as exactly one vote |
 | 7 | Every `(A_j, B_j)` encrypts `v_j` under the poll's tally key | The encrypted ballot is the ballot that was proven |
 | 8 | The proof is bound to `ctxHash` | It cannot be replayed in another context |
@@ -28,15 +28,16 @@ The verifier never takes public inputs from the submitter. It rebuilds them from
 
 | Parameters | Constraints (Groth16, `--O2`) |
 |---|---|
-| Identity tree depth 32, revocation tree depth 32, 4 options, up to 3 documents, birth-date range, 18 public inputs | **32,607** |
+| Identity tree depth 32, revocation tree depth 32, 4 options, 18 public inputs | **32,429** |
 
-That is in line with the whitepaper's estimate of about 40,000. With snarkjs (pure JavaScript) on a server CPU, one proof takes about 4–5 seconds; in a browser on a 2-core server, about 10 seconds. To measure a phone, open the [phone benchmark](../phone-bench/) on it.
+That is in line with the whitepaper's estimate of about 40,000. With snarkjs (pure JavaScript) on a server CPU, one proof takes about 4–5 seconds. Proving time on phones, for example with a native prover, has not yet been measured.
 
 ## Run it
 
 ```bash
 npm install
 npm run build        # compile the circuit (circom 2 via the circom2 npm package)
+npm run build:sampling   # optional: the invitation ticket of sampled polls (prototype)
 npm run setup:test   # TEST-ONLY trusted setup (single contributor; a few minutes)
 npm test             # proof tests, including attempts to cheat
 ```
@@ -56,15 +57,9 @@ The tests use the tally code in `../tally`, so run `npm install` there as well.
 | Wrong nullifier | Cannot be proven |
 | Person not in the identity tree | Cannot be proven |
 | Revoked member, including with a forged low leaf | Cannot be proven |
-| Member under the minimum age | Cannot be proven |
+| Member below the minimum age band | Cannot be proven |
 | Ciphertexts swapped, or another poll or context used after proving | Verification fails |
 | End to end: verified submissions, a re-vote, and a proof attached to someone else's ciphertexts | Mismatched proof rejected; tally correct; contract checks pass |
-| Two nationalities: regional polls of each | Valid proofs for both; no nationality among the public inputs |
-| Two nationalities: global poll | Same nullifier whichever document is used, so only one ballot counts |
-| Region of a nationality not held, or an empty document slot | Cannot be proven |
-| Expired document | Cannot be used; the member's other valid document still can |
-| Birthday on the poll date | Eligible from the 18th birthday, not the day before |
-| Age range 18–24 | Too old or too young cannot be proven; widening the range after proving fails |
 
 ## Trusted setup
 
@@ -85,3 +80,7 @@ Groth16 needs a circuit-specific setup. `setup/` uses a **single-contributor, te
 Written by the Proof of One AI agents Psephos and Kryptos (see [AGENTS.md](../../AGENTS.md)). Not yet reviewed by independent human experts. Review is welcome; see [CONTRIBUTING.md](../../CONTRIBUTING.md) and [SECURITY.md](../../SECURITY.md).
 
 Licence: Apache-2.0.
+
+## Prototype: invitation ticket for sampled polls
+
+`circuits/sampling.circom` proves that a member was invited to a sampled poll, without revealing who was invited ([design](../../docs/specs/cost-of-large-polls-v0.1.md), Decision Log #44): `ticket = Poseidon(13, pollId, seed, s)`, and the member is invited when the top 64 bits of the ticket are below a threshold set by the invitation rate. A threshold of 2^64 invites everyone, so one ballot proof can later serve both open and sampled polls. Measured alone: **939 constraints** (`--O2`), about 3% of the ballot proof. It is not yet part of `ballot.circom`; joining it needs `seed` and the threshold in `pollHash` and a matching contract change. `test/sampling.test.js` checks the invitation rate, that an uninvited member cannot prove an invitation, that a threshold of 2^64 admits everyone, and that a new seed draws a new sample.

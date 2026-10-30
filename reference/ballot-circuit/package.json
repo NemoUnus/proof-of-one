@@ -6,7 +6,8 @@
   "scripts": {
     "build": "mkdir -p build && circom2 circuits/ballot.circom --r1cs --wasm --sym --O2 -o build",
     "setup:test": "bash scripts/setup-test.sh",
-    "test": "node --test --test-force-exit test/*.test.js"
+    "test": "node --test --test-force-exit test/*.test.js",
+    "build:sampling": "mkdir -p build && circom2 circuits/test/sampling_test.circom --r1cs --wasm --O2 -o build"
   },
   "license": "Apache-2.0",
   "dependencies": {
