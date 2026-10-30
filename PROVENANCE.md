@@ -17,7 +17,7 @@ Proof of One is built by people and by disclosed AI agents ([AGENTS.md](AGENTS.m
 | Part | Written by | Human review |
 |---|---|---|
 | The idea, the founding principles R1 and R2, and every recorded decision ([decision log](docs/decisions/DECISION_LOG.md)) | **Human**: Nemo Unus. Recorded by Hermes (AI agent). | Founder |
-| [Whitepaper](docs/whitepaper/) | AI draft, human-directed | **Founder-reviewed** (read in full, several times); expert review: none yet |
+| [Whitepaper](docs/whitepaper/) | AI draft, human-directed | **Founder-reviewed** (read in full, several times; v0.9 review by the founder pending); second-model review of v0.8; expert review: none yet |
 | [Specifications](docs/specs/): threat model, ballot and enrolment, red-team review, contracts, implementation notes, ballot aggregation, several nationalities, face uniqueness at scale, access under network restrictions, date of birth and private verification, trustee key generation, document-validity proof, trust list | AI draft, human-directed | Expert review: none yet |
 | [Document coverage research](docs/research/) | AI draft, at the founder's request (his idea) | Expert review: none yet; corrections by country welcome |
 | [One-page summary](docs/summary/) | AI draft, human-directed | Founder |
@@ -41,6 +41,7 @@ Documents checked by a different AI model at the founder's request. This is not 
 |---|---|---|---|
 | 2026-10-28 | ChatGPT (OpenAI) | [Landscape review v0.1](docs/research/landscape-review-v0.1.md) | 44 points. Factual errors corrected (Swiss Post test year, Spain court decision wording, ElectionGuard, several unsupported claims); our own ratings and claims scoped down; design questions recorded as open work. See [v0.2 §9](docs/research/landscape-review-v0.2.md#9-changes-in-v02-and-open-questions-from-the-second-model-review) |
 | 2026-10-28 | ChatGPT (OpenAI) | [Trust list specification](docs/specs/trust-list-v0.1.md) | 41 points. Wording and claims corrected (what a signature chain proves, reproducibility, ICAO correspondence status), full trust paths published, `listHash` defined exactly; one misreading noted; open work listed in its §9 |
+| 2026-10-29 | ChatGPT (OpenAI) | [Whitepaper v0.8](docs/whitepaper/Proof_of_One_Whitepaper_v0.8_EN.md), in six parts | 137 points, none rejected. Claims scoped to design goals with their assumptions; landscape comparison rebuilt on common criteria; two real gaps recorded (no on-chain check of decrypted totals in the reference contracts; small-cell sizes in breakdowns); three places where the paper lagged the code fixed; Decision #43. See the [review record](docs/review/second-model-review-whitepaper-v0.8.md) and [whitepaper v0.9](docs/whitepaper/Proof_of_One_Whitepaper_v0.9_EN.md) |
 
 ## Expert reviews received
 

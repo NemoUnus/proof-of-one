@@ -31,7 +31,8 @@ Participation is free. Topics of sponsored polls are chosen by participants them
 |---|---|
 | [One-page summary (PDF)](docs/summary/Proof_of_One_Summary_EN.pdf) · [Markdown](docs/summary/SUMMARY.en.md) | Plain-language overview — start here |
 | [Technical brief for reviewers](docs/review/technical-brief-v0.1.md) | Claims, constructions, trust assumptions, measurements and known weak points, in 15 minutes |
-| [Whitepaper v0.8 (PDF)](docs/whitepaper/Proof_of_One_Whitepaper_v0.8_EN.pdf) · [Markdown](docs/whitepaper/Proof_of_One_Whitepaper_v0.8_EN.md) | Full design, with measured sizes and costs from the reference code: identity, cryptography, ledger, polling, governance, limits |
+| [Whitepaper v0.9 (PDF)](docs/whitepaper/Proof_of_One_Whitepaper_v0.9_EN.pdf) · [Markdown](docs/whitepaper/Proof_of_One_Whitepaper_v0.9_EN.md) | Full design, with measured sizes and costs from the reference code: identity, cryptography, ledger, polling, governance, limits. Each property is stated as a design goal with its assumptions |
+| [Second-model review of whitepaper v0.8](docs/review/second-model-review-whitepaper-v0.8.md) | 137 points from an independent AI model and what changed in v0.9 |
 | [Threat model v0.1](docs/specs/threat-model-v0.1.md) | Adversary with the resources of a state |
 | [Ballot and enrolment spec v0.1](docs/specs/ballot-and-enrolment-v0.1.md) | Encrypted ballots, public tally, unlinkable enrolment |
 | [Red-team review v0.1](docs/specs/red-team-review-ballot-spec-v0.1.md) | Attacks on the ballot spec and accepted fixes |
