@@ -51,7 +51,7 @@ pre { font-family: var(--font-mono); font-size: .8rem; background: var(--bg); bo
 
 <main>
   <header>
-    <p class="eyebrow">Proof of One · reference code · test only · page v0.3</p>
+    <p class="eyebrow">Proof of One · reference code · test only · page v0.4</p>
     <h1>How fast can this phone make a ballot proof?</h1>
   </header>
 
@@ -118,6 +118,13 @@ window.addEventListener("unhandledrejection", (e) => { const s = document.getEle
   // The proving library is served from this folder (snarkjs 0.7.5, GPL-3.0), not from a
   // third-party CDN: a CDN that is slow or blocked left the button without a handler.
   let libState = "loading";
+  // The prover needs BigInt (Safari 14 / iOS 14, Chrome 67, Firefox 68 or later). Older
+  // browsers cannot even parse the library, so say so plainly instead of loading it.
+  if (typeof BigInt === "undefined") {
+    libState = "failed";
+    window.__firstError = "this browser is too old: it has no BigInt (needs iOS 14 or later, or a current Chrome or Firefox)";
+    status("This browser is too old for the benchmark: it needs iOS 14 or later, or a current Chrome or Firefox. Browser: " + navigator.userAgent);
+  }
   const lib = document.createElement("script");
   lib.src = "snarkjs.min.js"; lib.async = true;
   lib.onload = () => {
@@ -127,7 +134,7 @@ window.addEventListener("unhandledrejection", (e) => { const s = document.getEle
     status("The proving library could not start on this browser. " + (window.__firstError ? "Error: " + window.__firstError + ". " : "") + "Browser: " + navigator.userAgent);
   };
   lib.onerror = () => { libState = "failed"; status("The proving library did not load; check the connection and reload."); };
-  document.head.appendChild(lib);
+  if (libState === "loading") document.head.appendChild(lib);
   function waitForLib(ms) {
     return new Promise((resolve, reject) => {
       const t0 = Date.now();

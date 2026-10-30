@@ -20,6 +20,8 @@ Then tap **Start benchmark**, keep the screen on, and post the result in [issue 
 
 - **Page v0.2 (30 October 2026):** the proving library is served from the repository instead of a CDN, the page no longer loads web fonts from Google (a slow or blocked font request can delay the page's script), the Start button works as soon as the page opens and waits for the library, and any error is shown on the page. In v0.1 a slow or blocked CDN could leave the button doing nothing.
 
+- **Page v0.3 and v0.4 (30 October 2026):** the page shows the exact error and the browser when the proving library cannot start, and says plainly when a browser is too old. Found with an iPhone 7 on iOS 13.7: its Safari has no BigInt, so it cannot run the prover at all. **The browser benchmark needs iOS 14 or later** (or Chrome 67 / Firefox 68 or later); iPhone 7 can be updated to iOS 15.
+
 ## Reference results
 
 | Device | Median of 3 runs |
