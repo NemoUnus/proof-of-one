@@ -51,7 +51,7 @@ pre { font-family: var(--font-mono); font-size: .8rem; background: var(--bg); bo
 
 <main>
   <header>
-    <p class="eyebrow">Proof of One · reference code · test only · page v0.2</p>
+    <p class="eyebrow">Proof of One · reference code · test only · page v0.3</p>
     <h1>How fast can this phone make a ballot proof?</h1>
   </header>
 
@@ -102,7 +102,12 @@ pre { font-family: var(--font-mono); font-size: .8rem; background: var(--bg); bo
 
 <script>
 // Show any script error on the page itself, so a failure is never silent.
-window.addEventListener("error", (e) => { const s = document.getElementById("status"); if (s) s.textContent = "Error: " + (e.message || e.type) + (e.filename ? " (" + e.filename.split("/").pop() + ")" : ""); });
+window.__firstError = "";
+window.addEventListener("error", (e) => {
+  const msg = (e.message || e.type) + (e.filename ? " (" + e.filename.split("/").pop() + ":" + (e.lineno || "?") + ")" : "");
+  if (!window.__firstError) window.__firstError = msg;
+  const s = document.getElementById("status"); if (s) s.textContent = "Error: " + msg;
+});
 window.addEventListener("unhandledrejection", (e) => { const s = document.getElementById("status"); if (s) s.textContent = "Error: " + (e.reason && e.reason.message ? e.reason.message : e.reason); });
 </script>
 <script>
@@ -115,7 +120,12 @@ window.addEventListener("unhandledrejection", (e) => { const s = document.getEle
   let libState = "loading";
   const lib = document.createElement("script");
   lib.src = "snarkjs.min.js"; lib.async = true;
-  lib.onload = () => { libState = typeof snarkjs === "undefined" ? "failed" : "ready"; if ($("start").disabled === false) status(libState === "ready" ? "Ready." : "The proving library did not load; reload the page."); };
+  lib.onload = () => {
+    libState = typeof snarkjs === "undefined" ? "failed" : "ready";
+    if (libState === "ready") { if ($("start").disabled === false) status("Ready."); return; }
+    // The file arrived but did not run: show why, and which browser this is.
+    status("The proving library could not start on this browser. " + (window.__firstError ? "Error: " + window.__firstError + ". " : "") + "Browser: " + navigator.userAgent);
+  };
   lib.onerror = () => { libState = "failed"; status("The proving library did not load; check the connection and reload."); };
   document.head.appendChild(lib);
   function waitForLib(ms) {
@@ -123,7 +133,7 @@ window.addEventListener("unhandledrejection", (e) => { const s = document.getEle
       const t0 = Date.now();
       (function tick() {
         if (libState === "ready") return resolve();
-        if (libState === "failed") return reject(new Error("the proving library did not load; check the connection and reload"));
+        if (libState === "failed") return reject(new Error("the proving library could not start on this browser" + (window.__firstError ? " (" + window.__firstError + ")" : "") + ". Browser: " + navigator.userAgent));
         if (Date.now() - t0 > ms) return reject(new Error("the proving library is still loading after " + ms / 1000 + " s; check the connection and reload"));
         setTimeout(tick, 200);
       })();
