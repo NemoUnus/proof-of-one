@@ -4,15 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Ballot Proof Phone Benchmark</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@400;600&display=swap">
 <style>
 /* Layout: one narrow column built for a phone held in one hand; the run button and the timing readout are the page. */
 :root {
   --bg: #f3f5f4; --surface: #ffffff; --ink: #18211e; --muted: #5a6763; --line: #d5ddd9;
   --accent: #0f6e5c; --accent-ink: #ffffff; --ok: #1f7a3a; --bad: #b3261e;
-  --font-body: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --font-body: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
   --bg: #111816; --surface: #19221f; --ink: #e6eeea; --muted: #9aaba5; --line: #2c3a35;
@@ -53,7 +51,7 @@ pre { font-family: var(--font-mono); font-size: .8rem; background: var(--bg); bo
 
 <main>
   <header>
-    <p class="eyebrow">Proof of One · reference code · test only</p>
+    <p class="eyebrow">Proof of One · reference code · test only · page v0.2</p>
     <h1>How fast can this phone make a ballot proof?</h1>
   </header>
 
@@ -80,7 +78,7 @@ pre { font-family: var(--font-mono); font-size: .8rem; background: var(--bg); bo
       <button id="start" type="button">Start benchmark</button>
       <span class="note">Keep the screen on. It can take a minute or more.</span>
     </div>
-    <p id="status" class="status" role="status">Ready.</p>
+    <p id="status" class="status" role="status">Loading the proving library…</p>
     <div class="runs" aria-label="Proving times">
       <div class="run"><b id="r0">–</b><span>run 1</span></div>
       <div class="run"><b id="r1">–</b><span>run 2</span></div>
@@ -102,12 +100,35 @@ pre { font-family: var(--font-mono); font-size: .8rem; background: var(--bg); bo
   <p class="note">The trusted setup behind this proof is for testing only and must never be used for real polls.</p>
 </main>
 
-<script src="https://cdn.jsdelivr.net/npm/snarkjs@0.7.5/build/snarkjs.min.js"></script>
+<script>
+// Show any script error on the page itself, so a failure is never silent.
+window.addEventListener("error", (e) => { const s = document.getElementById("status"); if (s) s.textContent = "Error: " + (e.message || e.type) + (e.filename ? " (" + e.filename.split("/").pop() + ")" : ""); });
+window.addEventListener("unhandledrejection", (e) => { const s = document.getElementById("status"); if (s) s.textContent = "Error: " + (e.reason && e.reason.message ? e.reason.message : e.reason); });
+</script>
 <script>
 (function () {
   const $ = (id) => document.getElementById(id);
   const status = (t) => { $("status").textContent = t; };
   let report = "";
+  // The proving library is served from this folder (snarkjs 0.7.5, GPL-3.0), not from a
+  // third-party CDN: a CDN that is slow or blocked left the button without a handler.
+  let libState = "loading";
+  const lib = document.createElement("script");
+  lib.src = "snarkjs.min.js"; lib.async = true;
+  lib.onload = () => { libState = typeof snarkjs === "undefined" ? "failed" : "ready"; if ($("start").disabled === false) status(libState === "ready" ? "Ready." : "The proving library did not load; reload the page."); };
+  lib.onerror = () => { libState = "failed"; status("The proving library did not load; check the connection and reload."); };
+  document.head.appendChild(lib);
+  function waitForLib(ms) {
+    return new Promise((resolve, reject) => {
+      const t0 = Date.now();
+      (function tick() {
+        if (libState === "ready") return resolve();
+        if (libState === "failed") return reject(new Error("the proving library did not load; check the connection and reload"));
+        if (Date.now() - t0 > ms) return reject(new Error("the proving library is still loading after " + ms / 1000 + " s; check the connection and reload"));
+        setTimeout(tick, 200);
+      })();
+    });
+  }
 
   async function fetchBytes(url) {
     const r = await fetch(url);
@@ -140,7 +161,8 @@ pre { font-family: var(--font-mono); font-size: .8rem; background: var(--bg); bo
       ]);
     } catch (e) { /* optional */ }
     try {
-      if (typeof snarkjs === "undefined") throw new Error("the proving library did not load; check the connection and reload");
+      status("Loading the proving library…");
+      await waitForLib(60000);
       status("Downloading proof files…");
       const t0 = performance.now();
       const cfg = await (await fetch("bench.json")).json();

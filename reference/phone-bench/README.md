@@ -5,7 +5,7 @@
 This web page makes the ballot proof π_vote three times on the device that opens it and shows how long each run took. It is the first step of Decision Log #29: before choosing how to aggregate ballots, we need to know how fast real, low-cost phones can prove.
 
 - **What it proves:** one valid ballot from [`input.json`](input.json), built by [`mkinput.js`](mkinput.js) from test data (a member with two nationalities voting in a regional poll with an age limit).
-- **Prover:** snarkjs 0.7.5 in the browser (WebAssembly), the same proof the reference tests use: 32,607 constraints, Groth16. A native prover in an app is expected to be several times faster, so these results are an upper bound.
+- **Prover:** snarkjs 0.7.5 in the browser (WebAssembly), served from this folder (`snarkjs.min.js`, GPL-3.0, unchanged from the npm package) so that the page does not depend on a third-party CDN, the same proof the reference tests use: 32,607 constraints, Groth16. A native prover in an app is expected to be several times faster, so these results are an upper bound.
 - **Privacy:** the page sends nothing. Its result text includes the number of processor cores, the approximate memory the browser reports and, if you type it, the phone model. You decide whether to share it.
 
 ## How to run it
@@ -15,6 +15,10 @@ Open `index.html` from any web server that serves this repository. It loads `../
 `https://nemounus.github.io/proof-of-one/reference/phone-bench/`
 
 Then tap **Start benchmark**, keep the screen on, and post the result in [issue #9](https://github.com/NemoUnus/proof-of-one/issues/9).
+
+## Changes
+
+- **Page v0.2 (30 October 2026):** the proving library is served from the repository instead of a CDN, the page no longer loads web fonts from Google (a slow or blocked font request can delay the page's script), the Start button works as soon as the page opens and waits for the library, and any error is shown on the page. In v0.1 a slow or blocked CDN could leave the button doing nothing.
 
 ## Reference results
 
