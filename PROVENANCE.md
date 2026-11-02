@@ -32,6 +32,7 @@ Proof of One is built by people and by disclosed AI agents ([AGENTS.md](AGENTS.m
 | Proposal to have AI-drafted documents checked by a second, independent AI model until human reviewers join | **Human**: Nemo Unus | — |
 | Proposal to derive the document fingerprint from the personal (national) number carried in the passport, which stays the same across renewals (Decision #43) | **Human**: Nemo Unus | — |
 | Second, independent check of the German master list's anchor fingerprint on the BSI website (29 October 2026, [trust list §3.2](docs/specs/trust-list-v0.1.md)) | **Human**: Nemo Unus | — |
+| Reviewed and opened the design issue on Vocdoni DAVINCI ([davinci-zkvm #6](https://github.com/vocdoni/davinci-zkvm/issues/6)); the issue text was drafted by the AI team | **Human**: Nemo Unus | — |
 
 ## Second-model reviews
 
@@ -50,6 +51,12 @@ One answer to a specific question so far, recorded in [implementation note N23](
 | Date | Reviewer | Part and commit | Scope | Outcome |
 |---|---|---|---|---|
 | — | — | — | — | — |
+
+## Discussions with other projects
+
+| Date | Project | Where | Topic | Status |
+|---|---|---|---|---|
+| 2026-11-02 | Vocdoni DAVINCI | [davinci-zkvm issue #6](https://github.com/vocdoni/davinci-zkvm/issues/6), following the [Ethereum Research thread](https://ethresear.ch/t/proof-of-one-one-person-one-identity-polling-with-encrypted-ballots-design-and-reference-code-requesting-critical-review/26184) | An anonymous census option (hidden leaf and per-process nullifier), so that a registry like ours could serve as a DAVINCI census | Open |
 
 ## Human-only work we are asking for
 
