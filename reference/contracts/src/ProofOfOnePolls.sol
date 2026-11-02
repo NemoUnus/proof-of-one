@@ -227,6 +227,10 @@ contract ProofOfOnePolls {
     ) external {
         Poll storage p = _openPoll(pollId);
         if (nfs.length == 0 || nfs.length != cts.length || nfs.length != proofs.length) revert BadBatch();
+        // Nullifiers must be strictly increasing: no nullifier twice in one batch, so a relay
+        // cannot choose which of a member's answers counts (whitepaper v0.9, 8.5). Re-votes go
+        // in separate transactions, ordered by the ledger. One comparison per ballot.
+        for (uint256 i = 1; i < nfs.length; i++) if (nfs[i] <= nfs[i - 1]) revert BadBatch();
         if (!batchVerifier.verifyBallots(p.pollHash, nfs, cts, proofs)) revert InvalidProof();
 
         Counters memory cnt = _counters[pollId];

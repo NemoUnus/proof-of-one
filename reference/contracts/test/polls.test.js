@@ -205,7 +205,8 @@ test("re-enrolment: the old identity is revoked on-chain and cannot vote in late
 });
 
 // --- batched submission (voteBatch): one transaction, n + 3 pairings for n proofs
-const asBatch = (bs) => [bs.map((b) => b.nf), bs.map((b) => ctArray(b.C)), bs.map((b) => ({ a: b.sp.a, b: b.sp.b, c: b.sp.c }))];
+// voteBatch requires strictly increasing nullifiers, so a relay sorts the batch first.
+const asBatch = (bs0) => { const bs = [...bs0].sort((x, y) => (BigInt(x.nf) < BigInt(y.nf) ? -1 : 1)); return [bs.map((b) => b.nf), bs.map((b) => ctArray(b.C)), bs.map((b) => ({ a: b.sp.a, b: b.sp.b, c: b.sp.c }))]; };
 const sendBatch = (bs, id) => polls.voteBatch(id, ...asBatch(bs));
 const intrinsic = (data) => { const b = ethers.getBytes(data); return 21000n + BigInt(b.reduce((g, x) => g + (x ? 16 : 4), 0)); };
 
@@ -245,9 +246,14 @@ test("batched ballots: accepted together, one bad proof rejects the batch, same 
   assert.equal(await polls.distinctVoters(pb), 7n);
   assert.equal(await polls.distinctVoters(pc), 7n);
 
-  // Re-votes inside one batch, including the same nullifier twice: applied in order
+  // The same nullifier twice in one batch is refused, as are nullifiers out of order, so a relay
+  // cannot pick which of a member's answers counts; re-votes go in separate transactions
   const r1 = await makeBallot(voters[1], 3, pc, v), r2 = await makeBallot(voters[1], 0, pc, v);
-  await used(sendBatch([r1, r2], pc));
+  await reverts(polls.voteBatch.staticCall(pc, [r1.nf, r2.nf], [ctArray(r1.C), ctArray(r2.C)], [r1.sp, r2.sp].map((p) => ({ a: p.a, b: p.b, c: p.c }))), polls, "BadBatch");
+  const [snf, sct, spr] = asBatch(bB.slice(0, 2));
+  await reverts(polls.voteBatch.staticCall(pb, [snf[1], snf[0]], [sct[1], sct[0]], [spr[1], spr[0]]), polls, "BadBatch");
+  await used(sendBatch([r1], pc));
+  await used(sendBatch([r2], pc));
   assert.equal((await polls.ballots(pc, r1.nf)).count, 3n);
   assert.equal(await polls.distinctVoters(pc), 7n);
   await reverts(polls.voteBatch.staticCall(pc, ...asBatch([await makeBallot(voters[1], 1, pc, v)])), polls, "RevoteCapReached");
