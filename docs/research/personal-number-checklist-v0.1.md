@@ -24,9 +24,9 @@ Rows are sorted by population, so the countries that matter most come first.
 
 | Group | Countries and territories |
 |---|---|
-| A national number exists and the team believes the passport shows it | 36 |
-| A national number exists, but whether the passport shows it is unknown | 76 |
-| A national number exists but is not on the passport (for example Brazil, Hungary, Philippines) | 4 |
+| A national number exists and the team believes the passport shows it | 37 |
+| A national number exists, but whether the passport shows it is unknown | 73 |
+| A national number exists but is not on the passport (for example Brazil, Hungary, Norway, the Philippines) | 6 |
 | No general national number, or none on the passport (for example Germany, France, the United Kingdom, the United States) | 18 |
 | No number found yet | 32 |
 | Territories using another state's passport | 20 |
@@ -35,7 +35,7 @@ Countries with no usable number take the name-based path with the face check (wh
 
 ## 4. Checks so far
 
-- **Read from specimen passports in PRADO (by the founder, 3 November 2026):** line 2 of the machine-readable zone, positions 29–42.
+- **Read from specimen passports in PRADO (by the founder, 3 November 2026; 15 countries):** line 2 of the machine-readable zone, positions 29–42.
 
   | Country | Specimen issued | In the MRZ optional field |
   |---|---|---|
@@ -44,10 +44,22 @@ Countries with no usable number take the name-based path with the face check (wh
   | Romania | 2024 | **Yes:** the 13-digit CNP |
   | Lithuania | 2024 | **Yes:** the 11-digit personal code |
   | Poland | 2022 | **No:** the field is empty. The PESEL is printed on the data page, so it can only be used if the chip carries it in DG11 |
+  | Finland | 2023 | **Yes:** the personal identity code, with `<` in place of the separator |
+  | Denmark | 2021 | **Yes:** the CPR number, with `<` in place of the hyphen |
+  | Portugal | 2017 | **Yes:** the 8-digit civil identification number (older series; current series to check) |
+  | Bulgaria | 2010 | **Yes:** the 10-digit EGN (older series; current series to check) |
+  | Czechia | 2011 | **Yes:** the birth number without the slash (older series; current series to check) |
+  | Belgium | 2022 | **No:** the field is empty and the data page shows no national number. The specimen holder has a fictional nationality, so a real citizen's passport should be checked |
+  | Norway | 2020 | **No:** the field is empty and the data page shows no national number |
+  | Latvia | 2023 | **Yes:** the personal code, with `<` in place of the hyphen. It is a new-style code that encodes no birth date |
+  | Slovenia | 2016 | **Yes:** the 13-digit EMŠO |
+  | Netherlands | 2024 | **No:** the field is empty, as the 2021 decision says |
 
-  Poland shows that a number printed on the data page is not necessarily in the signed MRZ. Specimens show the MRZ only; DG11 must be checked from issuer documentation or real chips.
+  So far: 11 of 15 put the number in the MRZ (8 of them on specimens issued in 2015 or later), and 4 do not.
+
+  Separators are replaced by `<` or dropped, so every issuer's rule must define the exact form. Poland shows that a number printed on the data page is not necessarily in the signed MRZ. Specimens show the MRZ only; DG11 must be checked from issuer documentation or real chips.
 - **Confirmed from other sources:**
-  - Netherlands: the BSN was removed from the MRZ on 2 August 2021 and remains printed on the holder page.
+  - Netherlands: the BSN was removed from the MRZ on 2 August 2021 and remains printed on the holder page; the 2024 specimen agrees.
   - Republic of Korea: the resident registration number was removed from passports in December 2020.
   - Sweden, Romania, Lithuania and Portugal: the number is printed on the data page.
   - Türkiye: the number has been used in passports since 2003.
