@@ -173,6 +173,9 @@ function challenge(uint256 pollId, bytes calldata evidence) external;
 //  On-chain checkable evidence → Disputed:
 //   (a) a DLEQ proof in the transcript fails (verified on-chain; expensive but rare)
 //   (b) the transcript's aggregate does not equal the sum of ciphertexts (fraud proof by bisection)
+//  Implemented differently in the reference contracts (3 November 2026): the contract keeps the
+//  aggregate itself, so (b) is not needed; publish checks B_j − D_j = count_j·G; and two
+//  challenges cover the combination and the DLEQ proofs. See on-chain-tally-verification-v0.1.md.
 function finalize(uint256 pollId) external;        // after the challenge period, if not disputed
 function markWithheld(uint256 pollId) external;    // anyone, if not published by the deadline (C9)
 ```

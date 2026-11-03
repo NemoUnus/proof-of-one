@@ -41,18 +41,23 @@ interface IBallotBatchVerifier {
 /// @notice Combines the roles of PollRegistry, PollAnswers and ResultsRegistry from
 ///         docs/specs/contracts-v0.1.md, for a 4-option poll without breakdown cells.
 /// @dev Snapshot roots are read from IdentityRegistry and RevocationRegistry when a poll
-///      is created. NOT IMPLEMENTED HERE (see the spec): trustee signatures on the tally
-///      key and on results, on-chain DLEQ and aggregate fraud proofs, the relay
-///      (ERC-4337), and recursive ballot aggregation. Batched submission
-///      (voteBatch) is implemented. Reference code; not audited.
+///      is created. The contract keeps the homomorphic sum of the counted ballots itself
+///      (a re-vote subtracts the replaced ballot), checks at publication that each count
+///      matches the published combined decryption, and lets anyone challenge a wrong
+///      combination or a failed trustee proof during the challenge period
+///      (docs/specs/on-chain-tally-verification-v0.1.md). NOT IMPLEMENTED HERE (see the
+///      spec): trustee signatures on the tally key and on results, the relay (ERC-4337),
+///      and recursive ballot aggregation. Reference code; not audited.
 contract ProofOfOnePolls {
     uint256 public constant K = 4;
     uint256 public constant SNARK_FIELD = 21888242871839275222246405745257275088548364400416034343698204186575808495617;
     uint64 public constant MIN_DURATION = 48 hours;
     uint64 public constant CHALLENGE_PERIOD = 7 days;
     uint64 public constant WITHHOLD_DEADLINE = 14 days;
+    uint64 public constant REPUBLISH_WINDOW = 7 days;   // after a rejection, at least this long to publish again
+    uint8 public constant MAX_TRUSTEES = 32;            // bounds the gas of createPoll and of the challenges
 
-    enum State { None, Open, Published, Final, Withheld }
+    enum State { None, Open, Published, Final, Withheld, Rejected }
 
     struct Poll {
         address creator;
@@ -69,7 +74,20 @@ contract ProofOfOnePolls {
         uint64 closeTime;
         bytes32 metadataHash;
         uint256 pollHash;   // binds the nine per-poll values the ballot proof uses
+        bytes32 trusteeKeysHash; // keccak256(abi.encode(uint256[2][] PK_i)), trustee i at position i−1
+        uint8 threshold;    // t: partial decryptions needed
+        uint8 trustees;     // n
+        uint64 resultDeadline; // last moment to publish; moved later by a rejection
         State state;
+    }
+
+    /// @notice One trustee's partial decryptions D_ij = x_i·A_j with Chaum–Pedersen proofs.
+    struct Partial {
+        uint256 index;          // trustee index i (1-based)
+        uint256[2][4] D;
+        uint256[2][4] T1;
+        uint256[2][4] T2;
+        uint256[4] z;
     }
 
     struct Result {
@@ -77,6 +95,8 @@ contract ProofOfOnePolls {
         bytes32 finalBallotChain;
         bytes32 transcriptHash;
         bytes32 archiveHash;
+        uint256[2][K] D;        // combined decryption D_j = Σ λ_i·D_ij (affine)
+        bytes32 partialsHash;   // keccak256(abi.encode(Partial[])); partials are in the event
         uint64 publishedAt;
     }
 
@@ -99,6 +119,8 @@ contract ProofOfOnePolls {
         uint64 openTime;
         uint64 closeTime;
         bytes32 metadataHash;
+        uint256[2][] trusteeKeys; // public shares PK_i from key generation, trustee i at position i−1
+        uint8 threshold;
     }
     uint256 public pollCount;
     mapping(uint256 => Poll) private _polls;
@@ -108,10 +130,17 @@ contract ProofOfOnePolls {
     mapping(uint256 => mapping(uint256 => Slot)) public ballots; // pollId => nf => latest ballot
     mapping(uint256 => bytes32) public ballotChain;
     mapping(uint256 => Counters) private _counters;
+    /// @dev Running homomorphic sum of the counted ballots: affine (x, y) of A_0..A_3 then
+    ///      B_0..B_3, each coordinate stored PLUS ONE. The offset keeps every slot non-zero,
+    ///      so the poll creator pays for creating the 16 slots (createPoll) and every
+    ///      ballot pays the same, lower price for updating them.
+    mapping(uint256 => uint256[16]) private _agg;
 
     event PollCreated(uint256 indexed pollId, address creator, uint256 idRoot, uint256 revRoot, uint64 openTime, uint64 closeTime, bytes32 metadataHash);
     event Ballot(uint256 indexed pollId, uint256 indexed nf, uint256[16] ciphertexts, uint16 count);
-    event ResultPublished(uint256 indexed pollId, uint256[K] counts, bytes32 transcriptHash, bytes32 archiveHash);
+    event ResultPublished(uint256 indexed pollId, uint256[K] counts, uint256[2][K] D, Partial[] partials, bytes32 transcriptHash, bytes32 archiveHash);
+    event TrusteeKeys(uint256 indexed pollId, uint256[2][] keys, uint8 threshold);
+    event ResultRejected(uint256 indexed pollId, uint8 reason, uint256 trusteeIndex, uint256 option);
     event ResultFinal(uint256 indexed pollId);
     event ResultWithheld(uint256 indexed pollId);
 
@@ -128,6 +157,11 @@ contract ProofOfOnePolls {
     error ChallengePeriodRunning();
     error DeadlineNotReached();
     error BadBatch();
+    error BadPrevious();
+    error BadTrustees();
+    error BadPartials();
+    error DecryptionMismatch();
+    error ChallengeFailed();
 
     constructor(
         IBallotVerifier verifier_,
@@ -154,6 +188,7 @@ contract ProofOfOnePolls {
         // The tally key is the only externally chosen curve point the proof relies on.
         if (!BabyJubjub.isInSubgroup(p.tallyPK[0], p.tallyPK[1])) revert InvalidTallyKey();
         if (p.closeTime < p.openTime + MIN_DURATION) revert BadTimes();
+        _checkTrustees(p);
         pollId = ++pollCount;
         Poll storage s = _polls[pollId];
         s.creator = msg.sender;
@@ -170,6 +205,13 @@ contract ProofOfOnePolls {
         s.openTime = p.openTime;
         s.closeTime = p.closeTime;
         s.metadataHash = p.metadataHash;
+        s.trusteeKeysHash = keccak256(abi.encode(p.trusteeKeys));
+        s.threshold = p.threshold;
+        s.trustees = uint8(p.trusteeKeys.length);
+        s.resultDeadline = p.closeTime + WITHHOLD_DEADLINE;
+        emit TrusteeKeys(pollId, p.trusteeKeys, p.threshold);
+        uint256[16] storage g = _agg[pollId];
+        for (uint256 q = 0; q < 8; q++) { g[2 * q] = 1; g[2 * q + 1] = 2; } // identity (0, 1), offset by one
         // pollHash = Poseidon(7, Poseidon(idRoot, revRoot, pollId, PK.x, PK.y),
         //                       Poseidon(maxBirthDay, minBirthDay, minExpiryMonth, requiredNat, contextHash))
         uint256 h1 = poseidon5.poseidon([s.idRoot, s.revRoot, pollId, p.tallyPK[0], p.tallyPK[1]]);
@@ -177,6 +219,29 @@ contract ProofOfOnePolls {
         s.pollHash = poseidon3.poseidon([uint256(7), h1, h2]);
         s.state = State.Open;
         emit PollCreated(pollId, msg.sender, s.idRoot, s.revRoot, p.openTime, p.closeTime, p.metadataHash);
+    }
+
+    /// @dev The trustee keys must be valid subgroup points and consistent with the tally key:
+    ///      the Lagrange combination of the first t keys must equal tallyPK, so that a
+    ///      correct decryption is possible and every partial decryption can be challenged.
+    ///      (Consistency of every t-subset needs the key-generation commitments; see the
+    ///      trustee key generation spec. Not checked here.)
+    function _checkTrustees(PollParams calldata p) internal view {
+        uint256 n = p.trusteeKeys.length;
+        uint256 t = p.threshold;
+        if (t == 0 || t > n || n > MAX_TRUSTEES) revert BadTrustees();
+        uint256[] memory idx = new uint256[](t);
+        for (uint256 i = 0; i < t; i++) idx[i] = i + 1;
+        (uint256 X, uint256 Y, uint256 Z) = (0, 0, 0);
+        for (uint256 i = 0; i < n; i++) {
+            uint256[2] calldata K_ = p.trusteeKeys[i];
+            if (!BabyJubjub.isInSubgroup(K_[0], K_[1])) revert BadTrustees();
+            if (i < t) {
+                (uint256 Xi, uint256 Yi, uint256 Zi) = BabyJubjub.mul(K_[0], K_[1], _lagrange0(idx, i));
+                (X, Y, Z) = BabyJubjub.add(X, Y, Z, Xi, Yi, Zi);
+            }
+        }
+        if (!BabyJubjub.eq(X, Y, Z, p.tallyPK[0], p.tallyPK[1], 1)) revert BadTrustees();
     }
 
     function getPoll(uint256 pollId) external view returns (Poll memory) {
@@ -192,10 +257,13 @@ contract ProofOfOnePolls {
 
     /// @notice Submit one ballot directly. Always available, so no aggregator can censor.
     /// @param ct ciphertexts in circuit order: A_0..A_3 (x, y) then B_0..B_3 (x, y)
+    /// @param prev for a re-vote, the ballot it replaces (as in its Ballot event), so the
+    ///        contract can subtract it from the running sum; ignored for a first ballot
     function vote(
         uint256 pollId,
         uint256 nf,
         uint256[16] calldata ct,
+        uint256[16] calldata prev,
         uint256[2] calldata pa,
         uint256[2][2] calldata pb,
         uint256[2] calldata pc
@@ -209,9 +277,12 @@ contract ProofOfOnePolls {
         if (!verifier.verifyProof(pa, pb, pc, pub)) revert InvalidProof();
 
         Counters memory cnt = _counters[pollId];
-        bytes32 chain = _record(pollId, p.maxRevotes, nf, ct, cnt, ballotChain[pollId]);
+        uint256[24] memory agg = _loadAgg(pollId);
+        (bytes32 chain, bool revote, bytes28 prevHash) = _record(pollId, p.maxRevotes, nf, ct, cnt, ballotChain[pollId], agg);
+        if (revote) _subtract(prevHash, prev, agg);
         ballotChain[pollId] = chain;
         _counters[pollId] = cnt;
+        _storeAgg(pollId, agg);
     }
 
     /// @notice Submit many ballots of one poll in one transaction (anyone may call, for
@@ -219,11 +290,13 @@ contract ProofOfOnePolls {
     ///         proof is invalid the whole batch is rejected, so a relay must check each
     ///         proof off-chain first. Ballots are recorded in the given order, exactly as
     ///         if submitted one by one, so the ballot chain and events are unchanged.
+    /// @param prevs the replaced ballots of the re-votes in this batch, in batch order
     function voteBatch(
         uint256 pollId,
         uint256[] calldata nfs,
         uint256[16][] calldata cts,
-        IBallotBatchVerifier.Proof[] calldata proofs
+        IBallotBatchVerifier.Proof[] calldata proofs,
+        uint256[16][] calldata prevs
     ) external {
         Poll storage p = _openPoll(pollId);
         if (nfs.length == 0 || nfs.length != cts.length || nfs.length != proofs.length) revert BadBatch();
@@ -236,9 +309,21 @@ contract ProofOfOnePolls {
         Counters memory cnt = _counters[pollId];
         bytes32 chain = ballotChain[pollId];
         uint16 cap = p.maxRevotes;
-        for (uint256 i = 0; i < nfs.length; i++) chain = _record(pollId, cap, nfs[i], cts[i], cnt, chain);
+        uint256[24] memory agg = _loadAgg(pollId);   // read once, written once per batch
+        uint256 r;
+        for (uint256 i = 0; i < nfs.length; i++) {
+            bool revote;
+            bytes28 prevHash;
+            (chain, revote, prevHash) = _record(pollId, cap, nfs[i], cts[i], cnt, chain, agg);
+            if (revote) {
+                if (r >= prevs.length) revert BadPrevious();
+                _subtract(prevHash, prevs[r++], agg);
+            }
+        }
+        if (r != prevs.length) revert BadPrevious();
         ballotChain[pollId] = chain;
         _counters[pollId] = cnt;
+        _storeAgg(pollId, agg);
     }
 
     function _openPoll(uint256 pollId) internal view returns (Poll storage p) {
@@ -246,48 +331,222 @@ contract ProofOfOnePolls {
         if (p.state != State.Open || block.timestamp < p.openTime || block.timestamp >= p.closeTime) revert PollNotOpen();
     }
 
-    /// @dev Records one verified ballot; returns the extended ballot chain. Counters are
-    ///      updated in memory and written once by the caller.
-    function _record(uint256 pollId, uint16 cap, uint256 nf, uint256[16] calldata ct, Counters memory cnt, bytes32 chain)
-        internal returns (bytes32)
+    /// @dev Records one verified ballot and adds it to the running sum; returns the
+    ///      extended ballot chain, whether it replaces an earlier ballot, and the hash of
+    ///      the replaced ballot, which the caller checks and subtracts (_subtract).
+    function _record(uint256 pollId, uint16 cap, uint256 nf, uint256[16] calldata ct, Counters memory cnt, bytes32 chain, uint256[24] memory agg)
+        internal returns (bytes32, bool revote, bytes28 prevHash)
     {
         Slot memory slot = ballots[pollId][nf];
         if (slot.count >= cap) revert RevoteCapReached();
-        if (slot.count == 0) cnt.distinctVoters++;
-        // Same encoding as the reference tally: per option j, A_j.x, A_j.y, B_j.x, B_j.y
-        bytes32 h = keccak256(abi.encodePacked(
-            ct[0], ct[1], ct[8], ct[9], ct[2], ct[3], ct[10], ct[11],
-            ct[4], ct[5], ct[12], ct[13], ct[6], ct[7], ct[14], ct[15]));
+        revote = slot.count != 0;
+        prevHash = slot.ballotHash;
+        if (!revote) cnt.distinctVoters++;
+        bytes32 h = _ctHash(ct);
         uint32 n = slot.count + 1;
         ballots[pollId][nf] = Slot(bytes28(h), n);
         chain = keccak256(abi.encodePacked(chain, nf, h, uint256(cnt.totalSubmissions)));
         cnt.totalSubmissions++;
+        _accumulate(agg, ct, false);
         emit Ballot(pollId, nf, ct, uint16(n));
-        return chain;
+        return (chain, revote, prevHash);
+    }
+
+    /// @dev Checks that `prev` is the ballot this re-vote replaces and subtracts it.
+    function _subtract(bytes28 prevHash, uint256[16] calldata prev, uint256[24] memory agg) internal pure {
+        if (bytes28(_ctHash(prev)) != prevHash) revert BadPrevious();
+        _accumulate(agg, prev, true);
+    }
+
+    /// @dev Same encoding as the reference tally: per option j, A_j.x, A_j.y, B_j.x, B_j.y.
+    function _ctHash(uint256[16] calldata ct) internal pure returns (bytes32) {
+        return keccak256(abi.encodePacked(
+            ct[0], ct[1], ct[8], ct[9], ct[2], ct[3], ct[10], ct[11],
+            ct[4], ct[5], ct[12], ct[13], ct[6], ct[7], ct[14], ct[15]));
+    }
+
+    /// @dev agg += ct (or −ct). Each of the 8 points (x, y) is affine; −(x, y) = (−x, y).
+    function _accumulate(uint256[24] memory agg, uint256[16] calldata ct, bool negate) internal pure {
+        for (uint256 q = 0; q < 8; q++) {
+            uint256 x = ct[2 * q];
+            if (negate && x != 0) x = BabyJubjub.P - x;
+            (agg[3 * q], agg[3 * q + 1], agg[3 * q + 2]) =
+                BabyJubjub.add(agg[3 * q], agg[3 * q + 1], agg[3 * q + 2], x, ct[2 * q + 1], 1);
+        }
+    }
+
+    /// @notice The running sum (A_j, B_j) of the counted ballots, affine:
+    ///         A_0..A_3 then B_0..B_3, each (x, y).
+    function aggregate(uint256 pollId) public view returns (uint256[2][8] memory out) {
+        uint256[16] storage g = _agg[pollId];
+        for (uint256 q = 0; q < 8; q++) (out[q][0], out[q][1]) = (g[2 * q] - 1, g[2 * q + 1] - 1);
+    }
+
+    /// @dev Stored affine sum → projective working copy (Z = 1).
+    function _loadAgg(uint256 pollId) internal view returns (uint256[24] memory a) {
+        uint256[16] storage g = _agg[pollId];
+        for (uint256 q = 0; q < 8; q++) (a[3 * q], a[3 * q + 1], a[3 * q + 2]) = (g[2 * q] - 1, g[2 * q + 1] - 1, 1);
+    }
+
+    /// @dev Projective working copy → stored affine sum, with one inversion for all eight
+    ///      points (Montgomery's trick). Z ≠ 0 for every point the addition formula yields.
+    function _storeAgg(uint256 pollId, uint256[24] memory a) internal {
+        uint256 P = BabyJubjub.P;
+        uint256[8] memory pre;
+        uint256 acc = 1;
+        for (uint256 q = 0; q < 8; q++) { pre[q] = acc; acc = mulmod(acc, a[3 * q + 2], P); }
+        uint256 inv = BabyJubjub.expmod(acc, P - 2, P);
+        uint256[16] storage g = _agg[pollId];
+        for (uint256 q = 8; q > 0; q--) {
+            uint256 zi = mulmod(inv, pre[q - 1], P);           // 1 / Z_q
+            inv = mulmod(inv, a[3 * (q - 1) + 2], P);
+            g[2 * (q - 1)] = mulmod(a[3 * (q - 1)], zi, P) + 1;
+            g[2 * (q - 1) + 1] = mulmod(a[3 * (q - 1) + 1], zi, P) + 1;
+        }
     }
 
     // ---------------------------------------------------------------- results
 
-    /// @dev Reference simplification: the poll creator publishes on behalf of the trustees.
-    ///      The spec requires t-of-n trustee signatures here.
-    function publish(uint256 pollId, Result calldata r) external {
+    uint8 public constant REJECT_COMBINATION = 1; // D_j ≠ Σ λ_i·D_ij
+    uint8 public constant REJECT_PARTIAL = 2;     // a trustee's DLEQ proof fails or a point is invalid
+    uint256 internal constant TAG_DLEQ = 2;
+
+    /// @dev Reference simplification: anyone may publish (the spec requires t-of-n trustee
+    ///      signatures). Checked at once: the ballot chain; Σ counts = distinct voters;
+    ///      for every option, B_j − D_j = count_j·G against the contract's own running
+    ///      sum; t partial decryptions from distinct trustees in increasing order.
+    ///      Whether D_j and the partials are correct is left to challenges, which cost
+    ///      gas only when something is wrong.
+    function publish(uint256 pollId, Result calldata r, Partial[] calldata partials) external {
         Poll storage p = _polls[pollId];
-        if (p.state != State.Open) revert BadState();
+        if (p.state != State.Open && p.state != State.Rejected) revert BadState();
         if (block.timestamp < p.closeTime) revert NotClosed();
-        if (block.timestamp >= p.closeTime + WITHHOLD_DEADLINE) revert BadState();
+        if (block.timestamp >= p.resultDeadline) revert BadState();
         if (r.finalBallotChain != ballotChain[pollId]) revert ChainMismatch();
         uint256 sum;
         for (uint256 j = 0; j < K; j++) sum += r.counts[j];
         if (sum != distinctVoters(pollId)) revert CountsMismatch();      // one-hot ballots
         if (distinctVoters(pollId) > p.eligible) revert TooManyVoters(); // bound check (C5)
+        if (partials.length != p.threshold) revert BadPartials();
+        for (uint256 i = 0; i < partials.length; i++) {
+            uint256 idx = partials[i].index;
+            if (idx == 0 || idx > p.trustees || (i > 0 && idx <= partials[i - 1].index)) revert BadPartials();
+        }
+        uint256[24] memory a = _loadAgg(pollId);
+        for (uint256 j = 0; j < K; j++) {
+            (uint256 dx, uint256 dy) = (r.D[j][0], r.D[j][1]);
+            if (!BabyJubjub.isOnCurve(dx, dy)) revert DecryptionMismatch();
+            // M = B_j − D_j must equal count_j·G
+            (uint256 X, uint256 Y, uint256 Z) = BabyJubjub.add(a[12 + 3 * j], a[13 + 3 * j], a[14 + 3 * j], dx == 0 ? 0 : BabyJubjub.P - dx, dy, 1);
+            (uint256 Xc, uint256 Yc, uint256 Zc) = BabyJubjub.mul(BabyJubjub.GX, BabyJubjub.GY, r.counts[j]);
+            if (Z == 0 || !BabyJubjub.eq(X, Y, Z, Xc, Yc, Zc)) revert DecryptionMismatch();
+        }
         Result storage s = _results[pollId];
         s.counts = r.counts;
         s.finalBallotChain = r.finalBallotChain;
         s.transcriptHash = r.transcriptHash;
         s.archiveHash = r.archiveHash;
+        s.D = r.D;
+        s.partialsHash = keccak256(abi.encode(partials));
         s.publishedAt = uint64(block.timestamp);
         p.state = State.Published;
-        emit ResultPublished(pollId, r.counts, r.transcriptHash, r.archiveHash);
+        emit ResultPublished(pollId, r.counts, r.D, partials, r.transcriptHash, r.archiveHash);
+    }
+
+    /// @notice Challenge: the published D_j is not the Lagrange combination of the
+    ///         published partial decryptions. Anyone may call during the challenge
+    ///         period; reverts with ChallengeFailed if the combination is correct.
+    function challengeCombination(uint256 pollId, Partial[] calldata partials, uint256 j) external {
+        Result storage s = _openChallenge(pollId, partials);
+        if (j >= K) revert ChallengeFailed();
+        uint256[] memory idx = new uint256[](partials.length);
+        for (uint256 i = 0; i < partials.length; i++) idx[i] = partials[i].index;
+        (uint256 X, uint256 Y, uint256 Z) = (0, 0, 0);
+        for (uint256 i = 0; i < partials.length; i++) {
+            uint256[2] calldata Dij = partials[i].D[j];
+            if (!BabyJubjub.isOnCurve(Dij[0], Dij[1])) { _reject(pollId, REJECT_PARTIAL, partials[i].index, j); return; }
+            (uint256 Xi, uint256 Yi, uint256 Zi) = BabyJubjub.mul(Dij[0], Dij[1], _lagrange0(idx, i));
+            (X, Y, Z) = BabyJubjub.add(X, Y, Z, Xi, Yi, Zi);
+        }
+        (uint256 x, uint256 y) = BabyJubjub.toAffine(X, Y, Z);
+        if (x == s.D[j][0] && y == s.D[j][1]) revert ChallengeFailed();
+        _reject(pollId, REJECT_COMBINATION, 0, j);
+    }
+
+    /// @notice Challenge: trustee partials[i] fails its Chaum–Pedersen proof for option j,
+    ///         or uses a point outside the prime-order subgroup. `keys` are the trustee
+    ///         public shares committed at poll creation. Reverts with ChallengeFailed if
+    ///         the proof is valid.
+    function challengePartial(uint256 pollId, Partial[] calldata partials, uint256[2][] calldata keys, uint256 i, uint256 j) external {
+        _openChallenge(pollId, partials);
+        if (keccak256(abi.encode(keys)) != _polls[pollId].trusteeKeysHash) revert BadTrustees();
+        if (i >= partials.length || j >= K) revert ChallengeFailed();
+        Partial calldata q = partials[i];
+        uint256[2] memory PKi = keys[q.index - 1];
+        (uint256 ax, uint256 ay) = _aggAffine(pollId, j); // A_j
+        if (_dleqValid(pollId, j, PKi, [ax, ay], q.D[j], q.T1[j], q.T2[j], q.z[j])) revert ChallengeFailed();
+        _reject(pollId, REJECT_PARTIAL, q.index, j);
+    }
+
+    function _openChallenge(uint256 pollId, Partial[] calldata partials) internal view returns (Result storage s) {
+        if (_polls[pollId].state != State.Published) revert BadState();
+        s = _results[pollId];
+        if (block.timestamp >= s.publishedAt + CHALLENGE_PERIOD) revert BadState();
+        if (keccak256(abi.encode(partials)) != s.partialsHash) revert BadPartials();
+    }
+
+    function _reject(uint256 pollId, uint8 reason, uint256 trustee, uint256 option) internal {
+        Poll storage p = _polls[pollId];
+        p.state = State.Rejected;   // a correct result may be published again
+        // A wrong result published just before the deadline must not leave the poll withheld.
+        uint64 floor_ = uint64(block.timestamp) + REPUBLISH_WINDOW;
+        if (p.resultDeadline < floor_) p.resultDeadline = floor_;
+        emit ResultRejected(pollId, reason, trustee, option);
+    }
+
+    function _aggAffine(uint256 pollId, uint256 q) internal view returns (uint256, uint256) {
+        uint256[16] storage g = _agg[pollId];
+        return (g[2 * q] - 1, g[2 * q + 1] - 1);
+    }
+
+    /// @dev Chaum–Pedersen check, as in the reference tally (tally/src/protocol.js):
+    ///      c = keccak256(abi.encode(2, pollId, j, G, PK_i, A, D, T1, T2)) mod ℓ;
+    ///      z·G = T1 + c·PK_i and z·A = T2 + c·D, with D, T1, T2 in the subgroup.
+    function _dleqValid(uint256 pollId, uint256 j, uint256[2] memory PKi, uint256[2] memory A, uint256[2] calldata D,
+        uint256[2] calldata T1, uint256[2] calldata T2, uint256 z) internal pure returns (bool)
+    {
+        if (z >= BabyJubjub.ORDER) return false;
+        // The identity is allowed: an honest trustee produces it when A_j is the identity
+        // (no ballots, or randomness that is 0 mod ℓ).
+        if (!BabyJubjub.isInSubgroupOrIdentity(D[0], D[1]) || !BabyJubjub.isInSubgroupOrIdentity(T1[0], T1[1])
+            || !BabyJubjub.isInSubgroupOrIdentity(T2[0], T2[1])) return false;
+        uint256 c = uint256(keccak256(abi.encode(TAG_DLEQ, pollId, j, BabyJubjub.GX, BabyJubjub.GY, PKi[0], PKi[1],
+            A[0], A[1], D[0], D[1], T1[0], T1[1], T2[0], T2[1]))) % BabyJubjub.ORDER;
+        return _sideOk(BabyJubjub.GX, BabyJubjub.GY, z, T1, PKi[0], PKi[1], c)
+            && _sideOk(A[0], A[1], z, T2, D[0], D[1], c);
+    }
+
+    /// @dev z·(bx, by) == T + c·(px, py)
+    function _sideOk(uint256 bx, uint256 by, uint256 z, uint256[2] calldata T, uint256 px, uint256 py, uint256 c) internal pure returns (bool) {
+        (uint256 X1, uint256 Y1, uint256 Z1) = BabyJubjub.mul(bx, by, z);
+        (uint256 X2, uint256 Y2, uint256 Z2) = BabyJubjub.mul(px, py, c);
+        (X2, Y2, Z2) = BabyJubjub.add(X2, Y2, Z2, T[0], T[1], 1);
+        return BabyJubjub.eq(X1, Y1, Z1, X2, Y2, Z2);
+    }
+
+    /// @dev Lagrange coefficient at 0 for idx[i] over the index set idx, mod ℓ.
+    function _lagrange0(uint256[] memory idx, uint256 i) internal view returns (uint256) {
+        uint256 L = BabyJubjub.ORDER;
+        uint256 num = 1;
+        uint256 den = 1;
+        uint256 xi = idx[i];
+        for (uint256 k = 0; k < idx.length; k++) {
+            if (k == i) continue;
+            uint256 xk = idx[k];
+            num = mulmod(num, xk, L);
+            den = mulmod(den, xk > xi ? xk - xi : L - (xi - xk), L);
+        }
+        return mulmod(num, BabyJubjub.expmod(den, L - 2, L), L);
     }
 
     function finalize(uint256 pollId) external {
@@ -297,11 +556,12 @@ contract ProofOfOnePolls {
         emit ResultFinal(pollId);
     }
 
-    /// @notice Anyone may mark a poll whose result was not published in time.
+    /// @notice Anyone may mark a poll whose result was not published in time (or whose
+    ///         only published results were rejected).
     function markWithheld(uint256 pollId) external {
         Poll storage p = _polls[pollId];
-        if (p.state != State.Open) revert BadState();
-        if (block.timestamp < p.closeTime + WITHHOLD_DEADLINE) revert DeadlineNotReached();
+        if (p.state != State.Open && p.state != State.Rejected) revert BadState();
+        if (block.timestamp < p.resultDeadline) revert DeadlineNotReached();
         p.state = State.Withheld;
         emit ResultWithheld(pollId);
     }

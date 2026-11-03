@@ -127,10 +127,13 @@ async function create() {
 
   // ------------------------------------------------ partial decryption + DLEQ
   // Trustee i publishes D = x_i·Â and a Chaum–Pedersen proof that
-  // log_G(PK_i) = log_Â(D), made non-interactive with Poseidon (Fiat–Shamir).
-  // The challenge binds pollId, option index and every point in the statement.
+  // log_G(PK_i) = log_Â(D), made non-interactive with keccak256 (Fiat–Shamir), so
+  // that the polls contract can check a challenged proof cheaply. The challenge is
+  // keccak256(abi.encode(TAG_DLEQ, pollId, j, G, PK_i, Â, D, T1, T2)) mod ℓ: it binds
+  // the poll, the option index and every point in the statement.
   function dleqChallenge(ctx, PKi, A, D, T1, T2) {
-    return mod(H([TAG.DLEQ, ...ctx, ...[G, PKi, A, D, T1, T2].flatMap(coords)]));
+    const words = [TAG.DLEQ, ...ctx, ...[G, PKi, A, D, T1, T2].flatMap(coords)].map(u256);
+    return mod(BigInt(keccak(...words)));
   }
   function partialDecrypt(share, PKi, agg, pollId) {
     return agg.map(({ A }, j) => {
@@ -189,6 +192,15 @@ async function create() {
     });
   }
 
+  // Combined decryption per option, D_j = Σ λ_i·D_ij over the t chosen trustees.
+  // Published with the result: the contract checks B_j − D_j = count_j·G at once, and
+  // anyone can challenge D_j (wrong combination) or any D_ij (failed DLEQ proof).
+  function combinedD(partials, t, k) {
+    const chosen = partials.slice(0, t);
+    const S = chosen.map((p) => p.index);
+    return Array.from({ length: k }, (_, j) => chosen.reduce((acc, p) => add(acc, mul(p.parts[j].D, lagrange0(p.index, S))), O));
+  }
+
   // ------------------------------------------------- contract result checks
   // ResultsRegistry.publish(): chain must match, Σ counts == distinct voters (C5),
   // and distinct voters ≤ eligible identities at the snapshot (C5).
@@ -242,7 +254,7 @@ async function create() {
 
   return {
     curve: C, hash: Hs, nullifier, dkg, dkgProtocol, encryptBallot, reencrypt, ballotHash, createLedger, replay,
-    aggregate, partialDecrypt, verifyPartial, combine, discreteLog, checkResult, recount,
+    aggregate, partialDecrypt, verifyPartial, combine, combinedD, lagrange0, modInv, discreteLog, checkResult, recount,
     voterCheckRecorded, voterCheckCounted,
   };
 }

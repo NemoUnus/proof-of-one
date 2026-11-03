@@ -49,6 +49,13 @@ async function reverts(call, contract, name) {
   });
 }
 const used = async (tx) => (await (await tx).wait()).gasUsed;
+// The contract's running sum equals the reference tally's aggregate of the counted ballots
+function assertAgg(agg, onchain) {
+  agg.forEach((a, j) => {
+    assert.deepEqual(onchain[j].map(BigInt), pt(a.A).map(BigInt), `A_${j}`);
+    assert.deepEqual(onchain[4 + j].map(BigInt), pt(a.B).map(BigInt), `B_${j}`);
+  });
+}
 
 // --- the phone: enrol through the enclave, then register on-chain with π_reg
 async function enrol({ fingerprint = fp(), reenrol = false } = {}) {
@@ -91,12 +98,21 @@ async function makeBallot(person, choice, id, view) {
   const { proof } = await B.prove(b.input, BALLOT_ZKEY);
   return { ...b, sp: sp(proof) };
 }
-const send = (b, id) => polls.vote(id, b.nf, ctArray(b.C), b.sp.a, b.sp.b, b.sp.c);
-const sendStatic = (b, id) => polls.vote.staticCall(id, b.nf, ctArray(b.C), b.sp.a, b.sp.b, b.sp.c);
+// The relay's (or phone's) record of each member's latest ballot, so that a re-vote can
+// hand the replaced ballot to the contract, which subtracts it from the running sum.
+const ZERO16 = Array(16).fill(0n);
+const lastCt = new Map();
+const key = (id, nf) => `${BigInt(id)}:${BigInt(nf)}`;
+const prevOf = (id, nf) => lastCt.get(key(id, nf)) || ZERO16;
+const send = async (b, id) => { const tx = await polls.vote(id, b.nf, ctArray(b.C), prevOf(id, b.nf), b.sp.a, b.sp.b, b.sp.c); lastCt.set(key(id, b.nf), ctArray(b.C)); return tx; };
+const sendStatic = (b, id) => polls.vote.staticCall(id, b.nf, ctArray(b.C), prevOf(id, b.nf), b.sp.a, b.sp.b, b.sp.c);
+const trusteeKeys = () => keys.publicShares.map((s) => pt(s.PK));
+const trusteeKeysHash = () => ethers.keccak256(ethers.AbiCoder.defaultAbiCoder().encode(["uint256[2][]"], [trusteeKeys()]));
 const pollParams = async (over = {}) => {
   const t = await now();
   return { tallyPK: pt(keys.PK), maxBirthDay: POLICY.maxBirthDay, minBirthDay: POLICY.minBirthDay, minExpiryMonth: POLICY.minExpiryMonth, requiredNat: POLICY.requiredNat,
-    maxRevotes: 3, openTime: t, closeTime: t + 48n * 3600n + 60n, metadataHash: ethers.ZeroHash, ...over };
+    maxRevotes: 3, openTime: t, closeTime: t + 48n * 3600n + 60n, metadataHash: ethers.ZeroHash,
+    trusteeKeys: trusteeKeys(), threshold: 3, ...over };
 };
 
 test.before(async () => {
@@ -147,6 +163,13 @@ test("createPoll: rejects a bad tally key and short polls; snapshot comes from t
   await reverts(polls.createPoll.staticCall(await pollParams({ tallyPK: [0n, p - 1n] })), polls, "InvalidTallyKey");
   const short = await pollParams(); short.closeTime = short.openTime + 3600n;
   await reverts(polls.createPoll.staticCall(short), polls, "BadTimes");
+  // Trustee keys: valid points, at most 32, threshold 1..n, and the first t combine to the tally key
+  const swapped = trusteeKeys(); [swapped[0], swapped[3]] = [swapped[3], swapped[0]];
+  await reverts(polls.createPoll.staticCall(await pollParams({ trusteeKeys: swapped })), polls, "BadTrustees");
+  const offCurve = trusteeKeys(); offCurve[4] = [offCurve[4][0], offCurve[4][1] + 1n];
+  await reverts(polls.createPoll.staticCall(await pollParams({ trusteeKeys: offCurve })), polls, "BadTrustees");
+  await reverts(polls.createPoll.staticCall(await pollParams({ threshold: 0 })), polls, "BadTrustees");
+  await reverts(polls.createPoll.staticCall(await pollParams({ threshold: 6 })), polls, "BadTrustees");
   gas.createPoll = await used(polls.createPoll(await pollParams()));
   pollId = await polls.pollCount();
   const poll = await polls.getPoll(pollId);
@@ -172,7 +195,7 @@ test("ballots with valid proofs are accepted; a re-vote replaces the earlier bal
 test("forged or replayed ballots are rejected", async () => {
   const v = await syncTrees();
   const a = await makeBallot(people[0], 1, pollId, v), b = await makeBallot(people[0], 2, pollId, v);
-  await reverts(polls.vote.staticCall(pollId, a.nf, ctArray(b.C), a.sp.a, a.sp.b, a.sp.c), polls, "InvalidProof");
+  await reverts(polls.vote.staticCall(pollId, a.nf, ctArray(b.C), prevOf(pollId, a.nf), a.sp.a, a.sp.b, a.sp.c), polls, "InvalidProof");
   await used(polls.createPoll(await pollParams()));
   const other = await polls.pollCount();
   await reverts(sendStatic(a, other), polls, "InvalidProof");
@@ -206,8 +229,13 @@ test("re-enrolment: the old identity is revoked on-chain and cannot vote in late
 
 // --- batched submission (voteBatch): one transaction, n + 3 pairings for n proofs
 // voteBatch requires strictly increasing nullifiers, so a relay sorts the batch first.
-const asBatch = (bs0) => { const bs = [...bs0].sort((x, y) => (BigInt(x.nf) < BigInt(y.nf) ? -1 : 1)); return [bs.map((b) => b.nf), bs.map((b) => ctArray(b.C)), bs.map((b) => ({ a: b.sp.a, b: b.sp.b, c: b.sp.c }))]; };
-const sendBatch = (bs, id) => polls.voteBatch(id, ...asBatch(bs));
+// The fifth argument lists the replaced ballots of the re-votes in the batch, in batch order.
+const asBatch = (bs0, id) => {
+  const bs = [...bs0].sort((x, y) => (BigInt(x.nf) < BigInt(y.nf) ? -1 : 1));
+  return [bs.map((b) => b.nf), bs.map((b) => ctArray(b.C)), bs.map((b) => ({ a: b.sp.a, b: b.sp.b, c: b.sp.c })),
+    bs.filter((b) => lastCt.has(key(id, b.nf))).map((b) => lastCt.get(key(id, b.nf)))];
+};
+const sendBatch = async (bs, id) => { const tx = await polls.voteBatch(id, ...asBatch(bs, id)); for (const b of bs) lastCt.set(key(id, b.nf), ctArray(b.C)); return tx; };
 const intrinsic = (data) => { const b = ethers.getBytes(data); return 21000n + BigInt(b.reduce((g, x) => g + (x ? 16 : 4), 0)); };
 
 test("batched ballots: accepted together, one bad proof rejects the batch, same chain and counts as single ballots", async () => {
@@ -230,13 +258,13 @@ test("batched ballots: accepted together, one bad proof rejects the batch, same 
   assert.equal(await ballotVerifier.verifyProof(one.sp.a, one.sp.b, one.sp.c, pub), true);
 
   // Rejections: a swapped ciphertext, proofs in the wrong order, an empty batch, another poll
-  const [nfs, cts, prs] = asBatch(bB.slice(0, 3));
-  await reverts(polls.voteBatch.staticCall(pb, nfs, [cts[0], cts[2], cts[1]], prs), polls, "InvalidProof");
-  await reverts(polls.voteBatch.staticCall(pb, nfs, cts, [prs[1], prs[0], prs[2]]), polls, "InvalidProof");
-  await reverts(polls.voteBatch.staticCall(pb, [], [], []), polls, "BadBatch");
-  await reverts(polls.voteBatch.staticCall(pc, nfs, cts, prs), polls, "InvalidProof");
+  const [nfs, cts, prs] = asBatch(bB.slice(0, 3), pb);
+  await reverts(polls.voteBatch.staticCall(pb, nfs, [cts[0], cts[2], cts[1]], prs, []), polls, "InvalidProof");
+  await reverts(polls.voteBatch.staticCall(pb, nfs, cts, [prs[1], prs[0], prs[2]], []), polls, "InvalidProof");
+  await reverts(polls.voteBatch.staticCall(pb, [], [], [], []), polls, "BadBatch");
+  await reverts(polls.voteBatch.staticCall(pc, nfs, cts, prs, []), polls, "InvalidProof");
   const forged = { ...prs[1], a: [prs[1].a[0], BigInt(prs[1].a[1]) + 1n] }; // not a curve point
-  await reverts(polls.voteBatch.staticCall(pb, nfs, cts, [prs[0], forged, prs[2]]), polls, "InvalidProof");
+  await reverts(polls.voteBatch.staticCall(pb, nfs, cts, [prs[0], forged, prs[2]], []), polls, "InvalidProof");
 
   // Gas for batches of 1, 2, 4 and 7 first ballots
   gas.batch1 = await used(sendBatch(bB.slice(0, 1), pb));
@@ -249,14 +277,19 @@ test("batched ballots: accepted together, one bad proof rejects the batch, same 
   // The same nullifier twice in one batch is refused, as are nullifiers out of order, so a relay
   // cannot pick which of a member's answers counts; re-votes go in separate transactions
   const r1 = await makeBallot(voters[1], 3, pc, v), r2 = await makeBallot(voters[1], 0, pc, v);
-  await reverts(polls.voteBatch.staticCall(pc, [r1.nf, r2.nf], [ctArray(r1.C), ctArray(r2.C)], [r1.sp, r2.sp].map((p) => ({ a: p.a, b: p.b, c: p.c }))), polls, "BadBatch");
-  const [snf, sct, spr] = asBatch(bB.slice(0, 2));
-  await reverts(polls.voteBatch.staticCall(pb, [snf[1], snf[0]], [sct[1], sct[0]], [spr[1], spr[0]]), polls, "BadBatch");
+  await reverts(polls.voteBatch.staticCall(pc, [r1.nf, r2.nf], [ctArray(r1.C), ctArray(r2.C)], [r1.sp, r2.sp].map((p) => ({ a: p.a, b: p.b, c: p.c })), []), polls, "BadBatch");
+  const [snf, sct, spr] = asBatch(bB.slice(0, 2), pb);
+  await reverts(polls.voteBatch.staticCall(pb, [snf[1], snf[0]], [sct[1], sct[0]], [spr[1], spr[0]], []), polls, "BadBatch");
   await used(sendBatch([r1], pc));
   await used(sendBatch([r2], pc));
   assert.equal((await polls.ballots(pc, r1.nf)).count, 3n);
   assert.equal(await polls.distinctVoters(pc), 7n);
-  await reverts(polls.voteBatch.staticCall(pc, ...asBatch([await makeBallot(voters[1], 1, pc, v)])), polls, "RevoteCapReached");
+  // A re-vote must hand over exactly the ballot it replaces
+  const r3 = await makeBallot(voters[2], 3, pc, v);
+  const [n3, c3, p3] = asBatch([r3], pc);
+  await reverts(polls.voteBatch.staticCall(pc, n3, c3, p3, []), polls, "BadPrevious");
+  await reverts(polls.voteBatch.staticCall(pc, n3, c3, p3, [ctArray(r1.C)]), polls, "BadPrevious");
+  await reverts(polls.voteBatch.staticCall(pc, ...asBatch([await makeBallot(voters[1], 1, pc, v)], pc)), polls, "RevoteCapReached");
 
   // The chain and the counted ballots, rebuilt from events, match the contract and the choices
   const toPoint = (x, y) => [P.curve.F.e(x), P.curve.F.e(y)];
@@ -268,6 +301,7 @@ test("batched ballots: accepted together, one bad proof rejects the batch, same 
   const rep = P.replay(evs);
   assert.equal(rep.chain, await polls.ballotChain(pc));
   const agg = P.aggregate(rep.counted, 4);
+  assertAgg(agg, await polls.aggregate(pc)); // includes a voter who re-voted twice
   const partials = keys.shares.map((sh) => ({ index: sh.index, parts: P.partialDecrypt(sh, keys.publicShares[sh.index - 1].PK, agg, BigInt(pc)) }));
   assert.deepEqual(P.combine(agg, partials, 3, rep.distinct), [3n, 1n, 2n, 1n]); // voter 2 changed 1 → 3 → 0
 });
@@ -283,25 +317,92 @@ test("ballot chain on-chain equals the chain rebuilt by the reference tally from
   assert.equal(P.replay(firstPollEvents).chain, await polls.ballotChain(pollId));
 });
 
-test("close, tally, result checks, challenge period, finalize; unpublished poll marked withheld", async () => {
+test("close, tally, result checks, challenges, finalize; unpublished poll marked withheld", async () => {
   await increase(48 * 3600 + 120);
   const { counted, distinct } = P.replay(firstPollEvents);
   const agg = P.aggregate(counted, 4);
-  const partials = keys.shares.map((sh) => ({ index: sh.index, parts: P.partialDecrypt(sh, keys.publicShares[sh.index - 1].PK, agg, BigInt(pollId)) }));
+  assertAgg(agg, await polls.aggregate(pollId));
+  const all = keys.shares.map((sh) => ({ index: sh.index, parts: P.partialDecrypt(sh, keys.publicShares[sh.index - 1].PK, agg, BigInt(pollId)) }));
+  const partials = all.slice(0, 3); // trustees 1, 2, 3
   const counts = P.combine(agg, partials, 3, distinct);
   assert.deepEqual(counts, [1n, 2n, 1n, 0n]); // final choices: 0, 1, 1, 2 (member 4 re-voted)
+  const D = P.combinedD(partials, 3, 4);
 
+  const { mul, add, sub, G } = P.curve;
+  const toP = (q) => ({ index: q.index, D: q.parts.map((x) => pt(x.D)), T1: q.parts.map((x) => pt(x.proof.T1)), T2: q.parts.map((x) => pt(x.proof.T2)), z: q.parts.map((x) => x.proof.z) });
   const chain = await polls.ballotChain(pollId);
-  const R = (c) => ({ counts: c, finalBallotChain: chain, transcriptHash: ethers.ZeroHash, archiveHash: ethers.ZeroHash, publishedAt: 0 });
-  await reverts(polls.publish.staticCall(pollId, R([1n, 2n, 2n, 0n])), polls, "CountsMismatch");
-  await reverts(polls.publish.staticCall(pollId, { ...R(counts), finalBallotChain: ethers.ZeroHash }), polls, "ChainMismatch");
-  gas.publish = await used(polls.publish(pollId, R(counts)));
+  const R = (c, d = D) => ({ counts: c, finalBallotChain: chain, transcriptHash: ethers.ZeroHash, archiveHash: ethers.ZeroHash, D: d.map(pt), partialsHash: ethers.ZeroHash, publishedAt: 0 });
+  const honest = partials.map(toP);
+
+  // Checks at publication
+  await reverts(polls.publish.staticCall(pollId, R([1n, 2n, 2n, 0n]), honest), polls, "CountsMismatch");
+  await reverts(polls.publish.staticCall(pollId, { ...R(counts), finalBallotChain: ethers.ZeroHash }, honest), polls, "ChainMismatch");
+  await reverts(polls.publish.staticCall(pollId, R([2n, 1n, 1n, 0n]), honest), polls, "DecryptionMismatch"); // right sum, wrong counts
+  await reverts(polls.publish.staticCall(pollId, R(counts), honest.slice(0, 2)), polls, "BadPartials");     // fewer than t
+  await reverts(polls.publish.staticCall(pollId, R(counts), [honest[1], honest[0], honest[2]]), polls, "BadPartials"); // not increasing
+
+  // Attack 1: a publisher who wants the counts [2, 1, 1, 0] makes D'_j = B_j − c'_j·G and forges
+  // trustee 1's partial decryption so that the partials still combine to D'. Publication passes;
+  // the combination is right; trustee 1's proof fails, and anyone can show it.
+  const fake = [2n, 1n, 1n, 0n];
+  const S = [1, 2, 3], lam = S.map((i) => P.lagrange0(i, S));
+  const Dfake = agg.map(({ B }, j) => sub(B, mul(G, fake[j])));
+  const forged = JSON.parse(JSON.stringify(honest, (k, v) => (typeof v === "bigint" ? v.toString() : v)));
+  for (let j = 0; j < 4; j++) {
+    const rest = add(mul(partials[1].parts[j].D, lam[1]), mul(partials[2].parts[j].D, lam[2]));
+    forged[0].D[j] = pt(mul(sub(Dfake[j], rest), P.modInv(lam[0])));
+  }
+  await used(polls.publish(pollId, R(fake, Dfake), forged));
+  assert.equal((await polls.getPoll(pollId)).state, 2n);
+  await reverts(polls.challengePartial.staticCall(pollId, forged, trusteeKeys(), 1, 0), polls, "ChallengeFailed"); // trustee 2 is honest
+  await reverts(polls.challengeCombination.staticCall(pollId, forged, 0), polls, "ChallengeFailed");
+  await reverts(polls.challengePartial.staticCall(pollId, honest, trusteeKeys(), 0, 0), polls, "BadPartials");    // not the published partials
+  const wrongKeys = trusteeKeys(); wrongKeys[0] = wrongKeys[1];
+  await reverts(polls.challengePartial.staticCall(pollId, forged, wrongKeys, 0, 0), polls, "BadTrustees");
+  // Options 2 and 3 have the same count in both results, so only options 0 and 1 are forged
+  await reverts(polls.challengePartial.staticCall(pollId, forged, trusteeKeys(), 0, 2), polls, "ChallengeFailed");
+  const rx = await (await polls.challengePartial(pollId, forged, trusteeKeys(), 0, 1)).wait();
+  gas.challengePartial = rx.gasUsed;
+  const ev = polls.interface.parseLog(rx.logs[0]);
+  assert.equal(ev.name, "ResultRejected");
+  assert.deepEqual([ev.args.reason, ev.args.trusteeIndex, ev.args.option], [2n, 1n, 1n]);
+  assert.equal((await polls.getPoll(pollId)).state, 5n); // Rejected
+  // a rejection leaves at least 7 days to publish again
+  assert.ok((await polls.getPoll(pollId)).resultDeadline >= (await now()) + 7n * 24n * 3600n);
+  await reverts(polls.finalize.staticCall(pollId), polls, "BadState");
+
+  // Attack 2: honest counts and D, but a partial that does not combine to D (trustee 2,
+  // option 1 replaced by G). Caught by recomputing the Lagrange combination.
+  const bad = JSON.parse(JSON.stringify(honest, (k, v) => (typeof v === "bigint" ? v.toString() : v)));
+  bad[1].D[1] = pt(G);
+  await used(polls.publish(pollId, R(counts), bad));
+  await reverts(polls.challengeCombination.staticCall(pollId, bad, 0), polls, "ChallengeFailed");
+  gas.challengeCombination = await used(polls.challengeCombination(pollId, bad, 1));
+  assert.equal((await polls.getPoll(pollId)).state, 5n);
+
+  // The correct result: no challenge succeeds, and it becomes final after the period
+  gas.publish = await used(polls.publish(pollId, R(counts), honest));
+  for (let i = 0; i < 3; i++) await reverts(polls.challengePartial.staticCall(pollId, honest, trusteeKeys(), i, 3), polls, "ChallengeFailed");
+  for (let j = 0; j < 4; j++) await reverts(polls.challengeCombination.staticCall(pollId, honest, j), polls, "ChallengeFailed");
   await reverts(polls.finalize.staticCall(pollId), polls, "ChallengePeriodRunning");
   await increase(7 * 24 * 3600 + 1);
+  await reverts(polls.challengeCombination.staticCall(pollId, honest, 0), polls, "BadState"); // too late
   await used(polls.finalize(pollId));
   assert.equal((await polls.getPoll(pollId)).state, 3n);
 
-  const unpublished = pollId + 1n;
+  // A poll without ballots: every aggregate is the identity, so are the honest partial
+  // decryptions; challenges against them must fail
+  const empty = pollId + 1n;
+  assert.equal(await polls.distinctVoters(empty), 0n);
+  const eAgg = Array.from({ length: 4 }, () => ({ A: P.curve.O, B: P.curve.O }));
+  const eParts = keys.shares.slice(0, 3).map((sh) => toP({ index: sh.index, parts: P.partialDecrypt(sh, keys.publicShares[sh.index - 1].PK, eAgg, empty) }));
+  const eR = { counts: [0n, 0n, 0n, 0n], finalBallotChain: await polls.ballotChain(empty), transcriptHash: ethers.ZeroHash, archiveHash: ethers.ZeroHash,
+    D: Array(4).fill(pt(P.curve.O)), partialsHash: ethers.ZeroHash, publishedAt: 0 };
+  await used(polls.publish(empty, eR, eParts));
+  await reverts(polls.challengePartial.staticCall(empty, eParts, trusteeKeys(), 0, 0), polls, "ChallengeFailed");
+  await reverts(polls.challengeCombination.staticCall(empty, eParts, 0), polls, "ChallengeFailed");
+
+  const unpublished = pollId + 2n;
   await increase(14 * 24 * 3600);
   await used(polls.markWithheld(unpublished));
   assert.equal((await polls.getPoll(unpublished)).state, 4n);

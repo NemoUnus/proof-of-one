@@ -80,7 +80,7 @@ For each proof i with public inputs x_i, Groth16 requires e(A_i, B_i) = e(α, β
 ### 6.2 Contract interface
 
 ```
-voteBatch(pollId, nfs[], cts[][16], proofs[])        (anyone may call)
+voteBatch(pollId, nfs[], cts[][16], proofs[], prevs[][16])   (anyone may call; prevs = the ballots replaced by re-votes, see on-chain-tally-verification-v0.1.md)
   require poll open; equal, non-empty lengths (at most 256)
   require BallotBatchVerifier.verifyBallots(pollHash, nfs, cts, proofs)
   for each ballot, in the given order: the same rules as vote()

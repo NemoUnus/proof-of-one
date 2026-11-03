@@ -48,7 +48,7 @@ Edit any number in `transcript.json`, such as a published count or a trustee's p
 ## Security notes for reviewers
 
 - Every externally supplied point is checked to be **on the curve and in the prime-order subgroup** (Baby Jubjub has cofactor 8).
-- Fiat–Shamir challenges are Poseidon hashes with a domain tag and bind the poll, the option index and every point in the statement. Challenges are reduced modulo the subgroup order ℓ. The bias is negligible but noted.
+- The Fiat–Shamir challenge of a decryption proof is keccak256(abi.encode(2, pollId, j, G, PK_i, A_j, D_ij, T1, T2)), so that the polls contract can check a challenged proof cheaply ([design](../../docs/specs/on-chain-tally-verification-v0.1.md)). It binds the poll, the option index and every point in the statement, and is reduced modulo the subgroup order ℓ. The bias is negligible but noted. Key generation (src/dkg.js) still uses Poseidon.
 - Scalars are drawn from 64 random bytes reduced modulo ℓ.
 - Arithmetic uses JavaScript BigInt and circomlibjs; neither is constant-time.
 - `npm audit` reports advisories in transitive dependencies of `circomlibjs`. They have not yet been assessed for this use.

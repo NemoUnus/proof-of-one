@@ -32,7 +32,7 @@ trustees ──(5) per-poll key generation; after close: partial decryptions ─
 anyone   ──(6) recount from public data
 ```
 
-All curve operations use Baby Jubjub (prime-order subgroup, generator `G = Base8`, order ℓ). All in-circuit hashing uses Poseidon over the BN254 scalar field with a domain tag as the first input: 1 nullifier, 2 DLEQ challenge, 3 credential nullifier, 4 commitment, 5 credential message, 6 revocation handle, 7 poll hash, 8 service identifier, 9–12 trustee key generation.
+All curve operations use Baby Jubjub (prime-order subgroup, generator `G = Base8`, order ℓ). All in-circuit hashing uses Poseidon over the BN254 scalar field with a domain tag as the first input: 1 nullifier, 2 DLEQ challenge (since 3 November 2026 computed with keccak256, so that the contract can check it; [design](../specs/on-chain-tally-verification-v0.1.md)), 3 credential nullifier, 4 commitment, 5 credential message, 6 revocation handle, 7 poll hash, 8 service identifier, 9–12 trustee key generation.
 
 ## 3. Constructions
 
