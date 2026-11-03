@@ -54,6 +54,7 @@ Participation is free. Topics of sponsored polls are chosen by participants them
 | [Reusing Rarimo's passport circuits? v0.1](docs/research/rarimo-circuits-evaluation-v0.1.md) | Which existing circuits for more signature suites we can reuse, and how |
 | [Countries not yet verifiable v0.1](docs/research/missing-countries-survey-v0.1.md) · [coverage by country (CSV)](docs/research/coverage-by-country-2026-10-28.csv) | Which chip-passport countries can be verified today, which cannot, and how to close the gaps |
 | [Personal numbers in passports v0.1](docs/research/personal-number-survey-v0.1.md) | Which passports carry a personal number usable for the document fingerprint, and why such numbers can change |
+| [Personal-number checklist v0.1](docs/research/personal-number-checklist-v0.1.md) · [data (CSV)](docs/research/personal-number-checklist-v0.1.csv) | For all 186 countries and territories: the national number each assigns, and whether the passport and its chip carry it (mostly unverified; to be checked) |
 | [Decision log](docs/decisions/DECISION_LOG.md) | Every design decision and why it was taken |
 
 ## Reference code
