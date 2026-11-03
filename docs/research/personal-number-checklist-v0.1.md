@@ -24,9 +24,9 @@ Rows are sorted by population, so the countries that matter most come first.
 
 | Group | Countries and territories |
 |---|---|
-| A national number exists and the team believes the passport shows it | 37 |
-| A national number exists, but whether the passport shows it is unknown | 73 |
-| A national number exists but is not on the passport (for example Brazil, Hungary, Norway, the Philippines) | 6 |
+| A national number exists and the passport shows it (confirmed for some, believed for the rest) | 39 |
+| A national number exists, but whether the passport shows it is unknown | 68 |
+| A national number exists but is not on the passport (for example Brazil, Croatia, Hungary, Luxembourg, Norway, the Philippines) | 9 |
 | No general national number, or none on the passport (for example Germany, France, the United Kingdom, the United States) | 18 |
 | No number found yet | 32 |
 | Territories using another state's passport | 20 |
@@ -35,7 +35,7 @@ Countries with no usable number take the name-based path with the face check (wh
 
 ## 4. Checks so far
 
-- **Read from specimen passports in PRADO (by the founder, 3 November 2026; 15 countries):** line 2 of the machine-readable zone, positions 29–42.
+- **Read from specimen passports in PRADO (by the founder, 3 November 2026; 30 countries, all those in PRADO):** line 2 of the machine-readable zone, positions 29–42.
 
   | Country | Specimen issued | In the MRZ optional field |
   |---|---|---|
@@ -46,16 +46,33 @@ Countries with no usable number take the name-based path with the face check (wh
   | Poland | 2022 | **No:** the field is empty. The PESEL is printed on the data page, so it can only be used if the chip carries it in DG11 |
   | Finland | 2023 | **Yes:** the personal identity code, with `<` in place of the separator |
   | Denmark | 2021 | **Yes:** the CPR number, with `<` in place of the hyphen |
-  | Portugal | 2017 | **Yes:** the 8-digit civil identification number (older series; current series to check) |
-  | Bulgaria | 2010 | **Yes:** the 10-digit EGN (older series; current series to check) |
-  | Czechia | 2011 | **Yes:** the birth number without the slash (older series; current series to check) |
+  | Portugal | 2017 | **Yes:** the 8-digit civil identification number (the newest specimen in PRADO) |
+  | Bulgaria | 2010 | **Yes:** the 10-digit EGN (the newest specimen in PRADO; current passports to check) |
+  | Czechia | 2011 | **Yes:** the birth number without the slash (the newest specimen in PRADO; current passports to check) |
   | Belgium | 2022 | **No:** the field is empty and the data page shows no national number. The specimen holder has a fictional nationality, so a real citizen's passport should be checked |
   | Norway | 2020 | **No:** the field is empty and the data page shows no national number |
   | Latvia | 2023 | **Yes:** the personal code, with `<` in place of the hyphen. It is a new-style code that encodes no birth date |
   | Slovenia | 2016 | **Yes:** the 13-digit EMŠO |
   | Netherlands | 2024 | **No:** the field is empty, as the 2021 decision says |
+  | Estonia | 2020 | **Yes:** the 11-digit personal identification code |
+  | Iceland | 2019 | **Yes:** the kennitala, with `<` in place of the hyphen |
+  | Slovakia | 2024 | **Yes:** the birth number without the slash |
+  | Malta | 2019 | **Yes:** the identity card number (7 digits and a letter) |
+  | Croatia | 2015 | **No:** the field is empty and the data page shows no OIB |
+  | Cyprus | 2020 | **No:** the field is empty |
+  | Luxembourg | 2026 | **Unclear:** the field holds a 12-digit number that the data page does not show; its meaning must be found before it is used |
 
-  So far: 11 of 15 put the number in the MRZ (8 of them on specimens issued in 2015 or later), and 4 do not.
+  | Germany | 2017 | **No:** the field is empty (Germany has no general personal number) |
+  | France | 2019 | **No:** the field is empty |
+  | Italy | 2023 | **No:** the field is empty |
+
+  | Austria | 2023 | **No:** the field is empty |
+  | Greece | 2021 | **No:** the field is empty |
+  | Hungary | 2012 | **No:** the field is empty |
+  | Ireland | 2026 | **No:** the field is empty |
+  | Switzerland | 2022 | **No:** the field is empty |
+
+  Result for all 30 countries in PRADO (the European Union, Iceland, Norway and Switzerland): **15 put the number in the MRZ, 14 do not, and 1 (Luxembourg) is unclear.** Bulgaria and Czechia are confirmed only on specimens from 2010 and 2011, the newest PRADO has; whether current passports still carry the number must be checked from issuer sources or a real document.
 
   Separators are replaced by `<` or dropped, so every issuer's rule must define the exact form. Poland shows that a number printed on the data page is not necessarily in the signed MRZ. Specimens show the MRZ only; DG11 must be checked from issuer documentation or real chips.
 - **Confirmed from other sources:**
