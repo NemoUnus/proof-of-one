@@ -85,9 +85,12 @@ Countries with no usable number take the name-based path with the face check (wh
 - **Spot check by a second agent:** see section 6.
 - **Still needed:** the MRZ and DG11 columns for every country. The quickest source is specimen images: the founder is reading PRADO specimens for 15 European countries (0.16-04). After that, issuers' specimen brochures and, in the pilot, a privacy-preserving count per issuer of whether the optional field is filled (survey §5).
 
+- **DG11:** no public source found says which states put the national number in DG11 (searched 3 November 2026 for Poland, Belgium, the Netherlands and Norway). It can be checked only on real chips.
+- **The Netherlands:** passports issued before the change in August 2021 carry the BSN in the MRZ, and stay valid until 2031 ([source](https://mickbeer.com/artikelen/siip-addendum-wederhoor/), which gives 30 August 2021; the official letter gives 2 August). One person can therefore hold a passport with the number and, after renewal, one without it. An issuer like this must take the name path for all its documents, or a member's fingerprint would change at renewal.
+
 ## 5. How the design uses the list
 
-The trust list (7.3) will carry, per issuer and document series, a rule saying where the number is (MRZ positions or DG11 tag) and how it is normalised, for example by dropping separators. Only issuers with a **confirmed** rule use the number path. All others use the name path, so an error in this list can make the fingerprint weaker but never wrong.
+The trust list (7.3) will carry, per issuer and document series, a rule saying where the number is (MRZ positions or DG11 tag) and how it is normalised, for example by dropping separators. Only issuers with a **confirmed** rule for every passport series still valid use the number path. All others use the name path, so an error in this list can make the fingerprint weaker but never wrong.
 
 ## 6. Second-agent spot check
 
