@@ -34,6 +34,7 @@ Proof of One is built by people and by disclosed AI agents ([AGENTS.md](AGENTS.m
 | Second, independent check of the German master list's anchor fingerprint on the BSI website (29 October 2026, [trust list §3.2](docs/specs/trust-list-v0.1.md)) | **Human**: Nemo Unus | — |
 | Reviewed and opened the design issue on Vocdoni DAVINCI ([davinci-zkvm #6](https://github.com/vocdoni/davinci-zkvm/issues/6)); the issue text was drafted by the AI team | **Human**: Nemo Unus | — |
 | Proposal of a country-by-country checklist of national personal numbers (Decision #43 follow-up), and reading of PRADO specimen passports (all 30 countries in PRADO) for the [checklist](docs/research/personal-number-checklist-v0.1.md) | **Human**: Nemo Unus | — |
+| Proposal of a document key, derived from the document number and valid until expiry, beside the person key, so that renewals and further nationalities are recognised automatically (Decision #47) | **Human**: Nemo Unus | — |
 
 ## Second-model reviews
 
