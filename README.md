@@ -57,6 +57,7 @@ Participation is free. Topics of sponsored polls are chosen by participants them
 | [Personal numbers in passports v0.1](docs/research/personal-number-survey-v0.1.md) | Which passports carry a personal number usable for the document fingerprint, and why such numbers can change |
 | [Personal-number checklist v0.1](docs/research/personal-number-checklist-v0.1.md) · [data (CSV)](docs/research/personal-number-checklist-v0.1.csv) | For all 186 countries and territories: the national number each assigns, and whether the passport and its chip carry it (mostly unverified; to be checked) |
 | [Transparency-log witnesses v0.1](docs/research/witness-operators-v0.1.md) | Who runs witnesses today, how a log joins the Witness Network, and the plan for Proof of One |
+| [Which public test network for Phase 1a v0.1](docs/research/l2-test-network-choice-v0.1.md) | Base Sepolia first, Arbitrum Sepolia second: forced inclusion, fees, faucets without an account, maturity |
 | [Decision log](docs/decisions/DECISION_LOG.md) | Every design decision and why it was taken |
 
 ## Reference code
