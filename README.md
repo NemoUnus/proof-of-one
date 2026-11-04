@@ -48,6 +48,7 @@ Participation is free. Topics of sponsored polls are chosen by participants them
 | [Cost of large polls v0.1](docs/specs/cost-of-large-polls-v0.1.md) | Keeping polls free as they grow: verified random sampling, ballot data in blobs, where ballots are recorded, and funding |
 | [On-chain tally verification v0.1](docs/specs/on-chain-tally-verification-v0.1.md) | How the contract keeps the encrypted totals itself and lets anyone challenge a wrong decryption, so a wrong result is rejected if anyone challenges it in time |
 | [Where ballots are recorded v0.1](docs/specs/where-ballots-are-recorded-v0.1.md) | Rollup, transparency logs with witnesses, or a published report: what each guarantees and costs for polls of 10 thousand to 100 million (for decision) |
+| [Ballots in transparency logs v0.1](docs/specs/transparency-log-ballots-v0.1.md) | How large open polls are recorded in several logs with witnesses: receipts, re-votes, the close, failed logs; first red-team round included |
 | [Trustee key generation v0.1](docs/specs/trustee-key-generation-v0.1.md) | How the trustees make each poll's key so that no one can bias it, cheaters are caught publicly and the tally survives absent trustees |
 | [Who can enrol? Document coverage v0.1](docs/research/document-coverage-v0.1.md) · [data (CSV)](docs/research/document-coverage-v0.1.csv) | Which countries issue chip documents a phone can read, and what share of people can take part today |
 | [Landscape review v0.2](docs/research/landscape-review-v0.2.md) | Existing identity, personhood and voting systems compared; the gaps Proof of One tries to close, and where others are ahead |
@@ -55,6 +56,7 @@ Participation is free. Topics of sponsored polls are chosen by participants them
 | [Countries not yet verifiable v0.1](docs/research/missing-countries-survey-v0.1.md) · [coverage by country (CSV)](docs/research/coverage-by-country-2026-10-28.csv) | Which chip-passport countries can be verified today, which cannot, and how to close the gaps |
 | [Personal numbers in passports v0.1](docs/research/personal-number-survey-v0.1.md) | Which passports carry a personal number usable for the document fingerprint, and why such numbers can change |
 | [Personal-number checklist v0.1](docs/research/personal-number-checklist-v0.1.md) · [data (CSV)](docs/research/personal-number-checklist-v0.1.csv) | For all 186 countries and territories: the national number each assigns, and whether the passport and its chip carry it (mostly unverified; to be checked) |
+| [Transparency-log witnesses v0.1](docs/research/witness-operators-v0.1.md) | Who runs witnesses today, how a log joins the Witness Network, and the plan for Proof of One |
 | [Decision log](docs/decisions/DECISION_LOG.md) | Every design decision and why it was taken |
 
 ## Reference code
