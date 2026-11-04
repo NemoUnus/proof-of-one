@@ -8,10 +8,16 @@ const ganache = require("../contracts/node_modules/ganache");
 const { ethers } = require("../contracts/node_modules/ethers");
 (async () => {
   const plan = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+  // argv[3]: a throwaway private key, or "impersonate" to replay as the plan's deployer
+  // without its key (ganache unlocks the address), so a real wallet's plan can be checked.
   const pk = process.argv[3];
-  const provider = new ethers.BrowserProvider(ganache.provider({ logging: { quiet: true }, chain: { chainId: Number(plan.chainId) }, miner: { blockGasLimit: 60_000_000 },
-    wallet: { accounts: [{ secretKey: pk, balance: "0x" + (10n ** 21n).toString(16) }] } }));
-  const signer = await provider.getSigner(0);
+  const wallet = pk === "impersonate"
+    ? { unlockedAccounts: [plan.deployer], defaultBalance: 1000 }
+    : { accounts: [{ secretKey: pk, balance: "0x" + (10n ** 21n).toString(16) }] };
+  const g = ganache.provider({ logging: { quiet: true }, chain: { chainId: Number(plan.chainId) }, miner: { blockGasLimit: 60_000_000 }, wallet });
+  if (pk === "impersonate") await g.request({ method: "evm_setAccountBalance", params: [plan.deployer, "0x" + (10n ** 21n).toString(16)] });
+  const provider = new ethers.BrowserProvider(g);
+  const signer = await provider.getSigner(plan.deployer);
   if ((await signer.getAddress()) !== plan.deployer) throw new Error("key does not match the plan's deployer");
   const polls = new ethers.Contract(plan.contracts.ProofOfOnePolls, plan.abi.ProofOfOnePolls, signer);
   const now = async () => (await provider.getBlock("latest")).timestamp;

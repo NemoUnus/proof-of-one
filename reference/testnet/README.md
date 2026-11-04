@@ -26,7 +26,7 @@ The page is served by GitHub Pages at `https://nemounus.github.io/proof-of-one/r
 ```bash
 # needs ../contracts (built), ../tally, ../ballot-circuit and ../enrolment-circuit (with their TEST-ONLY setups)
 node plan.js 84532 0xYourTestWalletAddress > web/plan.json
-node verify-plan.js web/plan.json 0xPrivateKeyOfAThrowawayKey   # only with a throwaway key, for the local replay
+node verify-plan.js web/plan.json impersonate   # replays as the deployer without its key (local EVM only)
 ```
 
 Measured locally: the whole plan uses about 25 million gas, most of it for deploying the contracts. The page was also tested end to end in a headless browser against a local chain, ending in the state "Final" with totals 1, 2, 0, 1.
