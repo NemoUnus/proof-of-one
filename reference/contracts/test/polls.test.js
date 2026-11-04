@@ -17,6 +17,7 @@ const { create } = require("../../tally/src/protocol");
 const B = require("../../ballot-circuit/src/ballot");
 const { IncrementalTree, RevocationTree } = require("../../ballot-circuit/src/trees");
 const E = require("../../enrolment-circuit/src/enrolment");
+const SM = require("../../ballot-circuit/src/sampling");
 
 const BALLOT_ZKEY = path.join(__dirname, "..", "..", "ballot-circuit", "setup", "ballot_test.zkey");
 const REG_ZKEY = path.join(__dirname, "..", "..", "enrolment-circuit", "setup", "registration_test.zkey");
@@ -112,11 +113,12 @@ const pollParams = async (over = {}) => {
   const t = await now();
   return { tallyPK: pt(keys.PK), maxBirthDay: POLICY.maxBirthDay, minBirthDay: POLICY.minBirthDay, minExpiryMonth: POLICY.minExpiryMonth, requiredNat: POLICY.requiredNat,
     maxRevotes: 3, openTime: t, closeTime: t + 48n * 3600n + 60n, metadataHash: ethers.ZeroHash,
-    trusteeKeys: trusteeKeys(), threshold: 3, ...over };
+    trusteeKeys: trusteeKeys(), threshold: 3, sampleThreshold: 0, ...over };
 };
 
 test.before(async () => {
   P = await create();
+  await SM.init();
   await E.init();
   provider = new ethers.BrowserProvider(ganache.provider({ logging: { quiet: true }, chain: { chainId: 1337 }, miner: { blockGasLimit: 100_000_000 }, wallet: { deterministic: true } }));
   signer = await provider.getSigner(0);
@@ -304,6 +306,42 @@ test("batched ballots: accepted together, one bad proof rejects the batch, same 
   assertAgg(agg, await polls.aggregate(pc)); // includes a voter who re-voted twice
   const partials = keys.shares.map((sh) => ({ index: sh.index, parts: P.partialDecrypt(sh, keys.publicShares[sh.index - 1].PK, agg, BigInt(pc)) }));
   assert.deepEqual(P.combine(agg, partials, 3, rep.distinct), [3n, 1n, 2n, 1n]); // voter 2 changed 1 → 3 → 0
+});
+
+test("sampled poll: seed fixed after the snapshot; only invited members can vote; the contract agrees with the phone", async () => {
+  const voters = people.filter((x, i) => i !== 0);
+  const th = SM.thresholdFor(0.5);
+  const v = await syncTrees();
+  let ps, ballots, inv, yes = [], no = [];
+  // With 7 members and p = 0.5, a draw may invite all or none; draw a new poll then (rare)
+  for (let attempt = 0; attempt < 6 && (yes.length === 0 || no.length === 0); attempt++) {
+    await used(polls.createPoll(await pollParams({ sampleThreshold: th })));
+    ps = await polls.pollCount();
+    ballots = [];
+    for (let i = 0; i < voters.length; i++) ballots.push(await makeBallot(voters[i], i % 4, ps, v));
+    if (attempt === 0) {
+      // No ballot before the seed is fixed; the seed comes from a block created after the poll
+      await reverts(sendStatic(ballots[0], ps), polls, "SeedNotFixed");
+      await reverts(polls.fixSeed.staticCall(ps), polls, "SeedTooEarly");
+      await reverts(polls.fixSeed.staticCall(pollId), polls, "NotSampled");
+    }
+    for (let i = 0; i < 3; i++) await provider.send("evm_mine", []);
+    gas.fixSeed = await used(polls.fixSeed(ps));
+    await reverts(polls.fixSeed.staticCall(ps), polls, "BadState");
+    const seed = (await polls.sampling(ps)).seed;
+    // The phone's ticket and the contract's check agree for every member
+    inv = ballots.map((b) => SM.invited(b.nf, seed, th));
+    for (let i = 0; i < ballots.length; i++) assert.equal(await polls.invited(ps, ballots[i].nf), inv[i]);
+    yes = ballots.filter((b, i) => inv[i]); no = ballots.filter((b, i) => !inv[i]);
+  }
+  assert.ok(yes.length > 0 && no.length > 0, `need both cases among ${ballots.length} members (invited ${yes.length})`);
+
+  // Invited members vote, alone or in a batch; a member who was not invited cannot
+  gas.voteSampled = await used(send(yes[0], ps));
+  await reverts(sendStatic(no[0], ps), polls, "NotInvited");
+  if (yes.length > 1) await used(sendBatch(yes.slice(1), ps));
+  await reverts(polls.voteBatch.staticCall(ps, ...asBatch([no[0]], ps)), polls, "NotInvited");
+  assert.equal(await polls.distinctVoters(ps), BigInt(yes.length));
 });
 
 test("ballot chain on-chain equals the chain rebuilt by the reference tally from events", async () => {

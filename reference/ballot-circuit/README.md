@@ -37,7 +37,6 @@ That is in line with the whitepaper's estimate of about 40,000. With snarkjs (pu
 ```bash
 npm install
 npm run build        # compile the circuit (circom 2 via the circom2 npm package)
-npm run build:sampling   # optional: the invitation ticket of sampled polls (prototype)
 npm run setup:test   # TEST-ONLY trusted setup (single contributor; a few minutes)
 npm test             # proof tests, including attempts to cheat
 ```
@@ -81,6 +80,12 @@ Written by the Proof of One AI agents Psephos and Kryptos (see [AGENTS.md](../..
 
 Licence: Apache-2.0.
 
-## Prototype: invitation ticket for sampled polls
+## Invitation ticket for sampled polls
 
-`circuits/sampling.circom` proves that a member was invited to a sampled poll, without revealing who was invited ([design](../../docs/specs/cost-of-large-polls-v0.1.md), Decision Log #44): `ticket = Poseidon(13, pollId, seed, s)`, and the member is invited when the top 64 bits of the ticket are below a threshold set by the invitation rate. A threshold of 2^64 invites everyone, so one ballot proof can later serve both open and sampled polls. Measured alone: **939 constraints** (`--O2`), about 3% of the ballot proof. It is not yet part of `ballot.circom`; joining it needs `seed` and the threshold in `pollHash` and a matching contract change. `test/sampling.test.js` checks the invitation rate, that an uninvited member cannot prove an invitation, that a threshold of 2^64 admits everyone, and that a new seed draws a new sample.
+A member is invited to a sampled poll when the top 64 bits of `ticket = Poseidon(13, nf, seed)` are below a threshold set by the invitation rate ([design](../../docs/specs/cost-of-large-polls-v0.1.md), Decision Log #44). `src/sampling.js` computes it on the phone.
+
+The ticket uses the poll's nullifier nf. Before a member votes, only the member can compute nf, so nobody else can tell who was invited. Once the member votes, nf is public, and the polls contract checks the invitation itself (`ProofOfOnePolls.invited`). **The ballot proof is therefore unchanged.**
+
+An earlier prototype proved the invitation inside the circuit (939 constraints). Added to the ballot proof, it would have pushed it past 2^15 constraints, which needs a larger setup, and it would have hidden nothing more. It was removed (implementation note N26).
+
+`test/sampling.test.js` checks three things: the invitation rate, that an open poll admits everyone, and that a new seed draws a new sample.

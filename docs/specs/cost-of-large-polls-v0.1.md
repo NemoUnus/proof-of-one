@@ -29,7 +29,7 @@ A **sampled poll** invites a random subset of the eligible members. Nobody, incl
 ```
 seed      = public random value from an unbiasable beacon, fixed after the
             poll's snapshot, poll identifier and invitation rate
-ticket    = Poseidon(TAG_SAMPLE, pollId, seed, s)      (s = identity secret)
+ticket    = Poseidon(TAG_SAMPLE, nf, seed)            (nf = the poll's nullifier)
 top       = ticket >> 190                              (its top 64 bits)
 threshold = ⌊p · r / 2^190⌋                            (p = rate, r = field size)
 invited  ⇔  top < threshold
@@ -37,7 +37,7 @@ invited  ⇔  top < threshold
 
 Because r is about 2^253.6, the top bits range up to about 2^63.6; the threshold is computed from r, not from 2^64, or the rate would be about 32% too high.
 
-The phone computes its ticket privately. The ballot proof gains one statement, "my ticket is below the threshold". A prototype ([`reference/ballot-circuit/circuits/sampling.circom`](../../reference/ballot-circuit/circuits/sampling.circom)) measures **939 constraints**, about 3% of the ballot proof; it compares the top 64 bits of the ticket with the threshold, and a threshold of 2^64 invites everyone, so one ballot proof can serve open and sampled polls alike. The contract rejects ballots without it in sampled polls.
+The phone computes its ticket privately. Only the member can compute the nullifier nf before voting, because it depends on the identity secret, so nobody else can tell who was invited. Once the member votes, nf is public, and the polls contract checks the ticket itself (`invited` in [`ProofOfOnePolls.sol`](../../reference/contracts/src/ProofOfOnePolls.sol)); the ballot proof is unchanged. *(Revised 4 November 2026. The first prototype proved the ticket inside the ballot proof, with Poseidon(13, pollId, seed, s), at 939 constraints. Checking it on-chain hides nothing less and needs no new setup: implementation note N26.)* An open poll has no threshold, so one ballot proof serves open and sampled polls alike. The contract rejects ballots of members who were not invited.
 
 - **Who is invited cannot be chosen, under conditions.** s is fixed at enrolment; the snapshot, poll identifier and rate are fixed before the seed exists. A member cannot try many secrets, because each person has one identity and a new identity is not in the poll's snapshot (Decision Log #43). This holds only if the seed cannot be biased: a single sequencer or the proposer of the block whose value is used could bias it, so the seed must come from an unbiasable source such as a threshold randomness beacon (for example drand). It must also be impossible to run many copies of the same poll and publish only a convenient one ("poll shopping"), for example by counting every created poll in public statistics. A group of members who share their tickets with a poll creator learns nothing it could use if the seed is unbiased.
 - **The invited set stays private.** Tickets depend on the identity secret, so no one else can compute them. Those who answer reveal only what any participant reveals: that some eligible member answered.

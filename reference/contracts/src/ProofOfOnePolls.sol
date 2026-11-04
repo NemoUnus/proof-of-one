@@ -121,7 +121,24 @@ contract ProofOfOnePolls {
         bytes32 metadataHash;
         uint256[2][] trusteeKeys; // public shares PK_i from key generation, trustee i at position i−1
         uint8 threshold;
+        uint64 sampleThreshold;   // 0 = open poll; otherwise a sampled poll with this invitation threshold
     }
+
+    /// @notice Sampled polls (docs/specs/cost-of-large-polls-v0.1.md §2, Decision #44). A member
+    ///         is invited if the top 64 bits of ticket = Poseidon(13, nf, seed) are below the
+    ///         threshold. The ticket uses the poll's nullifier, which only the member can compute
+    ///         before voting, so nobody else can tell who was invited; once a member votes, their
+    ///         nf is public and anyone can check the invitation, so the contract checks it and
+    ///         the ballot proof needs no change.
+    struct Sampling {
+        uint64 threshold;       // 0 = open poll
+        uint64 seedBlock;       // block whose hash fixes the seed (after the snapshot)
+        bool seedFixed;
+        uint256 seed;
+    }
+    mapping(uint256 => Sampling) public sampling;
+    uint64 public constant SEED_DELAY_BLOCKS = 2;
+    uint256 internal constant TAG_SAMPLE = 13;
     uint256 public pollCount;
     mapping(uint256 => Poll) private _polls;
     mapping(uint256 => Result) private _results;
@@ -139,6 +156,8 @@ contract ProofOfOnePolls {
     event PollCreated(uint256 indexed pollId, address creator, uint256 idRoot, uint256 revRoot, uint64 openTime, uint64 closeTime, bytes32 metadataHash);
     event Ballot(uint256 indexed pollId, uint256 indexed nf, uint256[16] ciphertexts, uint16 count);
     event ResultPublished(uint256 indexed pollId, uint256[K] counts, uint256[2][K] D, Partial[] partials, bytes32 transcriptHash, bytes32 archiveHash);
+    event SampledPoll(uint256 indexed pollId, uint64 threshold, uint64 seedBlock);
+    event SeedFixed(uint256 indexed pollId, uint256 seed);
     event TrusteeKeys(uint256 indexed pollId, uint256[2][] keys, uint8 threshold);
     event ResultRejected(uint256 indexed pollId, uint8 reason, uint256 trusteeIndex, uint256 option);
     event ResultFinal(uint256 indexed pollId);
@@ -147,6 +166,10 @@ contract ProofOfOnePolls {
     error InvalidTallyKey();
     error BadTimes();
     error PollNotOpen();
+    error SeedNotFixed();
+    error NotInvited();
+    error NotSampled();
+    error SeedTooEarly();
     error RevoteCapReached();
     error InvalidProof();
     error NotClosed();
@@ -210,6 +233,11 @@ contract ProofOfOnePolls {
         s.trustees = uint8(p.trusteeKeys.length);
         s.resultDeadline = p.closeTime + WITHHOLD_DEADLINE;
         emit TrusteeKeys(pollId, p.trusteeKeys, p.threshold);
+        if (p.sampleThreshold != 0) {
+            uint64 sb = uint64(block.number) + SEED_DELAY_BLOCKS;
+            sampling[pollId] = Sampling(p.sampleThreshold, sb, false, 0);
+            emit SampledPoll(pollId, p.sampleThreshold, sb);
+        }
         uint256[16] storage g = _agg[pollId];
         for (uint256 q = 0; q < 8; q++) { g[2 * q] = 1; g[2 * q + 1] = 2; } // identity (0, 1), offset by one
         // pollHash = Poseidon(7, Poseidon(idRoot, revRoot, pollId, PK.x, PK.y),
@@ -275,6 +303,7 @@ contract ProofOfOnePolls {
         pub[1] = nf;
         for (uint256 i = 0; i < 16; i++) pub[2 + i] = ct[i];
         if (!verifier.verifyProof(pa, pb, pc, pub)) revert InvalidProof();
+        if (!invited(pollId, nf)) revert NotInvited();
 
         Counters memory cnt = _counters[pollId];
         uint256[24] memory agg = _loadAgg(pollId);
@@ -305,6 +334,7 @@ contract ProofOfOnePolls {
         // in separate transactions, ordered by the ledger. One comparison per ballot.
         for (uint256 i = 1; i < nfs.length; i++) if (nfs[i] <= nfs[i - 1]) revert BadBatch();
         if (!batchVerifier.verifyBallots(p.pollHash, nfs, cts, proofs)) revert InvalidProof();
+        if (sampling[pollId].threshold != 0) for (uint256 i = 0; i < nfs.length; i++) if (!invited(pollId, nfs[i])) revert NotInvited();
 
         Counters memory cnt = _counters[pollId];
         bytes32 chain = ballotChain[pollId];
@@ -329,6 +359,34 @@ contract ProofOfOnePolls {
     function _openPoll(uint256 pollId) internal view returns (Poll storage p) {
         p = _polls[pollId];
         if (p.state != State.Open || block.timestamp < p.openTime || block.timestamp >= p.closeTime) revert PollNotOpen();
+        Sampling storage sm = sampling[pollId];
+        if (sm.threshold != 0 && !sm.seedFixed) revert SeedNotFixed();
+    }
+
+    /// @notice Fixes the seed of a sampled poll from the hash of a block that did not exist
+    ///         when the poll (and its membership snapshot) was created. Anyone may call it.
+    /// @dev REFERENCE SIMPLIFICATION: a block hash can be biased by the block's producer,
+    ///      who may withhold a block whose hash it dislikes. Production uses an unbiasable
+    ///      randomness beacon (for example drand), verified on-chain. If the block is more
+    ///      than 256 blocks old, its hash is no longer available and a new block is chosen.
+    function fixSeed(uint256 pollId) external {
+        Sampling storage sm = sampling[pollId];
+        if (sm.threshold == 0) revert NotSampled();
+        if (sm.seedFixed) revert BadState();
+        if (block.number <= sm.seedBlock) revert SeedTooEarly();
+        bytes32 bh = blockhash(sm.seedBlock);
+        if (bh == bytes32(0)) { sm.seedBlock = uint64(block.number) + SEED_DELAY_BLOCKS; return; }
+        sm.seed = uint256(keccak256(abi.encode(bh, pollId))) % SNARK_FIELD;
+        sm.seedFixed = true;
+        emit SeedFixed(pollId, sm.seed);
+    }
+
+    /// @notice Whether the member with nullifier nf is invited to sampled poll pollId.
+    function invited(uint256 pollId, uint256 nf) public view returns (bool) {
+        Sampling storage sm = sampling[pollId];
+        if (sm.threshold == 0) return true;
+        uint256 t = poseidon3.poseidon([TAG_SAMPLE, nf, sm.seed]);
+        return (t >> 190) < sm.threshold;
     }
 
     /// @dev Records one verified ballot and adds it to the running sum; returns the
