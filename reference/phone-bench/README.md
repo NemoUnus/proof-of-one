@@ -36,13 +36,14 @@ Then tap **Start benchmark**, keep the screen on, and post the result in [issue 
 | **iPhone 13 Pro Max**, volunteer, 4 Nov 2026 | **3.7 s** (3.6, 3.7, 3.7) |
 | **iPhone 13**, volunteer, 4 Nov 2026 | **5.9 s** (6.5, 5.9, 5.9) |
 | **Samsung Galaxy A31** (mid-range, 2020), volunteer, 4 Nov 2026 | **7.5 s** (8.6, 7.4, 7.5) |
+| **Samsung Galaxy A70** (4G, mid-range, 2019), volunteer, 4 Nov 2026 | **9.1 s** (14.7, 9.1, 8.0) |
 | **Poco C65** (low-cost, 2023), volunteer, 4 Nov 2026 | **7.1 s** (7.9, 6.7, 7.1); 8 cores, about 8 GB reported |
 | **Realme RMX3830** (model code as reported), volunteer, 4 Nov 2026 | **8.3 s** (8.3, 8.1, 65.6); the third run was probably slowed by the screen turning off or the browser going to the background |
 | **Samsung Galaxy M10, SM-M105F** (entry level, 2019), volunteer, 4 Nov 2026 | **19.5 s** (21.7, 19.4, 19.5); 8 cores, about 2 GB reported |
 | Server, 2 cores, headless Chromium | about 10 s |
 | Server, Node.js (`ballot-circuit` tests) | 4–5 s |
 
-Every run produced a proof that verified. **The ballot proof is practical in a phone's browser on every phone tested that runs a modern browser**: about 2 to 4 seconds on recent phones, 7 to 8 seconds on low-cost 2023 phones and a mid-range phone from 2020, and about 20 seconds on an entry-level phone from 2019 with 2 GB of memory. A native prover in the app should be several times faster. The one phone that could not run it, an iPhone 7 on iOS 13.7, failed because its browser is too old, not because it is too slow.
+Every run produced a proof that verified. **The ballot proof is practical in a phone's browser on every phone tested that runs a modern browser**: about 2 to 4 seconds on recent phones, 7 to 9 seconds on low-cost 2023 phones and mid-range phones from 2019 and 2020, and about 20 seconds on an entry-level phone from 2019 with 2 GB of memory. A native prover in the app should be several times faster. The one phone that could not run it, an iPhone 7 on iOS 13.7, failed because its browser is too old, not because it is too slow.
 
 The document-validity proof made at enrolment is about 18 to 23 times larger (577,678 to 749,147 constraints). In a browser on an entry-level phone it would take many minutes, so enrolment needs a native prover (activity 0.8). Download times (up to 48 s for the 23 MB of proving key and circuit on a slow connection) also matter for people with expensive or slow data; the app should ship the key with the app or download it once over Wi-Fi.
 
