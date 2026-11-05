@@ -53,6 +53,8 @@ Sent from the same wallet on 5 November 2026 with [`web/plan2.json`](web/plan2.j
 
 The first ballot was made and sent from a phone the same day with [`../app/web/vote.html`](../app/web/vote.html): the ballot proof took 4.0 s on the phone and was verified there, the contract accepted it, and the page then showed the recorded answer read back from the network.
 
+The same day the [test relay](../relay/) went live at `https://proof-of-one-relay.nemounus.workers.dev` (relay account `0x3dB9d15202Bd291558889b42eb4291e288797fb9`, funded with 0.0003 test ETH). The first ballot through it was sent from a browser with no wallet: proved in 1.7 s, submitted and paid for by the relay, and its recorded answer read back.
+
 After the close, the encrypted totals and ballot chain shown by the page go to [`publish.js`](publish.js), which prepares the "publish" step.
 
 ## Notes

@@ -24,8 +24,10 @@ A phone sends its ballot to the relay instead of to the network, and the relay s
 
 ## Deploy (Cloudflare dashboard, from this repository)
 
+The project's relay runs at `https://proof-of-one-relay.nemounus.workers.dev` (see [DEPLOYMENT.md](../testnet/DEPLOYMENT.md)).
+
 1. Workers & Pages → Create → **Import a repository** → this repository; root directory `reference/relay`. Cloudflare builds and deploys it with Wrangler on every change.
-2. Settings → Variables and secrets → add the **secret** `RELAY_KEY`: the private key of a test-only account that holds only test coins. Never put it in a file.
+2. Settings → **Runtime** variables and secrets (not the Build variables) → add the **secret** `RELAY_KEY`: the private key of a test-only account that holds only test coins. Never put it in a file.
 3. Send the account a little test ETH. One ballot costs about 0.00001 test ETH on Base Sepolia.
 4. Put the Worker's address in [`../app/web/config.json`](../app/web/config.json).
 
@@ -44,7 +46,7 @@ The voting page's end-to-end test ([`../app/test/e2e-vote.js`](../app/test/e2e-v
 
 ## Open points
 
-- The free plan allows 10 ms of CPU time per request. Signing a transaction fits in tests, but this is not yet measured on Cloudflare. *To check after deployment.*
+- The free plan allows 10 ms of CPU time per request. The first live ballot (5 November 2026) went through within it; the Worker's startup time was 8 ms. To be watched as ballots increase.
 - One relay is one operator. Several independent relays, chosen by the phone at random, are the design for later phases.
 
 Licence: AGPL-3.0-only. Written by the Proof of One AI agents Ostrakon and Argus (see [AGENTS.md](../../AGENTS.md)).
