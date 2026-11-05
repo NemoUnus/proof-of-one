@@ -44,6 +44,17 @@ Every contract was created at the address the plan computed in advance from the 
 | 19. Publish the result | after the poll closes on 7 November 2026 | totals 1 · 2 · 0 · 1, checked by the contract against its encrypted totals |
 | 20. Finalize | 7 days after step 19 | state Final |
 
+## Poll 2: vote from your phone
+
+Sent from the same wallet on 5 November 2026 with [`web/plan2.json`](web/plan2.json) (7 steps, no new contracts):
+
+- a new synthetic enclave key set, 4 published synthetic members (5–8) and their batch insertion;
+- poll 2, open for 7 days, until 12 November 2026.
+
+The first ballot was made and sent from a phone the same day with [`../app/web/vote.html`](../app/web/vote.html): the ballot proof took 4.0 s on the phone and was verified there, the contract accepted it, and the page then showed the recorded answer read back from the network.
+
+After the close, the encrypted totals and ballot chain shown by the page go to [`publish.js`](publish.js), which prepares the "publish" step.
+
 ## Notes
 
 - **Wallet warning.** MetaMask flagged the page (served from `github.io`) as possibly deceptive, and marked each transaction as a high-risk request. Each request was checked before it was confirmed: a contract deployment or a call, no change to the wallet’s assets, and a fee of a few cents at mainnet prices. The page is open source in this folder. A report to MetaMask asking for a review of the warning is still to be sent.
