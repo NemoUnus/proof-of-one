@@ -36,9 +36,12 @@ jobs:
           cargo install cargo-ndk --version 4.1.2 --locked
       - name: Build the native prover for arm64-v8a
         working-directory: reference/native-prover
-        env:
-          ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_LATEST_HOME }}
-        run: cargo ndk --platform 26 -t arm64-v8a -o ../android-prototype/app/src/main/jniLibs build --release --locked --lib
+        # ANDROID_NDK_LATEST_HOME is set by GitHub's Ubuntu image (a shell variable, not part of
+        # the workflow's env context, so it is read inside the shell).
+        run: |
+          export ANDROID_NDK_HOME="$ANDROID_NDK_LATEST_HOME"
+          echo "NDK: $ANDROID_NDK_HOME"
+          cargo ndk --platform 26 -t arm64-v8a -o ../android-prototype/app/src/main/jniLibs build --release --locked --lib
       - name: Proof files as app assets
         run: |
           A=reference/android-prototype/app/src/main/assets
