@@ -75,6 +75,10 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             }
         }
         col.addView(share)
+        col.addView(Button(this).apply {
+            text = "Ballot proof benchmark (native prover)"
+            setOnClickListener { startActivity(Intent(this@MainActivity, ProverActivity::class.java)) }
+        })
         report = TextView(this).apply { typeface = Typeface.MONOSPACE; textSize = 12f; setTextIsSelectable(true); setPadding(0, pad, 0, 0) }
         col.addView(report)
         val scroll = ScrollView(this).apply { addView(col) }

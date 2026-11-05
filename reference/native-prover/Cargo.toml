@@ -1,0 +1,33 @@
+[package]
+name = "poo-native-prover"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Proof of One: native Groth16 prover for Circom circuits on phones (witness graph + arkworks). TEST-ONLY setups."
+
+[lib]
+crate-type = ["lib", "cdylib"]
+
+[[bin]]
+name = "poo-prove"
+path = "src/main.rs"
+
+[dependencies]
+circom-witnesscalc = "=0.3.0"
+ark-circom = { version = "=0.6.0", default-features = false }
+ark-bn254 = "0.6"
+ark-groth16 = { version = "0.6", default-features = false, features = ["parallel"] }
+ark-relations = { version = "0.6", default-features = false }
+ark-ff = "0.6"
+ark-ec = "0.6"
+ark-serialize = "0.6"
+ark-std = { version = "0.6", features = ["parallel"] }
+serde_json = "1"
+rand = "0.8"
+ark-snark = "0.6"
+jni = { version = "=0.21.1", default-features = false }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1

@@ -12,6 +12,7 @@ Five small packages implement the core of the protocol end to end, and four fold
 | [`document-circuit/`](document-circuit/) | Document-validity proof π_doc (Circom, Groth16): ICAO 9303 passive authentication of a passport chip in zero knowledge (RSA-2048, SHA-256), tree of checked document signers, expiry, attribute outputs; synthetic test passports; the trust list of country signing certificates | 20 |
 | [`phone-bench/`](phone-bench/) | Web page that measures how fast a phone makes the ballot proof | — |
 | [`android-prototype/`](android-prototype/) | Android test app (Kotlin, JMRTD): opens a passport chip with PACE or BAC, checks data-group hashes and the security-object signature on the phone, and exports the signer certificate for the trust-list check; built by GitHub Actions | built in CI |
+| [`native-prover/`](native-prover/) | Native Groth16 prover for the phone app (Rust: witness graph + arkworks), with a JNI entry point for Android | benchmark |
 | [`prove-bench/`](prove-bench/) | Rust tool that times Groth16 proving of any Circom circuit with a TEST-ONLY random setup (used for π_doc) | — |
 | [`aggregation-prototype/`](aggregation-prototype/) | Ballot proof and aggregator in Noir (UltraHonk) for size measurements of recursive aggregation | check script |
 | [`testnet/`](testnet/) | Phase 1a: every transaction of one synthetic poll prepared in advance, a local replay check, and a page that sends them from a test-only browser wallet | replay |

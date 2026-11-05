@@ -1,0 +1,160 @@
+// SPDX-License-Identifier: Apache-2.0
+// Proof of One — native Groth16 prover for the phone app (schedule 1.4-00). TEST-ONLY setups.
+//
+// One call turns circuit inputs (JSON, as snarkjs takes them) into a proof and public
+// signals in snarkjs's JSON format, so the same verifier, contracts and tests apply:
+//   1. witness: circom-witnesscalc evaluates a precompiled witness graph of the circuit
+//      (built once with its `build-circuit` tool), with no WebAssembly runtime;
+//   2. proof: arkworks Groth16 with Circom's QAP reduction, from the snarkjs .zkey.
+// SECURITY: the proof's randomness (r, s) comes from the operating system's CSPRNG. The
+// inputs include the member's secret; this code keeps nothing and writes nothing to disk.
+use ark_bn254::{Bn254, Fr};
+use ark_circom::{read_zkey, CircomReduction};
+use ark_ff::{BigInteger, PrimeField};
+use ark_groth16::{Groth16, Proof, ProvingKey};
+use ark_snark::SNARK;
+use ark_std::UniformRand;
+use std::io::Cursor;
+
+pub type Error = Box<dyn std::error::Error + Send + Sync>;
+
+/// A proving key and the circuit's constraint matrices, read once from a .zkey.
+pub struct Circuit {
+    pk: ProvingKey<Bn254>,
+    matrices: Vec<ark_relations::utils::matrix::Matrix<Fr>>,
+    num_instance: usize,
+    num_constraints: usize,
+    graph: Vec<u8>,
+}
+
+impl Circuit {
+    pub fn load(zkey: &[u8], graph: Vec<u8>) -> Result<Circuit, Error> {
+        let (pk, m) = read_zkey(&mut Cursor::new(zkey))?;
+        Ok(Circuit {
+            pk,
+            num_instance: m.num_instance_variables,
+            num_constraints: m.num_constraints,
+            matrices: vec![m.a, m.b, m.c],
+            graph,
+        })
+    }
+
+    /// Witness: the circuit's full assignment, from the inputs JSON.
+    pub fn witness(&self, inputs_json: &str) -> Result<Vec<Fr>, Error> {
+        let wtns = circom_witnesscalc::calc_witness(inputs_json, &self.graph).map_err(|e| e.to_string())?;
+        parse_wtns(&wtns)
+    }
+
+    /// Proof and public signals as snarkjs JSON strings.
+    pub fn prove(&self, inputs_json: &str) -> Result<(String, String), Error> {
+        let w = self.witness(inputs_json)?;
+        let mut rng = rand::rngs::OsRng;
+        let (r, s) = (Fr::rand(&mut rng), Fr::rand(&mut rng));
+        let proof = Groth16::<Bn254, CircomReduction>::create_proof_with_reduction_and_matrices(
+            &self.pk, r, s, &self.matrices, self.num_instance, self.num_constraints, &w)?;
+        let public: Vec<String> = w[1..self.num_instance].iter().map(dec).collect();
+        Ok((proof_json(&proof), serde_json::to_string(&public)?))
+    }
+
+    /// Prove and check the proof on the phone before anything is sent. Returns the snarkjs
+    /// JSON strings and whether the proof verified under this circuit's verifying key.
+    pub fn prove_checked(&self, inputs_json: &str) -> Result<(String, String, bool), Error> {
+        let w = self.witness(inputs_json)?;
+        let mut rng = rand::rngs::OsRng;
+        let (r, s) = (Fr::rand(&mut rng), Fr::rand(&mut rng));
+        let proof = Groth16::<Bn254, CircomReduction>::create_proof_with_reduction_and_matrices(
+            &self.pk, r, s, &self.matrices, self.num_instance, self.num_constraints, &w)?;
+        let ok = self.verify(&proof, &w[1..self.num_instance])?;
+        let public: Vec<String> = w[1..self.num_instance].iter().map(dec).collect();
+        Ok((proof_json(&proof), serde_json::to_string(&public)?, ok))
+    }
+
+    /// Verify with the proving key's verifying key (a check on the phone before sending).
+    pub fn verify(&self, proof: &Proof<Bn254>, public: &[Fr]) -> Result<bool, Error> {
+        let pvk = Groth16::<Bn254>::process_vk(&self.pk.vk)?;
+        Ok(Groth16::<Bn254>::verify_with_processed_vk(&pvk, public, proof)?)
+    }
+}
+
+fn dec<F: PrimeField>(x: &F) -> String {
+    let b = x.into_bigint().to_bytes_be();
+    num_to_dec(&b)
+}
+fn num_to_dec(be: &[u8]) -> String {
+    // big-endian bytes to decimal, without a bignum dependency
+    let mut digits: Vec<u8> = vec![0];
+    for &byte in be {
+        let mut carry = byte as u32;
+        for d in digits.iter_mut() { let v = (*d as u32) * 256 + carry; *d = (v % 10) as u8; carry = v / 10; }
+        while carry > 0 { digits.push((carry % 10) as u8); carry /= 10; }
+    }
+    while digits.len() > 1 && *digits.last().unwrap() == 0 { digits.pop(); }
+    digits.iter().rev().map(|d| (b'0' + d) as char).collect()
+}
+
+fn proof_json(p: &Proof<Bn254>) -> String {
+    let g1 = |q: &ark_bn254::G1Affine| serde_json::json!([dec(&q.x), dec(&q.y), "1"]);
+    let g2 = |q: &ark_bn254::G2Affine| serde_json::json!([[dec(&q.x.c0), dec(&q.x.c1)], [dec(&q.y.c0), dec(&q.y.c1)], ["1", "0"]]);
+    serde_json::json!({ "pi_a": g1(&p.a), "pi_b": g2(&p.b), "pi_c": g1(&p.c), "protocol": "groth16", "curve": "bn128" }).to_string()
+}
+
+/// Minimal reader of the .wtns format (iden3 binfile: header section 1, values section 2).
+pub fn parse_wtns(b: &[u8]) -> Result<Vec<Fr>, Error> {
+    let u32_at = |o: usize| u32::from_le_bytes(b[o..o + 4].try_into().unwrap()) as usize;
+    let u64_at = |o: usize| u64::from_le_bytes(b[o..o + 8].try_into().unwrap()) as usize;
+    if b.len() < 12 || &b[0..4] != b"wtns" { return Err("not a wtns file".into()); }
+    let nsec = u32_at(8);
+    let (mut off, mut n8, mut n, mut values) = (12usize, 0usize, 0usize, None);
+    for _ in 0..nsec {
+        let (ty, len) = (u32_at(off), u64_at(off + 4));
+        let body = off + 12;
+        if ty == 1 { n8 = u32_at(body); n = u32_at(body + 4 + n8); }
+        if ty == 2 { values = Some(body); }
+        off = body + len;
+    }
+    let start = values.ok_or("wtns without values")?;
+    if n8 != 32 { return Err("unexpected field size".into()); }
+    Ok((0..n).map(|i| Fr::from_le_bytes_mod_order(&b[start + 32 * i..start + 32 * (i + 1)])).collect())
+}
+
+// ---------------------------------------------------------------- Android (JNI)
+// Kotlin: object NativeProver { external fun prove(graph: ByteArray, zkey: ByteArray, inputs: String): String }
+// Returns JSON: {"proof":…, "public":…, "verified":bool, "loadMs":n, "proveMs":n} or {"error":"…"}.
+// The circuit (proving key and matrices) is loaded once per process and kept for later calls.
+mod android {
+    use super::Circuit;
+    use jni::objects::{JByteArray, JClass, JString};
+    use jni::sys::jstring;
+    use jni::JNIEnv;
+    use std::sync::Mutex;
+    use std::time::Instant;
+
+    static CACHE: Mutex<Option<(usize, Circuit)>> = Mutex::new(None);
+
+    fn run(env: &mut JNIEnv, graph: &JByteArray, zkey: &JByteArray, inputs: &JString) -> Result<String, super::Error> {
+        let inputs: String = env.get_string(inputs)?.into();
+        let zlen = env.get_array_length(zkey)? as usize;
+        let mut cache = CACHE.lock().map_err(|_| "prover lock poisoned")?;
+        let t = Instant::now();
+        if cache.as_ref().map(|c| c.0) != Some(zlen) {
+            let z = env.convert_byte_array(zkey)?;
+            let g = env.convert_byte_array(graph)?;
+            *cache = Some((zlen, Circuit::load(&z, g)?));
+        }
+        let load_ms = t.elapsed().as_millis();
+        let t = Instant::now();
+        let (proof, public, ok) = cache.as_ref().unwrap().1.prove_checked(&inputs)?;
+        Ok(format!(r#"{{"proof":{},"public":{},"verified":{},"loadMs":{},"proveMs":{}}}"#, proof, public, ok, load_ms, t.elapsed().as_millis()))
+    }
+
+    #[no_mangle]
+    pub extern "system" fn Java_io_github_nemounus_proofofone_reader_NativeProver_prove<'l>(
+        mut env: JNIEnv<'l>, _class: JClass<'l>, graph: JByteArray<'l>, zkey: JByteArray<'l>, inputs: JString<'l>,
+    ) -> jstring {
+        let out = match run(&mut env, &graph, &zkey, &inputs) {
+            Ok(s) => s,
+            Err(e) => serde_json::json!({ "error": e.to_string() }).to_string(),
+        };
+        env.new_string(out).map(|s| s.into_raw()).unwrap_or(std::ptr::null_mut())
+    }
+}

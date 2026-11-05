@@ -1,4 +1,4 @@
-# Chip reader — Android test app (schedule activity 0.8)
+# Chip reader and native prover — Android test app (schedule activities 0.8 and 1.4-00)
 
 > **Test app only. Not audited, not for real enrolment.** It reads a passport chip and checks it on the phone; it does not create an identity and sends nothing anywhere (it has no internet permission).
 
@@ -16,11 +16,15 @@ Whether the DSC was issued by a trusted country signing CA is **not** checked on
 
 The report also measures what the zero-knowledge proof π_doc must handle on real documents: the signature suite of the DSC and the sizes of the security object's content and signed attributes ([document-validity proof §6](../../docs/specs/document-validity-proof-v0.1.md)).
 
+## Ballot proof benchmark (native prover, v0.2)
+
+The button **Ballot proof benchmark (native prover)** opens a second screen. It makes the ballot proof π_vote three times with the native prover ([`../native-prover/`](../native-prover/)), from the same synthetic input and TEST-ONLY key as the browser benchmark, checks it on the phone and shows a result to share. It needs no passport and sends nothing. The app is built for 64-bit ARM phones only.
+
 ## Build
 
 The APK is built by GitHub Actions ([workflow](../../.github/workflows/android-prototype.yml)) on every change to this folder. Open the repository's **Actions** tab, choose the latest run of "Android chip reader (test build)" and download the artifact `proof-of-one-reader-debug-apk`. It contains the APK and its SHA-256.
 
-To build locally: Android SDK (API 35), JDK 17 and Gradle 8.10, then `gradle assembleDebug` in this folder.
+To build locally: Android SDK (API 35), JDK 17 and Gradle 8.10; first build the native prover into `app/src/main/jniLibs/` and copy `ballot.graph`, `ballot_test.zkey` and `input.json` into `app/src/main/assets/`, as the workflow does; then `gradle assembleDebug` in this folder.
 
 ## Install on a phone
 
@@ -33,6 +37,9 @@ The APK is debug-signed. On Android, allow installing apps from the file manager
 - The screen is protected from screenshots while the app is open (`FLAG_SECURE`). Use **Share** to send the report.
 
 ## Dependencies and licences
+
+The native prover: circom-witnesscalc 0.3.0 and arkworks 0.6 (both MIT or Apache-2.0); see [`../native-prover/Cargo.lock`](../native-prover/Cargo.lock).
+
 
 [JMRTD](https://jmrtd.org) 0.8.0 (LGPL-2.1 or later) and SCUBA smartcards 0.0.20 (LGPL) for chip access; [Bouncy Castle](https://www.bouncycastle.org) 1.80 (MIT) for the CMS signature check. LGPL libraries are used unmodified as separate libraries.
 
