@@ -96,6 +96,7 @@ async function isDone(t) {
   const c = t.check, code = async (a) => (await provider.getCode(a)) !== "0x";
   if (c.type === "code") return code(t.expectedAddress);
   if (!(await code(plan.contracts.ProofOfOnePolls))) return false;
+  if (c.type === "keySetRoot") return (await identity.keySetRoot()) === BigInt(c.value);
   if (c.type === "registeredCount") return (await identity.registeredCount()) >= BigInt(c.min);
   if (c.type === "leafCount") return (await identity.leafCount()) >= BigInt(c.min);
   if (c.type === "pollCount") return (await polls.pollCount()) >= BigInt(c.min);
@@ -152,20 +153,21 @@ async function sendNext() {
   try {
     const t = plan.txs[await doneCount()];
     // Simulate first: a transaction that would fail is not sent, so no nonce is wasted.
-    if (t.kind === "createPoll") { const ts = BigInt(await chainNow()) + 120n; await polls.createPoll.staticCall({ ...t.params, openTime: ts, closeTime: ts + 48n * 3600n + 300n }); }
+    const dur = BigInt(t.duration || 48 * 3600 + 300);  // poll length: plan 1 uses 48 h 5 min, plan 2 says its own
+    if (t.kind === "createPoll") { const ts = BigInt(await chainNow()) + 120n; await polls.createPoll.staticCall({ ...t.params, openTime: ts, closeTime: ts + dur }); }
     else await provider.call({ from: account, to: t.kind === "deploy" ? undefined : t.to, data: t.data });
     msg(`Sending step ${t.step}… approve it in MetaMask. If MetaMask warns that it may fail, reject it.`);
     let tx;
     if (t.kind === "deploy") tx = await signer.sendTransaction({ data: t.data });
     else if (t.kind === "createPoll") {
       const ts = BigInt(await chainNow()) + 120n;
-      tx = await polls.createPoll({ ...t.params, openTime: ts, closeTime: ts + 48n * 3600n + 300n });
+      tx = await polls.createPoll({ ...t.params, openTime: ts, closeTime: ts + dur });
     } else tx = await signer.sendTransaction({ to: t.to, data: t.data });
     msg(`Step ${t.step} sent (${tx.hash}). Waiting for it to be included…`);
     const rc = await tx.wait();
     if (rc.status !== 1) throw new Error("transaction failed");
     if (t.kind === "deploy" && rc.contractAddress.toLowerCase() !== t.expectedAddress.toLowerCase()) throw new Error(`deployed at ${rc.contractAddress}, expected ${t.expectedAddress}`);
-    if (t.kind === "createPoll") msg("Poll created. It opens in about 2 minutes; then send the ballots.");
+    if (t.kind === "createPoll") msg(plan.kits ? "Poll created. It opens in about 2 minutes; then anyone can vote from reference/app/web/vote.html." : "Poll created. It opens in about 2 minutes; then send the ballots.");
   } catch (e) { msg("Error: " + (e.shortMessage || e.message), "err"); }
   await refresh();
 }
@@ -180,9 +182,16 @@ async function showResult() {
     let h = `Poll state: <b>${states[Number(p.state)]}</b> · distinct voters: ${await polls.distinctVoters(plan.pollId)} · closes ${new Date(Number(p.closeTime) * 1000).toLocaleString()}`;
     if (Number(p.state) >= 2) {
       const r = await polls.getResult(plan.pollId);
-      h += `<br>Totals for options 1–4: <b>${r.counts.map(String).join(" · ")}</b> (expected from the synthetic choices: ${plan.expectedCounts.join(" · ")})`;
+      h += `<br>Totals for options 1–4: <b>${r.counts.map(String).join(" · ")}</b>` + (plan.expectedCounts ? ` (expected from the synthetic choices: ${plan.expectedCounts.join(" · ")})` : "");
     }
     if (ex) h += `<br><a href="${ex}/address/${plan.contracts.ProofOfOnePolls}" target="_blank" rel="noopener">Polls contract on the explorer</a>`;
+    // A poll whose ballots anyone sent (plan 2): after the close, the team needs the
+    // encrypted totals and the ballot chain to prepare the "publish" transaction.
+    if (plan.kits && Number(p.state) === 1 && (await chainNow()) >= Number(p.closeTime)) {
+      const st = { pollId: String(plan.pollId), aggregate: (await polls.aggregate(plan.pollId)).map((q) => q.map(String)),
+        ballotChain: await polls.ballotChain(plan.pollId), distinctVoters: String(await polls.distinctVoters(plan.pollId)) };
+      h += `<p><b>The poll has closed.</b> Copy this line and send it to the team; they will prepare the "publish" step:</p><pre style="white-space:pre-wrap;word-break:break-all;font-size:11px">${JSON.stringify(st)}</pre>`;
+    }
     $("result").innerHTML = h;
   } catch (e) { /* contract not deployed yet */ }
 }

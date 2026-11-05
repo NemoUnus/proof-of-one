@@ -1,10 +1,21 @@
-# Voter app — first piece: "show my recorded answer"
+# Voter app — first pieces: vote from your phone, and "show my recorded answer"
 
 > **Test network, synthetic voters only. Not audited.** (Decision Log #45, #49; schedule 1.4-00 and 1.4-08)
 
 When a phone sends a ballot, it keeps a private **receipt**: the poll, the ballot's nullifier, the poll key and the four random numbers used to encrypt the four positions of the ballot. This page uses the receipt to show which answer the public ledger holds for that ballot.
 
-**Open it:** `https://nemounus.github.io/proof-of-one/reference/app/web/`
+**Open them:**
+- Vote from your phone (test poll 2): `https://nemounus.github.io/proof-of-one/reference/app/web/vote.html`
+- Show my recorded answer (test poll 1): `https://nemounus.github.io/proof-of-one/reference/app/web/`
+
+## Vote from your phone (`web/vote.html`)
+
+1. Choose one of four **published synthetic member kits** (members 5–8 of the test registry). A kit is what a phone holds after enrolment, plus the poll's public values: the member secret, attributes, Merkle paths, nullifier and poll key.
+2. Choose an answer. The phone encrypts it (one-hot exponential ElGamal, in `check.js`) and makes the ballot proof π_vote in the browser with snarkjs and the proof files of `../phone-bench/`. It verifies the proof on the phone before anything is sent.
+3. **Send** submits `vote()` from a wallet in the browser (for example MetaMask's), on the test network. A re-vote names the ballot it replaces: from this phone's own receipt, or else from the ledger's `Ballot` event, since ballots are public ciphertexts.
+4. **Show my recorded answer** runs the check below against the ledger.
+
+The kits are shared, so anyone can replace a kit's ballot (up to 50 ballots per kit); the latest counts. With a real identity only its holder could. Sending needs a little test ETH; a relay that pays for ballots is a later step (activity 1.6).
 
 ## How it works
 
@@ -13,7 +24,7 @@ When a phone sends a ballot, it keeps a private **receipt**: the poll, the ballo
 3. It hashes each one as the contract does (`_ctHash`) and compares with the hash stored in `ballots(pollId, nf)`.
 4. The answer whose hash matches is the recorded answer. If none matches, the ledger holds a ballot that is not the one this receipt made.
 
-Nothing is decrypted, and no other ballot is read. The code is [`web/check.js`](web/check.js): about 70 lines of Baby Jubjub arithmetic with JavaScript BigInt, and ethers 6.13.4 (shared with `../testnet/web/`) to read the ledger.
+Nothing is decrypted, and no other ballot is read. The code is [`web/check.js`](web/check.js): about 100 lines of Baby Jubjub arithmetic, encryption included, with JavaScript BigInt, and ethers 6.13.4 (shared with `../testnet/web/`) to read the ledger.
 
 ## Receipts
 
@@ -25,6 +36,10 @@ Nothing is decrypted, and no other ballot is read. The code is [`web/check.js`](
 ```bash
 node test/check.test.js                       # check.js against the reference implementation (tally/)
 node test/e2e.js ../testnet/web/plan.json      # local chain + headless browser: each synthetic voter sees their answer; a tampered receipt is rejected
+node test/e2e-vote.js ../testnet/web/plan.json ../testnet/web/plan2.json
+#   local chain + headless browser with a test wallet: vote, re-vote from the same browser and from
+#   another one, check the recorded answer each time; with SECRETS=<trustee shares file> it also
+#   publishes and finalizes poll 2 and checks the totals
 ```
 
 The end-to-end test needs Playwright with Chromium.

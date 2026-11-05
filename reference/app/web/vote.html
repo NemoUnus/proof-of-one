@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Proof of One — vote from your phone</title>
+<style>
+  :root { --bg:#f7f9fa; --fg:#12233d; --mut:#5a6570; --ok:#1e7a45; --bad:#b3261e; --acc:#1f7f84; --card:#fff; --line:#dbe3e8; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0f1720; --fg:#e6edf3; --mut:#9aa7b3; --ok:#5cc98a; --bad:#ff8a80; --acc:#4fb3b8; --card:#16202b; --line:#2a3744; } }
+  body { margin:0; font:16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background:var(--bg); color:var(--fg); }
+  main { max-width:640px; margin:0 auto; padding:20px 16px 64px; }
+  h1 { font-size:21px; margin:0 0 4px; } h2 { font-size:16px; margin:22px 0 8px; }
+  .warn { background:#fff4e5; color:#5a3b00; border:1px solid #f0c27b; padding:10px 12px; border-radius:8px; margin:12px 0; font-size:14px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px 14px; margin:10px 0; }
+  button { font:inherit; padding:10px 16px; border-radius:8px; border:1px solid var(--acc); background:var(--acc); color:#fff; cursor:pointer; width:100%; margin:4px 0; }
+  button:disabled { opacity:.45; }
+  select { font:inherit; width:100%; box-sizing:border-box; padding:8px; border-radius:8px; border:1px solid var(--line); background:var(--card); color:var(--fg); }
+  label.opt { display:block; padding:8px 4px; border-bottom:1px solid var(--line); } label.opt:last-child { border-bottom:0; }
+  .big { font-size:20px; font-weight:700; } .ok { color:var(--ok); } .bad { color:var(--bad); } .mut { color:var(--mut); font-size:13px; }
+  code, pre { font-size:12px; word-break:break-all; white-space:pre-wrap; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Vote from your phone</h1>
+  <p class="mut">Proof of One, Phase 1a, test poll 2. Your phone encrypts your answer, proves in zero knowledge that the ballot is valid and comes from an eligible member, and keeps a private receipt. Nothing leaves the phone until you send the ballot.</p>
+  <div class="warn"><b>Test network, synthetic members only.</b> The four member kits below are synthetic and published on purpose, so anyone can try. Anyone who uses the same kit can replace its ballot (up to 50 times): the latest one counts.</div>
+
+  <div class="card" id="poll">Loading test poll 2…</div>
+
+  <h2>1. Member</h2>
+  <div class="card"><select id="kit"></select></div>
+
+  <h2>2. Your answer</h2>
+  <div class="card" id="opts"></div>
+
+  <h2>3. Make the ballot</h2>
+  <button id="make" disabled>Encrypt and prove (about 2–10 s, up to a minute on old phones)</button>
+  <div class="card" id="made" style="display:none"></div>
+
+  <h2>4. Send it</h2>
+  <button id="send" disabled>Send the ballot (needs a wallet with test coins)</button>
+  <div class="card" id="sent" style="display:none"></div>
+
+  <h2>5. Check</h2>
+  <button id="check" disabled>Show my recorded answer</button>
+  <div class="card" id="out" style="display:none"></div>
+
+  <p class="mut">The receipt is kept in this browser only (and in this page until you close it). On a real phone it is deleted when the receipt window ends. Code: <code>reference/app/web/vote.html</code> and <code>check.js</code>; proof files are those of <code>reference/phone-bench/</code>.</p>
+</main>
+<script src="../../testnet/web/ethers.umd.min.js"></script>
+<script src="../../phone-bench/snarkjs.min.js"></script>
+<script src="check.js"></script>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const Q = new URLSearchParams(location.search);
+const RPC = { 84532: "https://sepolia.base.org", 421614: "https://sepolia-rollup.arbitrum.io/rpc" };
+const EXPLORER = { 84532: "https://sepolia.basescan.org", 421614: "https://sepolia.arbiscan.io" };
+const CHAINS = { 84532: { chainId: "0x14a34", chainName: "Base Sepolia", rpcUrls: ["https://sepolia.base.org"], nativeCurrency: { name: "Sepolia ETH", symbol: "ETH", decimals: 18 }, blockExplorerUrls: ["https://sepolia.basescan.org"] } };
+const FILES = { wasm: "../../phone-bench/ballot.wasm", zkey: "../../ballot-circuit/setup/ballot_test.zkey", vkey: "../../ballot-circuit/setup/vkey_test.json" };
+const ABI = [
+  "function pollCount() view returns (uint256)",
+  "function distinctVoters(uint256) view returns (uint256)",
+  "function ballots(uint256, uint256) view returns (bytes28 ballotHash, uint32 count)",
+  "event Ballot(uint256 indexed pollId, uint256 indexed nf, uint256[16] ciphertexts, uint16 count)",
+  "function vote(uint256 pollId, uint256 nf, uint256[16] ct, uint256[16] prev, uint256[2] a, uint256[2][2] b, uint256[2] c)",
+];
+let plan, reader, ballot = null, files = null;
+const store = {  // per-viewer convenience only; the page works without it
+  get(k) { try { return JSON.parse(localStorage.getItem(k) || "null"); } catch (e) { return null; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* private mode */ } },
+};
+const kit = () => plan.kits[Number($("kit").value)];
+const choice = () => Number((document.querySelector('input[name="opt"]:checked') || {}).value);
+const esc = (s) => String(s).replace(/[<&]/g, (c) => ({ "<": "&lt;", "&": "&amp;" }[c]));
+const S = (o) => JSON.stringify(o, (k, v) => (typeof v === "bigint" ? v.toString() : v));
+
+async function load() {
+  try {
+    plan = await (await fetch(Q.get("plan") || "../../testnet/web/plan2.json", { cache: "no-store" })).json();
+    $("kit").innerHTML = plan.kits.map((k, i) => `<option value="${i}">Synthetic member ${k.member}</option>`).join("");
+    $("opts").innerHTML = [1, 2, 3, 4].map((n) => `<label class="opt"><input type="radio" name="opt" value="${n - 1}"> Option ${n}</label>`).join("");
+    document.querySelectorAll('input[name="opt"]').forEach((e) => (e.onchange = () => ($("make").disabled = false)));
+    const rpc = Q.get("rpc") || RPC[Number(plan.chainId)];
+    if (rpc !== RPC[Number(plan.chainId)]) $("poll").insertAdjacentHTML("beforebegin", `<div class="warn">Reading the ledger through <code>${esc(rpc)}</code>, not the default public node.</div>`);
+    reader = new ethers.Contract(plan.contracts.ProofOfOnePolls, ABI, new ethers.JsonRpcProvider(rpc, Number(plan.chainId), { staticNetwork: true }));
+    const n = await reader.pollCount();
+    $("poll").innerHTML = n >= BigInt(plan.pollId)
+      ? `Test poll ${plan.pollId} is on chain ${plan.chainId}. Distinct voters so far: <b>${await reader.distinctVoters(plan.pollId)}</b>.`
+      : `Test poll ${plan.pollId} has not been created yet. You can still make and check a ballot on this phone; sending waits for the poll.`;
+    $("check").disabled = false;
+  } catch (e) { $("poll").textContent = "Could not load the poll: " + (e.shortMessage || e.message); }
+}
+
+async function loadFiles() {
+  if (files) return files;
+  const get = async (u) => { const r = await fetch(u); if (!r.ok) throw new Error("could not load " + u); return new Uint8Array(await r.arrayBuffer()); };
+  const [wasm, zkey, vkey] = await Promise.all([get(FILES.wasm), get(FILES.zkey), fetch(FILES.vkey).then((r) => r.json())]);
+  return (files = { wasm, zkey, vkey });
+}
+
+async function make() {
+  const box = $("made"); box.style.display = "block"; $("make").disabled = true; $("send").disabled = true;
+  try {
+    const k = kit(), c = choice();
+    box.innerHTML = "Downloading the proof files (about 24 MB, once)…";
+    const f = await loadFiles();
+    box.innerHTML = "Encrypting and proving…";
+    const t0 = performance.now();
+    const enc = PoOCheck.encrypt(k.PK, k.k, c);
+    const input = { ...k.input, CA: enc.CA.map((p) => p.map(String)), CB: enc.CB.map((p) => p.map(String)),
+      v: Array.from({ length: k.k }, (_, j) => (j === c ? "1" : "0")), r: enc.r.map(String) };
+    const { proof, publicSignals } = await snarkjs.groth16.fullProve(input, { type: "mem", data: f.wasm }, { type: "mem", data: f.zkey });
+    const secs = ((performance.now() - t0) / 1000).toFixed(1);
+    const ok = await snarkjs.groth16.verify(f.vkey, publicSignals, proof);
+    if (!ok) throw new Error("the proof did not verify on this phone");
+    if (publicSignals[1] !== String(k.nf)) throw new Error("unexpected nullifier");
+    const receipt = { pollId: String(k.pollId), nf: String(k.nf), PK: k.PK.map(String), r: enc.r.map(String) };
+    const key = `poo-receipt-${plan.chainId}-${k.nf}`;
+    const prev = store.get(key);
+    ballot = { k, c, enc, proof, receipt, key, prevCt: prev ? prev.ct : null };
+    box.innerHTML = `<span class="ok big">Ballot ready</span><br>Proved and checked on this phone in ${secs} s. Your answer is encrypted; only the totals of the whole poll will ever be decrypted.
+      <details><summary class="mut">Your receipt (private: it reveals your answer)</summary><pre>${esc(S(receipt))}</pre></details>`;
+    $("send").disabled = false;
+  } catch (e) { box.innerHTML = `<span class="bad">Error: ${esc(e.message)}</span>`; }
+  $("make").disabled = false;
+}
+
+async function send() {
+  const box = $("sent"); box.style.display = "block"; $("send").disabled = true;
+  try {
+    if (!window.ethereum) throw new Error("No wallet found. Open this page in the browser of a test-only wallet (for example MetaMask's), or ask someone with one to send it.");
+    const provider = new ethers.BrowserProvider(window.ethereum);
+    await provider.send("eth_requestAccounts", []);
+    const want = Number(plan.chainId);
+    if (Number((await provider.getNetwork()).chainId) !== want) {
+      try { await provider.send("wallet_switchEthereumChain", [{ chainId: CHAINS[want].chainId }]); }
+      catch (e) { await provider.send("wallet_addEthereumChain", [CHAINS[want]]); }
+    }
+    const signer = await new ethers.BrowserProvider(window.ethereum).getSigner();
+    const polls = new ethers.Contract(plan.contracts.ProofOfOnePolls, ABI, signer);
+    const b = ballot, p = b.proof;
+    const slot = await reader.ballots(plan.pollId, b.receipt.nf);
+    let prev = Array(16).fill(0n);
+    if (Number(slot.count) > 0) {
+      // A re-vote names the ballot it replaces; the contract subtracts it from the running
+      // totals. Its ciphertexts are public: kept by this phone if it sent it, otherwise
+      // read from the ledger's Ballot event.
+      const same = (ct) => ct && PoOCheck.ballotHash(ethers.keccak256, reorder(ct)).slice(0, 58) === slot.ballotHash.toLowerCase().slice(0, 58);
+      let ct = same(b.prevCt) ? b.prevCt : null;
+      if (!ct) {
+        box.innerHTML = "This member already has a ballot. Reading it from the ledger…";
+        ct = await latestFromLedger(b.receipt.nf, same);
+      }
+      if (!ct) throw new Error("This member already has a ballot, and the public node did not return it. Try again later or choose another member.");
+      prev = ct.map(BigInt);
+    }
+    const args = [plan.pollId, b.receipt.nf, b.enc.ct, prev, [p.pi_a[0], p.pi_a[1]], [[p.pi_b[0][1], p.pi_b[0][0]], [p.pi_b[1][1], p.pi_b[1][0]]], [p.pi_c[0], p.pi_c[1]]];
+    await polls.vote.staticCall(...args);           // a ballot that would fail is not sent
+    box.innerHTML = "Approve the transaction in your wallet…";
+    const tx = await polls.vote(...args);
+    box.innerHTML = `Sent (${esc(tx.hash)}). Waiting for it to be included…`;
+    const rc = await tx.wait();
+    if (rc.status !== 1) throw new Error("the transaction failed");
+    store.set(b.key, { ...b.receipt, ct: b.enc.ct.map(String) });
+    const ex = EXPLORER[want];
+    box.innerHTML = `<span class="ok big">Ballot recorded</span>${ex ? `<br><a href="${ex}/tx/${tx.hash}" target="_blank" rel="noopener">The transaction</a>` : ""}`;
+    await check();
+  } catch (e) { box.innerHTML = `<span class="bad">${esc(e.shortMessage || e.message)}</span>`; $("send").disabled = false; }
+}
+// The latest Ballot event of a nullifier, searched backwards in windows of 10,000 blocks
+// (public nodes limit the range of log queries), at most about 9 days back on Base Sepolia.
+async function latestFromLedger(nf, same) {
+  const latest = await reader.runner.getBlockNumber();
+  for (let to = latest; to >= 0 && latest - to < 400000; to -= 10000) {
+    const ev = await reader.queryFilter(reader.filters.Ballot(plan.pollId, nf), Math.max(0, to - 9999), to).catch(() => []);
+    for (let i = ev.length - 1; i >= 0; i--) { const ct = ev[i].args.ciphertexts.map(String); if (same(ct)) return ct; }
+  }
+  return null;
+}
+// ct is stored in the contract's input order (all A, then all B); the hash takes A_j, B_j per option.
+function reorder(ct) { const w = ct.map(BigInt), o = []; for (let j = 0; j < 4; j++) o.push(w[2 * j], w[2 * j + 1], w[8 + 2 * j], w[8 + 2 * j + 1]); return o; }
+
+async function check() {
+  const out = $("out"); out.style.display = "block"; out.innerHTML = "Checking…";
+  try {
+    const k = kit();
+    const rc = (ballot && ballot.k === k && store.get(ballot.key)) || store.get(`poo-receipt-${plan.chainId}-${k.nf}`);
+    if (!rc) { out.innerHTML = "This browser has no receipt for this member yet. Make and send a ballot first."; return; }
+    const slot = await reader.ballots(plan.pollId, rc.nf);
+    if (Number(slot.count) === 0) { out.innerHTML = '<span class="bad big">No ballot found</span><br>The ledger holds no ballot for this member yet.'; return; }
+    const ans = PoOCheck.recordedAnswer(ethers.keccak256, rc, slot.ballotHash);
+    out.innerHTML = ans >= 0
+      ? `<span class="ok big">Recorded answer: option ${ans + 1}</span><br>Ballots for this member: ${slot.count} (the latest one counts).`
+      : `<span class="bad big">Not your ballot</span><br>The ledger holds a newer ballot for this member, sent from another phone or browser. With a real identity only you could do that; here the kits are shared.`;
+  } catch (e) { out.innerHTML = `<span class="bad">Error: ${esc(e.shortMessage || e.message)}</span>`; }
+}
+
+$("make").onclick = make; $("send").onclick = send; $("check").onclick = check;
+load();
+</script>
+</body>
+</html>
