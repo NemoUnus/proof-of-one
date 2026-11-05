@@ -36,8 +36,12 @@ build-circuit circuits/ballot.circom ballot.graph -l node_modules -l node_module
 
 ```bash
 cargo build --release                      # needs protoc (protobuf-compiler) and clang
-cargo ndk --platform 26 -t arm64-v8a -o ../android-prototype/app/src/main/jniLibs build --release --lib   # for Android
+# for Android (64-bit ARM): the NDK's clang named with the API level, and the same versioned
+# target for bindgen; see the workflow for the exact variables
+cargo build --release --locked --lib --target aarch64-linux-android
 ```
+
+circom-witnesscalc's build script reads the compiler from `CC_aarch64-linux-android` (with dashes), and recent NDKs refuse bindgen's unversioned target, so the workflow sets both explicitly instead of using cargo-ndk.
 
 GitHub Actions builds it for Android on every change ([workflow](../../.github/workflows/android-prototype.yml)).
 
