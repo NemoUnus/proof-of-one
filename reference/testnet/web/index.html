@@ -118,9 +118,10 @@ async function refresh() {
   if (n >= plan.txs.length) { $("send").disabled = true; msg("All steps are done.", "done"); await showResult(); return; }
   const t = plan.txs[n];
   // Contract addresses depend on the nonce: a deployment must be sent with nonce = its position.
-  if (t.kind === "deploy" && nonce !== t.step - 1) {
+  const start = Number(plan.startNonce || 0);
+  if (t.kind === "deploy" && nonce !== start + t.step - 1) {
     $("send").disabled = true;
-    msg(`This wallet has sent ${nonce} transactions, but step ${t.step} must be its transaction number ${t.step}. A deployment failed or the wallet was used for something else. Stop here and tell the team: the plan must be made again for a new, unused wallet.`, "err");
+    msg(`This wallet has sent ${nonce} transactions, but step ${t.step} must be its transaction number ${start + t.step}. A deployment failed or the wallet was used for something else. Stop here and tell the team: the plan must be made again for a new, unused wallet.`, "err");
     return;
   }
   const wait = await waitReason(t);

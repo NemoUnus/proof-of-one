@@ -1,0 +1,72 @@
+// SPDX-License-Identifier: Apache-2.0
+// Proof of One — "show my recorded answer" (Decision Log #45), browser and Node.
+//
+// The voter keeps, for the receipt window, the randomness r_j used to encrypt each
+// position of their one-hot ballot. With it, the voter rebuilds the ciphertexts that each
+// possible answer would have produced, C_j = (r_j·G, v_j·G + r_j·PK), hashes them as the
+// contract does, and compares with the hash stored on the ledger under their nullifier.
+// The answer whose hash matches is the answer the ledger recorded. Nothing is decrypted
+// and no one else's ballot is read.
+//
+// SECURITY NOTES
+// - The receipt (r) reveals the voter's answer to anyone who holds it. It stays on the
+//   voter's device and is deleted when the receipt window ends (Decision #45).
+// - Minimal Baby Jubjub arithmetic (EIP-2494) with BigInt. Not constant-time; it handles
+//   only the voter's own receipt on the voter's own device. Tested against the reference
+//   implementation (test/check.test.js).
+(function (root) {
+  "use strict";
+  const p = 21888242871839275222246405745257275088548364400416034343698204186575808495617n;
+  const A = 168700n, D = 168696n;
+  const G = [5299619240641551281634865583518297030282874472190772894086521144482721001553n,
+             16950150798460657717958625567821834550301663161624707787222815936182638968203n];
+  const O = [0n, 1n];
+  const m = (x) => ((x % p) + p) % p;
+  function inv(x) { // Fermat: x^(p-2) mod p
+    let r = 1n, b = m(x), e = p - 2n;
+    while (e > 0n) { if (e & 1n) r = (r * b) % p; b = (b * b) % p; e >>= 1n; }
+    return r;
+  }
+  function add(P, Q) {
+    const [x1, y1] = P, [x2, y2] = Q;
+    const t = m(D * x1 * x2 % p * y1 % p * y2);
+    return [m((x1 * y2 + y1 * x2) % p * inv(1n + t)), m((y1 * y2 - A * x1 * x2) % p * inv(1n - t))];
+  }
+  function mul(P, k) {
+    let R = O, Q = P, e = BigInt(k);
+    while (e > 0n) { if (e & 1n) R = add(R, Q); Q = add(Q, Q); e >>= 1n; }
+    return R;
+  }
+  const onCurve = ([x, y]) => m(A * x * x + y * y) === m(1n + D * x * x % p * y * y);
+
+  // Ciphertexts for "the voter chose `choice`", in the order the contract hashes them:
+  // per option j: A_j.x, A_j.y, B_j.x, B_j.y.
+  function ciphertexts(PK, r, choice) {
+    return r.map((rj, j) => {
+      const Aj = mul(G, rj), Bj = add(j === choice ? G : O, mul(PK, rj));
+      return [Aj[0], Aj[1], Bj[0], Bj[1]];
+    });
+  }
+  // keccak256 over 32-byte words, as abi.encodePacked(uint256...) in _ctHash.
+  function ballotHash(keccak256, words) {
+    const hex = "0x" + words.map((w) => w.toString(16).padStart(64, "0")).join("");
+    return keccak256(hex);
+  }
+
+  // Which answer does the ledger hold? `ledgerHash` is the bytes28 stored in
+  // ballots(pollId, nf) as 0x + 56 hex digits. Returns the 0-based option or -1.
+  function recordedAnswer(keccak256, receipt, ledgerHash) {
+    const PK = receipt.PK.map(BigInt), r = receipt.r.map(BigInt);
+    if (!onCurve(PK)) throw new Error("the poll key in this receipt is not a valid point");
+    const want = ledgerHash.toLowerCase().slice(0, 58);
+    for (let c = 0; c < r.length; c++) {
+      const h = ballotHash(keccak256, ciphertexts(PK, r, c).flat());
+      if (h.toLowerCase().slice(0, 58) === want) return c;
+    }
+    return -1;
+  }
+
+  const api = { add, mul, onCurve, ciphertexts, ballotHash, recordedAnswer, G };
+  if (typeof module !== "undefined" && module.exports) module.exports = api;
+  else root.PoOCheck = api;
+})(typeof self !== "undefined" ? self : this);

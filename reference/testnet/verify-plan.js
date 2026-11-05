@@ -19,6 +19,8 @@ const { ethers } = require("../contracts/node_modules/ethers");
   const provider = new ethers.BrowserProvider(g);
   const signer = await provider.getSigner(plan.deployer);
   if ((await signer.getAddress()) !== plan.deployer) throw new Error("key does not match the plan's deployer");
+  // Reproduce a wallet that has already sent `startNonce` transactions.
+  for (let i = 0; i < Number(plan.startNonce || 0); i++) await (await signer.sendTransaction({ to: plan.deployer, value: 0 })).wait();
   const polls = new ethers.Contract(plan.contracts.ProofOfOnePolls, plan.abi.ProofOfOnePolls, signer);
   const now = async () => (await provider.getBlock("latest")).timestamp;
   const inc = async (s) => { await provider.send("evm_increaseTime", [s]); await provider.send("evm_mine", []); };
@@ -37,6 +39,16 @@ const { ethers } = require("../contracts/node_modules/ethers");
       rc = await (await signer.sendTransaction({ to: t.to, data: t.data })).wait();
     }
     console.log(`step ${t.step} ok  gas ${rc.gasUsed}  ${t.name}`);
+  }
+  // "Show my recorded answer" (reference/app/web/check.js) for each synthetic receipt.
+  if (plan.receipts) {
+    const Chk = require("../app/web/check.js");
+    for (const rc of plan.receipts) {
+      const slot = await polls.ballots(plan.pollId, rc.nf);
+      const got = Chk.recordedAnswer(ethers.keccak256, rc, slot.ballotHash);
+      if (got !== rc.choice) throw new Error(`receipt of voter ${rc.voter}: ledger shows ${got}, expected ${rc.choice}`);
+    }
+    console.log(`receipts: ${plan.receipts.length} voters see their own recorded answer`);
   }
   const r = await polls.getResult(plan.pollId);
   const state = (await polls.getPoll(plan.pollId)).state;

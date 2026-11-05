@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Proof of One — my recorded answer</title>
+<style>
+  :root { --bg:#f7f9fa; --fg:#12233d; --mut:#5a6570; --ok:#1e7a45; --bad:#b3261e; --acc:#1f7f84; --card:#fff; --line:#dbe3e8; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0f1720; --fg:#e6edf3; --mut:#9aa7b3; --ok:#5cc98a; --bad:#ff8a80; --acc:#4fb3b8; --card:#16202b; --line:#2a3744; } }
+  body { margin:0; font:16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background:var(--bg); color:var(--fg); }
+  main { max-width:640px; margin:0 auto; padding:20px 16px 64px; }
+  h1 { font-size:21px; margin:0 0 4px; } h2 { font-size:16px; margin:22px 0 8px; }
+  .warn { background:#fff4e5; color:#5a3b00; border:1px solid #f0c27b; padding:10px 12px; border-radius:8px; margin:12px 0; font-size:14px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px 14px; margin:10px 0; }
+  button { font:inherit; padding:10px 16px; border-radius:8px; border:1px solid var(--acc); background:var(--acc); color:#fff; cursor:pointer; width:100%; }
+  button:disabled { opacity:.45; }
+  select, textarea { font:inherit; width:100%; box-sizing:border-box; padding:8px; border-radius:8px; border:1px solid var(--line); background:var(--card); color:var(--fg); }
+  textarea { font-size:12px; height:90px; }
+  .big { font-size:22px; font-weight:700; } .ok { color:var(--ok); } .bad { color:var(--bad); } .mut { color:var(--mut); font-size:13px; }
+  code { font-size:12px; word-break:break-all; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Show my recorded answer</h1>
+  <p class="mut">Proof of One, Phase 1a. Your phone keeps a private receipt for each ballot it sends. With it, this page checks which answer the public ledger holds for your ballot. It does not decrypt anything and reads no one else's ballot.</p>
+  <div class="warn"><b>Test network, synthetic voters only.</b> The four receipts below belong to synthetic test voters and are published on purpose. A real receipt reveals your answer to whoever holds it, so it never leaves your phone.</div>
+
+  <div class="card" id="poll">Loading the test poll…</div>
+
+  <h2>1. Your receipt</h2>
+  <div class="card">
+    <select id="who"></select>
+    <p class="mut" style="margin:8px 0 4px">or paste a receipt:</p>
+    <textarea id="paste" placeholder='{"pollId":"1","nf":"…","PK":["…","…"],"r":["…","…","…","…"]}'></textarea>
+  </div>
+
+  <h2>2. Check</h2>
+  <button id="go" disabled>Show my recorded answer</button>
+  <div class="card" id="out" style="display:none"></div>
+
+  <p class="mut">How it works: your ballot is four encrypted positions, one per option. The receipt holds the random numbers used to encrypt them. The page rebuilds what your ballot would look like for each possible answer, hashes it as the contract does, and compares with the hash the contract stores under your ballot's nullifier. Code: <code>reference/app/web/check.js</code>.</p>
+</main>
+<script src="../../testnet/web/ethers.umd.min.js"></script>
+<script src="check.js"></script>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const RPC = { 84532: "https://sepolia.base.org", 421614: "https://sepolia-rollup.arbitrum.io/rpc" };
+const EXPLORER = { 84532: "https://sepolia.basescan.org", 421614: "https://sepolia.arbiscan.io" };
+const ABI = [
+  "function pollCount() view returns (uint256)",
+  "function ballots(uint256, uint256) view returns (bytes28 ballotHash, uint32 count)",
+  "function distinctVoters(uint256) view returns (uint256)",
+  "event Ballot(uint256 indexed pollId, uint256 indexed nf, uint256[16] ciphertexts, uint16 count)",
+];
+let plan, polls, provider;
+
+async function load() {
+  try {
+    const name = new URLSearchParams(location.search).get("plan") || "../../testnet/web/plan.json";
+    plan = await (await fetch(name, { cache: "no-store" })).json();
+    // ?rpc= lets a reviewer point the page at their own node (or a local test chain).
+    const rpc = new URLSearchParams(location.search).get("rpc") || RPC[Number(plan.chainId)];
+    provider = new ethers.JsonRpcProvider(rpc, Number(plan.chainId), { staticNetwork: true });
+    polls = new ethers.Contract(plan.contracts.ProofOfOnePolls, ABI, provider);
+    if (rpc !== RPC[Number(plan.chainId)]) $("poll").insertAdjacentHTML("beforebegin", `<div class="warn">This page is reading the ledger through <code>${rpc.replace(/</g, "&lt;")}</code>, not the default public node. A node you do not trust could show a false result.</div>`);
+    $("who").innerHTML = (plan.receipts || []).map((r, i) => `<option value="${i}">Synthetic voter ${r.voter}</option>`).join("");
+    $("go").disabled = false;
+    const deployed = (await provider.getCode(plan.contracts.ProofOfOnePolls)) !== "0x";
+    if (!deployed) { $("poll").innerHTML = "The test poll has not been deployed yet. Come back after the founder has sent the first steps."; return; }
+    const n = await polls.pollCount();
+    $("poll").innerHTML = n >= BigInt(plan.pollId)
+      ? `Test poll ${plan.pollId} on chain ${plan.chainId}. Distinct voters so far: <b>${await polls.distinctVoters(plan.pollId)}</b>.`
+      : "The contracts are deployed; the test poll has not been created yet.";
+  } catch (e) { $("poll").textContent = "Could not reach the test network: " + (e.shortMessage || e.message); $("go").disabled = false; }
+}
+
+async function check() {
+  const out = $("out"); out.style.display = "block"; out.innerHTML = "Checking…";
+  try {
+    const txt = $("paste").value.trim();
+    const rc = txt ? JSON.parse(txt) : plan.receipts[Number($("who").value)];
+    if (String(rc.pollId) !== String(plan.pollId)) throw new Error("this receipt is for another poll");
+    const slot = await polls.ballots(plan.pollId, rc.nf);
+    if (Number(slot.count) === 0) { out.innerHTML = '<span class="bad big">No ballot found</span><br>The ledger holds no ballot under this receipt\'s nullifier. If you sent one, it has not been included yet, or it was blocked: send it again, or use the forced-inclusion route.'; return; }
+    const ans = PoOCheck.recordedAnswer(ethers.keccak256, rc, slot.ballotHash);
+    const ex = EXPLORER[Number(plan.chainId)];
+    let link = "";
+    try {
+      const ev = await polls.queryFilter(polls.filters.Ballot(plan.pollId, rc.nf), -500000);
+      if (ev.length && ex) link = `<br><a href="${ex}/tx/${ev[ev.length - 1].transactionHash}" target="_blank" rel="noopener">The transaction that recorded it</a>`;
+    } catch (e) { /* some public nodes limit log queries; the check above does not need them */ }
+    out.innerHTML = ans >= 0
+      ? `<span class="ok big">Recorded answer: option ${ans + 1}</span><br>Ballots sent under this receipt: ${slot.count} (the latest one counts).${link}`
+      : `<span class="bad big">Not your ballot</span><br>The ledger holds a ballot under this nullifier, but it does not match this receipt. If you sent a newer ballot from another device, use that receipt; otherwise report it.${link}`;
+  } catch (e) { out.innerHTML = `<span class="bad">Error: ${(e.shortMessage || e.message).replace(/</g, "&lt;")}</span>`; }
+}
+
+$("go").onclick = check;
+load();
+</script>
+</body>
+</html>

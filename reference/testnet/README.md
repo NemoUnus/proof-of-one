@@ -15,7 +15,7 @@ This package runs one complete poll on a public Layer-2 test network, from start
 
 ## How it works
 
-- **`plan.js`** prepares every transaction in advance for one fresh wallet (nonce 0) on one chain. Contract addresses follow from the wallet address and its nonce, so the ballot proofs, which are bound to this chain and this contract, can be made beforehand. The output is `web/plan.json`.
+- **`plan.js`** prepares every transaction in advance for one wallet on one chain, starting at the wallet's current nonce (0 for a fresh wallet; a third argument gives another, for example after a bridging transaction). Contract addresses follow from the wallet address and its nonce, so the ballot proofs, which are bound to this chain and this contract, can be made beforehand. The output is `web/plan.json`.
 - **`verify-plan.js`** replays the plan on a local EVM, with the same chain id and wallet, and checks every address, the totals and the final state.
 - **`web/index.html`** sends the plan's transactions from the founder's browser wallet, one step per click. It reads progress from the chain, never from the browser. Before sending, it simulates each transaction, so one that would fail is not sent. It refuses to deploy if the wallet's nonce does not match the plan.
 
@@ -25,11 +25,13 @@ The page is served by GitHub Pages at `https://nemounus.github.io/proof-of-one/r
 
 ```bash
 # needs ../contracts (built), ../tally, ../ballot-circuit and ../enrolment-circuit (with their TEST-ONLY setups)
-node plan.js 84532 0xYourTestWalletAddress > web/plan.json
+node plan.js 84532 0xYourTestWalletAddress [startNonce] > web/plan.json
 node verify-plan.js web/plan.json impersonate   # replays as the deployer without its key (local EVM only)
 ```
 
 Measured locally: the whole plan uses about 25 million gas, most of it for deploying the contracts. The page was also tested end to end in a headless browser against a local chain, ending in the state "Final" with totals 1, 2, 0, 1.
+
+The plan also publishes the receipts of the four synthetic voters. With them, anyone can try the "show my recorded answer" page in [`../app/`](../app/) against the test poll. `verify-plan.js` runs the same check after the ballots.
 
 ## Limits
 

@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Proof of One — Phase 1a plan generator (Decision Log #49). SYNTHETIC IDENTITIES ONLY.
 //
-// Given the chain id and the address of a FRESH deployer wallet (nonce 0), this script
+// Given the chain id, the deployer wallet's address and the number of transactions it has
+// already sent (its nonce; 0 for a fresh wallet), this script
 // computes every transaction of a complete synthetic poll in advance:
 //   deploy 11 contracts → register 4 synthetic members → insert them as one batch →
 //   create a 4-option poll → submit 4 encrypted ballots in one batch →
@@ -13,7 +14,7 @@
 // test-only wallet. Every identity, document, trustee key and enclave key is synthetic
 // and generated here; none belongs to a real person.
 //
-// Usage: node plan.js <chainId> <deployerAddress> > plan.json
+// Usage: node plan.js <chainId> <deployerAddress> [startNonce] > plan.json
 "use strict";
 const fs = require("fs");
 const path = require("path");
@@ -40,12 +41,16 @@ const json = (o) => JSON.stringify(o, (k, v) => S(v), 2);
 async function main() {
   const chainId = BigInt(process.argv[2]);
   const deployer = ethers.getAddress(process.argv[3]);
+  // A wallet that had to send a transaction first (for example, bridging test coins) starts
+  // at a higher nonce; every contract address moves accordingly.
+  const startNonce = Number(process.argv[4] || 0);
+  if (!Number.isInteger(startNonce) || startNonce < 0) throw new Error("startNonce must be a whole number >= 0");
   const P = await create();
   await E.init();
   const coder = ethers.AbiCoder.defaultAbiCoder();
   const pt = (X) => P.curve.coords(X);
   const txs = [];
-  let nonce = 0;
+  let nonce = startNonce;
   const addrAt = (n) => ethers.getCreateAddress({ from: deployer, nonce: n });
   function deploy(name, abi, bytecode, types = [], args = []) {
     const address = addrAt(nonce++);
@@ -120,7 +125,7 @@ async function main() {
     const m = { ...members[i].member, index: i };
     const b = B.buildBallot(P, { pollId, PK: keys.PK, policy: POLICY, ctxHash, member: m, leafIndex: i, idTree: ids, revTree: rev, choice: choices[i] });
     const proof = sp((await B.prove(b.input, ZK.ballot)).proof);
-    ballots.push({ ...b, proof });
+    ballots.push({ ...b, proof, choice: choices[i], voter: i + 1 });
   }
   ballots.sort((x, y) => (BigInt(x.nf) < BigInt(y.nf) ? -1 : 1));
   const ctArray = (C) => [...C.flatMap((c) => pt(c.A)), ...C.flatMap((c) => pt(c.B))];
@@ -142,7 +147,10 @@ async function main() {
   const plan = {
     title: "Proof of One — Phase 1a synthetic test poll",
     warning: "SYNTHETIC IDENTITIES ONLY. TEST-ONLY trusted setups. Not audited. Never use with real people or real funds.",
-    chainId, deployer, expectedCounts: counts, choices, pollId, contracts: Object.fromEntries(txs.filter((t) => t.kind === "deploy").map((t) => [t.name, t.expectedAddress])),
+    chainId, deployer, startNonce, expectedCounts: counts, choices, pollId, contracts: Object.fromEntries(txs.filter((t) => t.kind === "deploy").map((t) => [t.name, t.expectedAddress])),
+    // Receipts of the 4 SYNTHETIC voters, published so that anyone can try the "show my
+    // recorded answer" check (reference/app). A real voter's receipt never leaves the phone.
+    receipts: ballots.map((b) => ({ voter: b.voter, pollId, nf: b.nf, PK: pt(keys.PK), r: b.r, choice: b.choice })),
     abi: { ProofOfOnePolls: PP.abi, IdentityRegistry: IR.abi }, txs,
   };
   process.stdout.write(json(plan) + "\n");

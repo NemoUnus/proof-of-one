@@ -14,6 +14,8 @@ Five small packages implement the core of the protocol end to end, and four fold
 | [`android-prototype/`](android-prototype/) | Android test app (Kotlin, JMRTD): opens a passport chip with PACE or BAC, checks data-group hashes and the security-object signature on the phone, and exports the signer certificate for the trust-list check; built by GitHub Actions | built in CI |
 | [`prove-bench/`](prove-bench/) | Rust tool that times Groth16 proving of any Circom circuit with a TEST-ONLY random setup (used for π_doc) | — |
 | [`aggregation-prototype/`](aggregation-prototype/) | Ballot proof and aggregator in Noir (UltraHonk) for size measurements of recursive aggregation | check script |
+| [`testnet/`](testnet/) | Phase 1a: every transaction of one synthetic poll prepared in advance, a local replay check, and a page that sends them from a test-only browser wallet | replay |
+| [`app/`](app/) | First piece of the voter app: "show my recorded answer" from the voter's receipt, read from the test network (Decision #45) | 2 |
 | [`contracts/`](contracts/) | Solidity identity and revocation registries, polls, ballots and results; single and batched ballot submission; full on-chain flow tested with real proofs | 9 |
 
 ## How they fit together
