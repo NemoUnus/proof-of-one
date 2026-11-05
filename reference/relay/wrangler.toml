@@ -4,6 +4,7 @@ name = "proof-of-one-relay"
 main = "src/index.js"
 compatibility_date = "2026-09-01"
 workers_dev = true
+preview_urls = false   # one public address only: the relay that config.json names
 
 [vars]
 RPC_URL = "https://sepolia.base.org"
