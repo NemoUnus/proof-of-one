@@ -51,7 +51,14 @@ export async function handle(request, env, deps = {}) {
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
   const allowed = String(env.POLL_IDS || "").split(",").map((s) => s.trim()).filter(Boolean);
   const provider = deps.provider || new ethers.JsonRpcProvider(env.RPC_URL, Number(env.CHAIN_ID), { staticNetwork: true });
-  const wallet = new ethers.Wallet(env.RELAY_KEY, provider);
+  let wallet;
+  try {
+    // Pasted keys often carry spaces or a line break, and some wallets export them without 0x.
+    const key = String(env.RELAY_KEY || "").replace(/\s+/g, "");
+    wallet = new ethers.Wallet(key.startsWith("0x") ? key : "0x" + key, provider);
+  } catch (e) {
+    return reply(500, { error: "relay not configured: the secret RELAY_KEY is missing or is not a valid private key" });
+  }
   if (request.method === "GET") {
     // Status, so the page can tell whether the relay is up and still has coins.
     const bal = await provider.getBalance(wallet.address);
@@ -80,4 +87,7 @@ export async function handle(request, env, deps = {}) {
   }
 }
 
-export default { fetch: (request, env) => handle(request, env) };
+// Any other failure (for example the network node not answering) is reported without detail.
+export default {
+  fetch: (request, env) => handle(request, env).catch(() => reply(502, { error: "the relay could not reach the network; try again later" })),
+};
