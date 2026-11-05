@@ -5,6 +5,7 @@
 // page, re-votes, checks its recorded answer, and re-votes from a second browser that only
 // knows the ballot from the ledger.
 // Usage: node test/e2e-vote.js <plan.json> <plan2.json>
+//   RELAY=<path to relay/src/index.js> also votes through the relay from a browser with no wallet.
 "use strict";
 const fs = require("fs"), path = require("path"), http = require("http");
 const ganache = require("../../contracts/node_modules/ganache");
@@ -58,7 +59,7 @@ async function replay(provider, signer, plan, stopAtClose) {
       const j = await r.json(); if (j.error) throw Object.assign(new Error(j.error.message), j.error); return j.result; } };`;
   const browser = await chromium.launch();
   const url = "http://127.0.0.1:8080/reference/app/web/vote.html?plan=/plan2.json&rpc=http://127.0.0.1:8545";
-  const done = (id) => (page) => page.waitForFunction((i) => { const t = document.getElementById(i).textContent; return t && !/Downloading|Encrypting|Approve|Sent \(|Checking|Reading/.test(t); }, id, { timeout: 180000 });
+  const done = (id) => (page) => page.waitForFunction((i) => { const t = document.getElementById(i).textContent; return t && !/Downloading|Encrypting|Approve|Sent \(|Sending|Submitted|Checking|Reading/.test(t); }, id, { timeout: 180000 });
 
   async function voteOnce(page, member, option, label) {
     await page.selectOption("#kit", String(member));
@@ -85,6 +86,42 @@ async function replay(provider, signer, plan, stopAtClose) {
   await voteOnce(page, 0, 0, "member 5, re-vote from the same browser (option 1)");
   await voteOnce(page, 1, 3, "member 6, first ballot (option 4)");
 
+  // Through the relay, from a browser with no wallet at all (the relay runs locally here).
+  if (process.env.RELAY) {
+    const { handle } = await import(path.resolve(process.env.RELAY));
+    const relayKey = ethers.Wallet.createRandom();
+    await provider.send("evm_setAccountBalance", [relayKey.address, "0x" + (10n ** 18n).toString(16)]);
+    const env = { RELAY_KEY: relayKey.privateKey, CHAIN_ID: plan2.chainId, POLLS: plan2.contracts.ProofOfOnePolls, POLL_IDS: String(plan2.pollId) };
+    const rsrv = http.createServer(async (q, s) => {
+      const body = await new Promise((ok) => { let d = ""; q.on("data", (c) => (d += c)); q.on("end", () => ok(d)); });
+      const res = await handle(new Request("http://relay" + q.url, { method: q.method, body: q.method === "POST" ? body : undefined }), env, { provider });
+      s.writeHead(res.status, Object.fromEntries(res.headers)); s.end(await res.text());
+    });
+    await new Promise((ok) => rsrv.listen(8787, ok));
+    const ctx3 = await browser.newContext();            // no injected wallet
+    const page3 = await ctx3.newPage(); await page3.goto(url + "&relay=http://127.0.0.1:8787/");
+    await page3.waitForFunction(() => document.getElementById("relayInfo").textContent.includes("is up"));
+    console.log("relay:", (await page3.textContent("#relayInfo")).trim());
+    await page3.selectOption("#kit", "2"); await page3.check('input[name="opt"][value="1"]');
+    await page3.evaluate(() => ["made", "sent", "out"].forEach((i) => (document.getElementById(i).textContent = "")));
+    await page3.click("#make"); await done("made")(page3);
+    await page3.click("#relaySend"); await done("sent")(page3);
+    const sent = await page3.textContent("#sent");
+    if (!sent.includes("Ballot recorded")) throw new Error("relay send: " + sent);
+    await done("out")(page3);
+    const out = await page3.textContent("#out");
+    if (!out.includes("Recorded answer: option 2")) throw new Error("relay check: " + out);
+    console.log("member 7 through the relay, no wallet: " + out.split("Ballots")[0].trim());
+    // and a re-vote through the relay (the relay is given the replaced ballot by the page)
+    await page3.check('input[name="opt"][value="2"]');
+    await page3.evaluate(() => ["made", "sent", "out"].forEach((i) => (document.getElementById(i).textContent = "")));
+    await page3.click("#make"); await done("made")(page3);
+    await page3.click("#relaySend"); await done("sent")(page3); await done("out")(page3);
+    if (!(await page3.textContent("#out")).includes("Recorded answer: option 3")) throw new Error("relay re-vote: " + (await page3.textContent("#out")));
+    console.log("member 7 re-vote through the relay: option 3");
+    rsrv.close();
+  }
+
   const ctx2 = await browser.newContext(); await ctx2.addInitScript(wallet);
   const page2 = await ctx2.newPage(); await page2.goto(url);
   await page2.waitForFunction(() => document.getElementById("poll").textContent.includes("Distinct voters"));
@@ -97,7 +134,7 @@ async function replay(provider, signer, plan, stopAtClose) {
   // The running encrypted totals must equal the sum of the latest ballots (option 2 and option 4).
   const polls = new ethers.Contract(plan2.contracts.ProofOfOnePolls, plan2.abi.ProofOfOnePolls, provider);
   console.log("distinct voters in poll 2:", String(await polls.distinctVoters(plan2.pollId)));
-  if (String(await polls.distinctVoters(plan2.pollId)) !== "2") throw new Error("expected 2 distinct voters");
+  if (String(await polls.distinctVoters(plan2.pollId)) !== (process.env.RELAY ? "3" : "2")) throw new Error("unexpected number of distinct voters");
   // Optional (needs the PRIVATE synthetic trustee shares): publish and finalize poll 2 as the
   // founder would, with publish.js, and check the totals: member 5 → option 2, member 6 → option 4.
   if (process.env.SECRETS) {
@@ -108,7 +145,8 @@ async function replay(provider, signer, plan, stopAtClose) {
     await (await signer.sendTransaction({ to: pub.txs[0].to, data: pub.txs[0].data })).wait();
     const r = await polls.getResult(plan2.pollId);
     console.log("poll 2 published totals:", r.counts.map(String).join(" · "));
-    if (r.counts.map(String).join() !== "0,1,0,1") throw new Error("expected totals 0 · 1 · 0 · 1");
+    const want = process.env.RELAY ? "0,1,1,1" : "0,1,0,1";   // with the relay, member 7 adds option 3
+    if (r.counts.map(String).join() !== want) throw new Error("expected totals " + want);
     await provider.send("evm_increaseTime", [7 * 24 * 3600 + 60]); await provider.send("evm_mine", []);
     await (await signer.sendTransaction({ to: pub.txs[1].to, data: pub.txs[1].data })).wait();
     console.log("poll 2 state:", String((await polls.getPoll(plan2.pollId)).state), "(3 = Final)");

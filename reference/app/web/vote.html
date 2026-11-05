@@ -39,7 +39,9 @@
   <div class="card" id="made" style="display:none"></div>
 
   <h2>4. Send it</h2>
-  <button id="send" disabled>Send the ballot (needs a wallet with test coins)</button>
+  <button id="relaySend" disabled>Send through the relay (no wallet needed)</button>
+  <button id="send" disabled>Send with my own wallet (needs test coins)</button>
+  <p class="mut" id="relayInfo"></p>
   <div class="card" id="sent" style="display:none"></div>
 
   <h2>5. Check</h2>
@@ -66,7 +68,7 @@ const ABI = [
   "event Ballot(uint256 indexed pollId, uint256 indexed nf, uint256[16] ciphertexts, uint16 count)",
   "function vote(uint256 pollId, uint256 nf, uint256[16] ct, uint256[16] prev, uint256[2] a, uint256[2][2] b, uint256[2] c)",
 ];
-let plan, reader, ballot = null, files = null;
+let plan, reader, ballot = null, files = null, relay = null;
 const store = {  // per-viewer convenience only; the page works without it
   get(k) { try { return JSON.parse(localStorage.getItem(k) || "null"); } catch (e) { return null; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* private mode */ } },
@@ -90,7 +92,19 @@ async function load() {
       ? `Test poll ${plan.pollId} is on chain ${plan.chainId}. Distinct voters so far: <b>${await reader.distinctVoters(plan.pollId)}</b>.`
       : `Test poll ${plan.pollId} has not been created yet. You can still make and check a ballot on this phone; sending waits for the poll.`;
     $("check").disabled = false;
+    await loadRelay();
   } catch (e) { $("poll").textContent = "Could not load the poll: " + (e.shortMessage || e.message); }
+}
+
+// The relay's address comes from config.json (or ?relay= for testing). Its status shows
+// whether it is up and how many test coins it has left.
+async function loadRelay() {
+  try {
+    relay = Q.get("relay") || (await (await fetch("config.json", { cache: "no-store" })).json()).relay || null;
+    if (!relay) { $("relayInfo").textContent = "No relay is running yet: send with a wallet."; return; }
+    const st = await (await fetch(relay)).json();
+    $("relayInfo").textContent = `Relay ${st.relay.slice(0, 10)}… is up and has ${Number(st.balance).toFixed(5)} test ETH (a ballot costs about 0.00001).`;
+  } catch (e) { relay = null; $("relayInfo").textContent = "The relay is not reachable right now: send with a wallet, or try later."; }
 }
 
 async function loadFiles() {
@@ -101,7 +115,7 @@ async function loadFiles() {
 }
 
 async function make() {
-  const box = $("made"); box.style.display = "block"; $("make").disabled = true; $("send").disabled = true;
+  const box = $("made"); box.style.display = "block"; $("make").disabled = true; busy(true);
   try {
     const k = kit(), c = choice();
     box.innerHTML = "Downloading the proof files (about 24 MB, once)…";
@@ -122,15 +136,58 @@ async function make() {
     ballot = { k, c, enc, proof, receipt, key, prevCt: prev ? prev.ct : null };
     box.innerHTML = `<span class="ok big">Ballot ready</span><br>Proved and checked on this phone in ${secs} s. Your answer is encrypted; only the totals of the whole poll will ever be decrypted.
       <details><summary class="mut">Your receipt (private: it reveals your answer)</summary><pre>${esc(S(receipt))}</pre></details>`;
-    $("send").disabled = false;
+    busy(false);
   } catch (e) { box.innerHTML = `<span class="bad">Error: ${esc(e.message)}</span>`; }
   $("make").disabled = false;
 }
 
-async function send() {
-  const box = $("sent"); box.style.display = "block"; $("send").disabled = true;
+// The vote() arguments. A re-vote names the ballot it replaces; the contract subtracts it
+// from the running totals. Its ciphertexts are public: kept by this phone if it sent it,
+// otherwise read from the ledger's Ballot event.
+async function voteArgs(b, box) {
+  const p = b.proof;
+  const slot = await reader.ballots(plan.pollId, b.receipt.nf);
+  let prev = Array(16).fill(0n);
+  if (Number(slot.count) > 0) {
+    const same = (ct) => ct && PoOCheck.ballotHash(ethers.keccak256, reorder(ct)).slice(0, 58) === slot.ballotHash.toLowerCase().slice(0, 58);
+    let ct = same(b.prevCt) ? b.prevCt : null;
+    if (!ct) { box.innerHTML = "This member already has a ballot. Reading it from the ledger…"; ct = await latestFromLedger(b.receipt.nf, same); }
+    if (!ct) throw new Error("This member already has a ballot, and the public node did not return it. Try again later or choose another member.");
+    prev = ct.map(BigInt);
+  }
+  return [plan.pollId, b.receipt.nf, b.enc.ct, prev, [p.pi_a[0], p.pi_a[1]], [[p.pi_b[0][1], p.pi_b[0][0]], [p.pi_b[1][1], p.pi_b[1][0]]], [p.pi_c[0], p.pi_c[1]]];
+}
+async function recorded(box, hash) {
+  store.set(ballot.key, { ...ballot.receipt, ct: ballot.enc.ct.map(String) });
+  const ex = EXPLORER[Number(plan.chainId)];
+  box.innerHTML = `<span class="ok big">Ballot recorded</span>${ex ? `<br><a href="${ex}/tx/${hash}" target="_blank" rel="noopener">The transaction</a>` : ""}`;
+  await check();
+}
+const busy = (v) => { $("send").disabled = v; $("relaySend").disabled = v || !relay; };
+
+// Through the relay: no wallet needed. The relay cannot change or read the ballot; it could
+// refuse it, in which case the phone can still send it itself.
+async function sendViaRelay() {
+  const box = $("sent"); box.style.display = "block"; busy(true);
   try {
-    if (!window.ethereum) throw new Error("No wallet found. Open this page in the browser of a test-only wallet (for example MetaMask's), or ask someone with one to send it.");
+    const args = await voteArgs(ballot, box);
+    const [pollId, nf, ct, prev, a, b, c] = args.map((x) => JSON.parse(S(x)));
+    box.innerHTML = "Sending to the relay…";
+    const r = await fetch(relay, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ pollId: String(pollId), nf: String(nf), ct, prev, a, b, c }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error("The relay refused the ballot: " + (j.error || r.status) + ". You can send it with your own wallet instead.");
+    box.innerHTML = `Submitted by the relay (${esc(j.tx)}). Waiting for it to be included…`;
+    const rc = await reader.runner.waitForTransaction(j.tx, 1, 120000);
+    if (!rc || rc.status !== 1) throw new Error("the transaction failed or was not included in 2 minutes");
+    await recorded(box, j.tx);
+  } catch (e) { box.innerHTML = `<span class="bad">${esc(e.shortMessage || e.message)}</span>`; }
+  busy(false);
+}
+
+async function send() {
+  const box = $("sent"); box.style.display = "block"; busy(true);
+  try {
+    if (!window.ethereum) throw new Error("No wallet found. Use the relay, or open this page in the browser of a test-only wallet (for example MetaMask's).");
     const provider = new ethers.BrowserProvider(window.ethereum);
     await provider.send("eth_requestAccounts", []);
     const want = Number(plan.chainId);
@@ -140,34 +197,16 @@ async function send() {
     }
     const signer = await new ethers.BrowserProvider(window.ethereum).getSigner();
     const polls = new ethers.Contract(plan.contracts.ProofOfOnePolls, ABI, signer);
-    const b = ballot, p = b.proof;
-    const slot = await reader.ballots(plan.pollId, b.receipt.nf);
-    let prev = Array(16).fill(0n);
-    if (Number(slot.count) > 0) {
-      // A re-vote names the ballot it replaces; the contract subtracts it from the running
-      // totals. Its ciphertexts are public: kept by this phone if it sent it, otherwise
-      // read from the ledger's Ballot event.
-      const same = (ct) => ct && PoOCheck.ballotHash(ethers.keccak256, reorder(ct)).slice(0, 58) === slot.ballotHash.toLowerCase().slice(0, 58);
-      let ct = same(b.prevCt) ? b.prevCt : null;
-      if (!ct) {
-        box.innerHTML = "This member already has a ballot. Reading it from the ledger…";
-        ct = await latestFromLedger(b.receipt.nf, same);
-      }
-      if (!ct) throw new Error("This member already has a ballot, and the public node did not return it. Try again later or choose another member.");
-      prev = ct.map(BigInt);
-    }
-    const args = [plan.pollId, b.receipt.nf, b.enc.ct, prev, [p.pi_a[0], p.pi_a[1]], [[p.pi_b[0][1], p.pi_b[0][0]], [p.pi_b[1][1], p.pi_b[1][0]]], [p.pi_c[0], p.pi_c[1]]];
+    const args = await voteArgs(ballot, box);
     await polls.vote.staticCall(...args);           // a ballot that would fail is not sent
     box.innerHTML = "Approve the transaction in your wallet…";
     const tx = await polls.vote(...args);
     box.innerHTML = `Sent (${esc(tx.hash)}). Waiting for it to be included…`;
     const rc = await tx.wait();
     if (rc.status !== 1) throw new Error("the transaction failed");
-    store.set(b.key, { ...b.receipt, ct: b.enc.ct.map(String) });
-    const ex = EXPLORER[want];
-    box.innerHTML = `<span class="ok big">Ballot recorded</span>${ex ? `<br><a href="${ex}/tx/${tx.hash}" target="_blank" rel="noopener">The transaction</a>` : ""}`;
-    await check();
-  } catch (e) { box.innerHTML = `<span class="bad">${esc(e.shortMessage || e.message)}</span>`; $("send").disabled = false; }
+    await recorded(box, tx.hash);
+  } catch (e) { box.innerHTML = `<span class="bad">${esc(e.shortMessage || e.message)}</span>`; }
+  busy(false);
 }
 // The latest Ballot event of a nullifier, searched backwards in windows of 10,000 blocks
 // (public nodes limit the range of log queries), at most about 9 days back on Base Sepolia.
@@ -197,7 +236,7 @@ async function check() {
   } catch (e) { out.innerHTML = `<span class="bad">Error: ${esc(e.shortMessage || e.message)}</span>`; }
 }
 
-$("make").onclick = make; $("send").onclick = send; $("check").onclick = check;
+$("make").onclick = make; $("send").onclick = send; $("relaySend").onclick = sendViaRelay; $("check").onclick = check;
 load();
 </script>
 </body>

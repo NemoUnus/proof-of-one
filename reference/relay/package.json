@@ -1,0 +1,10 @@
+{
+  "name": "proof-of-one-relay",
+  "private": true,
+  "description": "Proof of One test ballot relay (Cloudflare Worker). Synthetic polls only.",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "scripts": { "deploy": "wrangler deploy", "test": "node test/relay.test.mjs" },
+  "dependencies": { "ethers": "6.13.4" },
+  "devDependencies": { "wrangler": "4.131.2" }
+}

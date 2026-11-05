@@ -1,0 +1,15 @@
+# Proof of One test ballot relay. Set RELAY_KEY as a secret in the Cloudflare dashboard
+# (Settings → Variables and secrets), never in this file.
+name = "proof-of-one-relay"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+workers_dev = true
+
+[vars]
+RPC_URL = "https://sepolia.base.org"
+CHAIN_ID = "84532"
+POLLS = "0x64Bf8A3db2D45a993304eBE228dcD7d81d6098CC"
+POLL_IDS = "2"
+
+[observability]
+enabled = false   # no request logs: the relay keeps no record of who sent what

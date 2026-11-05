@@ -12,10 +12,10 @@ When a phone sends a ballot, it keeps a private **receipt**: the poll, the ballo
 
 1. Choose one of four **published synthetic member kits** (members 5–8 of the test registry). A kit is what a phone holds after enrolment, plus the poll's public values: the member secret, attributes, Merkle paths, nullifier and poll key.
 2. Choose an answer. The phone encrypts it (one-hot exponential ElGamal, in `check.js`) and makes the ballot proof π_vote in the browser with snarkjs and the proof files of `../phone-bench/`. It verifies the proof on the phone before anything is sent.
-3. **Send** submits `vote()` from a wallet in the browser (for example MetaMask's), on the test network. A re-vote names the ballot it replaces: from this phone's own receipt, or else from the ledger's `Ballot` event, since ballots are public ciphertexts.
+3. **Send** submits `vote()` either **through the relay** ([`../relay/`](../relay/), no wallet needed; its address is in `web/config.json`) or from a wallet in the browser (for example MetaMask's), on the test network. A re-vote names the ballot it replaces: from this phone's own receipt, or else from the ledger's `Ballot` event, since ballots are public ciphertexts.
 4. **Show my recorded answer** runs the check below against the ledger.
 
-The kits are shared, so anyone can replace a kit's ballot (up to 50 ballots per kit); the latest counts. With a real identity only its holder could. Sending needs a little test ETH; a relay that pays for ballots is a later step (activity 1.6).
+The kits are shared, so anyone can replace a kit's ballot (up to 50 ballots per kit); the latest counts. With a real identity only its holder could. With the relay, sending needs nothing; with a wallet, a little test ETH.
 
 ## How it works
 
