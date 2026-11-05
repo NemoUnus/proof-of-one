@@ -13,6 +13,8 @@ This package runs one complete poll on a public Layer-2 test network, from start
 | After the 48-hour poll closes: publish the result, which the contract checks against its own encrypted totals | 1 |
 | After the 7-day challenge period: finalize | 1 |
 
+**Status:** deployed on Base Sepolia on 5 November 2026; the poll is open. See [DEPLOYMENT.md](DEPLOYMENT.md).
+
 ## How it works
 
 - **`plan.js`** prepares every transaction in advance for one wallet on one chain, starting at the wallet's current nonce (0 for a fresh wallet; a third argument gives another, for example after a bridging transaction). Contract addresses follow from the wallet address and its nonce, so the ballot proofs, which are bound to this chain and this contract, can be made beforehand. The output is `web/plan.json`.
