@@ -1,13 +1,16 @@
 # SPDX-License-Identifier: Apache-2.0
-# Builds the test chip-reader app (reference/android-prototype) on GitHub's servers and
-# attaches the APK to the run, so anyone can check that the published APK comes from this
-# source. Test build only: debug-signed, not for distribution.
+# Builds the test app (reference/android-prototype) on GitHub's servers and attaches the APK
+# to the run, so anyone can check that the published APK comes from this source. Test build
+# only: debug-signed, not for distribution.
+# Since v0.2 the app includes the native prover (reference/native-prover, Rust), built here
+# for 64-bit ARM, and the ballot proof's TEST-ONLY key and witness graph as assets.
 name: Android chip reader (test build)
 
 on:
   push:
     paths:
       - "reference/android-prototype/**"
+      - "reference/native-prover/**"
       - ".github/workflows/android-prototype.yml"
   workflow_dispatch:
 
@@ -26,6 +29,24 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.10.2"
+      - name: Tools for the native prover
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq protobuf-compiler
+          rustup target add aarch64-linux-android
+          cargo install cargo-ndk --version 4.1.2 --locked
+      - name: Build the native prover for arm64-v8a
+        working-directory: reference/native-prover
+        env:
+          ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_LATEST_HOME }}
+        run: cargo ndk --platform 26 -t arm64-v8a -o ../android-prototype/app/src/main/jniLibs build --release --locked --lib
+      - name: Proof files as app assets
+        run: |
+          A=reference/android-prototype/app/src/main/assets
+          mkdir -p $A
+          cp reference/native-prover/graphs/ballot.graph $A/
+          cp reference/ballot-circuit/setup/ballot_test.zkey $A/
+          cp reference/phone-bench/input.json $A/
+          sha256sum $A/* reference/android-prototype/app/src/main/jniLibs/arm64-v8a/*.so
       - name: Build the debug APK
         working-directory: reference/android-prototype
         run: gradle --no-daemon assembleDebug
