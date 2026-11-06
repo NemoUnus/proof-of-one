@@ -20,7 +20,15 @@ The library keeps nothing and writes nothing to disk. The proving key is read on
 | snarkjs in Node.js | 4–5 s |
 | snarkjs in headless Chromium | about 10 s |
 
-The proofs verify with snarkjs and the public signals are identical to snarkjs's. Phone figures come from the Android app's benchmark screen.
+The proofs verify with snarkjs and the public signals are identical to snarkjs's.
+
+## Measured on phones (Android test app, benchmark screen)
+
+| Phone | Native (this library) | Browser, same phone ([phone-bench](../phone-bench/)) |
+|---|---|---|
+| **Samsung Galaxy S24 Ultra** (SM-S928B, Android 14), founder, 6 Nov 2026 | **0.5 s** (0.5, 0.5, 0.4); verified on the phone; key loading 3.0 s once | 3.0 s (28 Oct 2026) |
+
+On this phone the native prover is about **6 times faster** than the browser.
 
 ## Files
 

@@ -47,6 +47,8 @@ Every run produced a proof that verified. **The ballot proof is practical in a p
 
 The document-validity proof made at enrolment is about 18 to 23 times larger (577,678 to 749,147 constraints). In a browser on an entry-level phone it would take many minutes, so enrolment needs a native prover (activity 0.8). Download times (up to 128 s for the 23 MB of proving key and circuit on a slow connection) also matter for people with expensive or slow data; the app should ship the key with the app or download it once over Wi-Fi.
 
+Native prover in the Android test app (same proof, input and key): **0.5 s** on the Galaxy S24 Ultra, against 3.0 s in its browser. See [`../native-prover/`](../native-prover/).
+
 ## Rebuilding the test input
 
 ```bash
