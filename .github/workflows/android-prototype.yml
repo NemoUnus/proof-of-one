@@ -11,6 +11,7 @@ on:
     paths:
       - "reference/android-prototype/**"
       - "reference/native-prover/**"
+      - "reference/prove-bench/**"
       - ".github/workflows/android-prototype.yml"
   workflow_dispatch:
 
@@ -53,6 +54,25 @@ jobs:
             cargo build --release --locked --lib --target aarch64-linux-android
           mkdir -p ../android-prototype/app/src/main/jniLibs/arm64-v8a
           cp target/aarch64-linux-android/release/libpoo_native_prover.so ../android-prototype/app/src/main/jniLibs/arm64-v8a/
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      # Enrolment proof benchmark (N31): everything is made here from the repository's sources:
+      # the circuit, a synthetic document's witness, and a random TEST-ONLY key (prove-mem).
+      - name: Enrolment proof test files (π_doc, TEST-ONLY random key)
+        run: |
+          mkdir -p $HOME/bin && curl -sSL -o $HOME/bin/circom https://github.com/iden3/circom/releases/download/v2.1.9/circom-linux-amd64 && chmod +x $HOME/bin/circom
+          export PATH=$HOME/bin:$PATH
+          (cd reference/ballot-circuit && npm ci --no-audit --no-fund)
+          cd reference/document-circuit && npm ci --no-audit --no-fund
+          mkdir -p build && circom circuits/document.circom --r1cs --wasm --O2 -l node_modules -o build
+          node scripts/make-witness.js
+          cd ../prove-bench && cargo build --release --locked --bin prove-mem
+          D=$RUNNER_TEMP/doc && mkdir -p $D
+          ./target/release/prove-mem setup ../document-circuit/build/document.r1cs ../document-circuit/build/bench.wtns $D
+          ./target/release/prove-mem compress - - $D
+          gzip -6 -c $D/matrices.bin > $D/doc_matrices.gz
+          ls -la $D
       - name: Proof files as app assets
         run: |
           A=reference/android-prototype/app/src/main/assets
@@ -60,6 +80,9 @@ jobs:
           cp reference/native-prover/graphs/ballot.graph $A/
           cp reference/ballot-circuit/setup/ballot_test.zkey $A/
           cp reference/phone-bench/input.json $A/
+          cp $RUNNER_TEMP/doc/pk_c.bin $A/doc_pk_c.bin
+          cp $RUNNER_TEMP/doc/doc_matrices.gz $A/
+          cp reference/document-circuit/build/bench.wtns $A/doc.wtns
           sha256sum $A/* reference/android-prototype/app/src/main/jniLibs/arm64-v8a/*.so
       - name: Build the debug APK
         working-directory: reference/android-prototype
