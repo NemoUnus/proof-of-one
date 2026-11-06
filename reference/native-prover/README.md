@@ -33,6 +33,7 @@ On this phone the native prover is about **6 times faster** than the browser.
 | Phone | Enrolment proof π_doc (577,678 constraints, TEST-ONLY random key) |
 |---|---|
 | **Samsung Galaxy S24 Ultra**, founder, 6 Nov 2026 | **3.0 s**, verified on the phone; reading the compressed key and matrices 34.8 s; peak memory of the whole app 1,197 MB |
+| Same phone, second run with the uncompressed key kept (6 Nov 2026) | **2.8 s**, verified; reading the key and matrices **1.8 s**; peak memory of the app 1,213 MB (the peak since the app started, so it includes the first run) |
 
 ## Enrolment proof π_doc on the phone (benchmark, v0.3 of the app)
 
