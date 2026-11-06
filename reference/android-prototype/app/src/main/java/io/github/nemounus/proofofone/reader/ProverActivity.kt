@@ -14,6 +14,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import org.json.JSONObject
+import java.io.File
 import kotlin.concurrent.thread
 
 /**
@@ -26,6 +27,7 @@ class ProverActivity : Activity() {
     private lateinit var report: TextView
     private lateinit var start: Button
     private lateinit var share: Button
+    private lateinit var doc: Button
     private var shareText = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -40,6 +42,13 @@ class ProverActivity : Activity() {
         })
         start = Button(this).apply { text = "Start benchmark"; setOnClickListener { run() } }
         col.addView(start)
+        col.addView(TextView(this).apply {
+            text = "Enrolment proof π_doc (577,678 constraints) with a TEST-ONLY random key: needs about 1 GB of memory " +
+                "and 150 MB of storage, and takes one to several minutes. The witness is precomputed."
+            setPadding(0, pad, 0, 0)
+        })
+        doc = Button(this).apply { text = "Start enrolment proof benchmark"; setOnClickListener { runDoc() } }
+        col.addView(doc)
         status = TextView(this).apply { textSize = 16f; setPadding(0, pad / 2, 0, 0) }
         col.addView(status)
         report = TextView(this).apply { typeface = Typeface.MONOSPACE; textSize = 12f; setTextIsSelectable(true); setPadding(0, pad, 0, 0) }
@@ -96,6 +105,48 @@ class ProverActivity : Activity() {
                     status.text = "Error: ${e.message}"; start.isEnabled = true
                     window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 }
+            }
+        }
+    }
+
+    /** Copies an asset to app storage once (streamed, so it never sits whole in the Java heap). */
+    private fun file(name: String): String {
+        val f = File(filesDir, name)
+        if (!f.exists() || f.length() == 0L) assets.open(name).use { i -> f.outputStream().use { o -> i.copyTo(o, 1 shl 20) } }
+        return f.absolutePath
+    }
+
+    private fun runDoc() {
+        start.isEnabled = false; doc.isEnabled = false; share.visibility = View.GONE; report.text = ""
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        status.text = "Preparing the files (first time only)…"
+        thread {
+            try {
+                val pk = file("doc_pk_c.bin"); val m = file("doc_matrices.gz"); val w = file("doc.wtns")
+                runOnUiThread { status.text = "Reading the key and proving… keep the screen on." }
+                val r = JSONObject(NativeProver.proveDoc(pk, m, w))
+                if (r.has("error")) throw IllegalStateException(r.getString("error"))
+                val mem = ActivityManager.MemoryInfo().also { (getSystemService(ACTIVITY_SERVICE) as ActivityManager).getMemoryInfo(it) }
+                fun s(ms: Long) = String.format("%.1f s", ms / 1000.0)
+                val ok = r.getBoolean("verified")
+                shareText = listOf(
+                    "Proof of One phone benchmark v0.1 (native, enrolment)",
+                    "proof: pi_doc, 577,678 constraints, Groth16, arkworks (native), TEST-ONLY random key",
+                    "key and matrices loading: ${s(r.getLong("loadMs"))}",
+                    "proof: ${s(r.getLong("proveMs"))}",
+                    "verified: ${if (ok) "yes" else "NO"}",
+                    "peak memory of the app: ${r.getLong("peakMb")} MB",
+                    "cores: ${Runtime.getRuntime().availableProcessors()}, memory: ${String.format("%.1f", mem.totalMem / 1073741824.0)} GB",
+                    "phone: ${Build.MANUFACTURER} ${Build.MODEL}, Android ${Build.VERSION.RELEASE}",
+                ).joinToString("\n")
+                runOnUiThread {
+                    status.text = if (ok) "Enrolment proof verified in ${s(r.getLong("proveMs"))}." else "The proof did not verify. Please report this."
+                    report.text = shareText; share.visibility = View.VISIBLE
+                }
+            } catch (e: Throwable) {
+                runOnUiThread { status.text = "Error: ${e.message ?: e.javaClass.simpleName}" }
+            } finally {
+                runOnUiThread { start.isEnabled = true; doc.isEnabled = true; window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
             }
         }
     }

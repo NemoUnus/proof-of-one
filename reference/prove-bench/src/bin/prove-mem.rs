@@ -125,6 +125,15 @@ fn to_cm(mut mats: Vec<Vec<Vec<(Fr, usize)>>>, ni: usize, nc: usize, n_wires: us
 fn main() {
     let a: Vec<String> = std::env::args().collect();
     let (mode, dir) = (a[1].as_str(), a[4].clone());
+    if mode == "compress" {
+        // Rewrites pk.bin with compressed points (about half the size) and times reading it back.
+        let pk = ProvingKey::<Bn254>::deserialize_with_mode(BufReader::new(std::fs::File::open(format!("{dir}/pk.bin")).unwrap()), Compress::No, Validate::No).unwrap();
+        pk.serialize_with_mode(BufWriter::new(std::fs::File::create(format!("{dir}/pk_c.bin")).unwrap()), Compress::Yes).unwrap();
+        let t = Instant::now();
+        let _ = ProvingKey::<Bn254>::deserialize_with_mode(BufReader::new(std::fs::File::open(format!("{dir}/pk_c.bin")).unwrap()), Compress::Yes, Validate::No).unwrap();
+        println!("compressed key read back in {:.1} s", t.elapsed().as_secs_f64());
+        return;
+    }
     let w = read_wtns(&a[3]);
     let mut rng = ark_std::rand::rngs::StdRng::seed_from_u64(1); // TEST ONLY
     if mode == "setup" {

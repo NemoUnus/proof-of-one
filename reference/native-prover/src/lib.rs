@@ -76,6 +76,72 @@ impl Circuit {
     }
 }
 
+/// A circuit whose key and matrices were made by arkworks itself (random TEST-ONLY setup in
+/// ../prove-bench, prove-mem), used for the enrolment proof π_doc benchmark (N31). The
+/// witness is given as a .wtns file. Reduction: arkworks' own (LibsnarkReduction).
+pub struct ArkCircuit {
+    pk: ProvingKey<Bn254>,
+    matrices: Vec<ark_relations::utils::matrix::Matrix<Fr>>,
+    num_instance: usize,
+    num_constraints: usize,
+}
+
+impl ArkCircuit {
+    /// `pk`: ProvingKey, canonical serialization with compressed points.
+    /// `matrices_gz`: gzip of the matrices file written by prove-mem.
+    pub fn load(pk: &[u8], matrices_gz: &[u8]) -> Result<ArkCircuit, Error> {
+        use ark_serialize::{CanonicalDeserialize, Compress, Validate};
+        let pk = ProvingKey::<Bn254>::deserialize_with_mode(Cursor::new(pk), Compress::Yes, Validate::No)?;
+        let mut raw = Vec::new();
+        std::io::Read::read_to_end(&mut flate2::read::GzDecoder::new(matrices_gz), &mut raw)?;
+        let (matrices, num_instance, num_constraints) = read_matrices(&raw)?;
+        Ok(ArkCircuit { pk, matrices, num_instance, num_constraints })
+    }
+
+    /// Prove from a .wtns and verify on the phone. Returns whether the proof verified.
+    pub fn prove_wtns(&self, wtns: &[u8]) -> Result<bool, Error> {
+        let w = parse_wtns(wtns)?;
+        let mut rng = rand::rngs::OsRng;
+        let (r, s) = (Fr::rand(&mut rng), Fr::rand(&mut rng));
+        let proof = Groth16::<Bn254, ark_groth16::r1cs_to_qap::LibsnarkReduction>::create_proof_with_reduction_and_matrices(
+            &self.pk, r, s, &self.matrices, self.num_instance, self.num_constraints, &w)?;
+        let pvk = Groth16::<Bn254>::process_vk(&self.pk.vk)?;
+        Ok(Groth16::<Bn254>::verify_with_processed_vk(&pvk, &w[1..self.num_instance], &proof)?)
+    }
+}
+
+/// The matrices format of prove-mem: for A, B, C: rows (u64), then per row: entries (u32) and
+/// (column u32, coefficient 32 bytes little-endian); then instance variables and constraints (u64).
+fn read_matrices(b: &[u8]) -> Result<(Vec<ark_relations::utils::matrix::Matrix<Fr>>, usize, usize), Error> {
+    let mut o = 0usize;
+    let mut take = |n: usize| -> Result<&[u8], Error> { if o + n > b.len() { return Err("matrices file too short".into()); } let s = &b[o..o + n]; o += n; Ok(s) };
+    let mut mats = Vec::with_capacity(3);
+    for _ in 0..3 {
+        let rows = u64::from_le_bytes(take(8)?.try_into().unwrap()) as usize;
+        let mut m = Vec::with_capacity(rows);
+        for _ in 0..rows {
+            let k = u32::from_le_bytes(take(4)?.try_into().unwrap()) as usize;
+            let mut row = Vec::with_capacity(k);
+            for _ in 0..k {
+                let i = u32::from_le_bytes(take(4)?.try_into().unwrap()) as usize;
+                row.push((Fr::from_le_bytes_mod_order(take(32)?), i));
+            }
+            m.push(row);
+        }
+        mats.push(m);
+    }
+    let ni = u64::from_le_bytes(take(8)?.try_into().unwrap()) as usize;
+    let nc = u64::from_le_bytes(take(8)?.try_into().unwrap()) as usize;
+    Ok((mats, ni, nc))
+}
+
+/// Peak resident memory of this process, in MB (Linux and Android: VmHWM).
+pub fn peak_mb() -> u64 {
+    std::fs::read_to_string("/proc/self/status").ok()
+        .and_then(|s| s.lines().find(|l| l.starts_with("VmHWM")).and_then(|l| l.split_whitespace().nth(1)).and_then(|v| v.parse::<u64>().ok()))
+        .unwrap_or(0) / 1024
+}
+
 fn dec<F: PrimeField>(x: &F) -> String {
     let b = x.into_bigint().to_bytes_be();
     num_to_dec(&b)
@@ -145,6 +211,33 @@ mod android {
         let t = Instant::now();
         let (proof, public, ok) = cache.as_ref().unwrap().1.prove_checked(&inputs)?;
         Ok(format!(r#"{{"proof":{},"public":{},"verified":{},"loadMs":{},"proveMs":{}}}"#, proof, public, ok, load_ms, t.elapsed().as_millis()))
+    }
+
+    // Enrolment proof benchmark: {"verified":bool,"loadMs":n,"proveMs":n,"peakMb":n} or {"error":…}.
+    // The key is read on every call (it is large and used once per enrolment).
+    // The files are passed by path, not as byte arrays, so that 150 MB never sits in the Java heap.
+    fn run_doc(env: &mut JNIEnv, pk: &JString, mats: &JString, wtns: &JString) -> Result<String, super::Error> {
+        let pk: String = env.get_string(pk)?.into();
+        let mats: String = env.get_string(mats)?.into();
+        let wtns: String = env.get_string(wtns)?.into();
+        let t = Instant::now();
+        let c = super::ArkCircuit::load(&std::fs::read(&pk)?, &std::fs::read(&mats)?)?;
+        let load_ms = t.elapsed().as_millis();
+        let w = std::fs::read(&wtns)?;
+        let t = Instant::now();
+        let ok = c.prove_wtns(&w)?;
+        Ok(format!(r#"{{"verified":{},"loadMs":{},"proveMs":{},"peakMb":{}}}"#, ok, load_ms, t.elapsed().as_millis(), super::peak_mb()))
+    }
+
+    #[no_mangle]
+    pub extern "system" fn Java_io_github_nemounus_proofofone_reader_NativeProver_proveDoc<'l>(
+        mut env: JNIEnv<'l>, _class: JClass<'l>, pk: JString<'l>, mats: JString<'l>, wtns: JString<'l>,
+    ) -> jstring {
+        let out = match run_doc(&mut env, &pk, &mats, &wtns) {
+            Ok(s) => s,
+            Err(e) => serde_json::json!({ "error": e.to_string() }).to_string(),
+        };
+        env.new_string(out).map(|s| s.into_raw()).unwrap_or(std::ptr::null_mut())
     }
 
     #[no_mangle]

@@ -11,14 +11,14 @@ android {
         applicationId = "io.github.nemounus.proofofone.reader"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "0.2.0"
+        versionCode = 4
+        versionName = "0.3.0"
         // The native prover is built for 64-bit ARM phones only (reference/native-prover).
         ndk { abiFilters += listOf("arm64-v8a") }
     }
     // The proving key and witness graph are read whole; storing them uncompressed avoids
     // inflating 25 MB at every start.
-    androidResources { noCompress += listOf("zkey", "graph") }
+    androidResources { noCompress += listOf("zkey", "graph", "bin", "gz", "wtns") }
     buildTypes { release { isMinifyEnabled = false } }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

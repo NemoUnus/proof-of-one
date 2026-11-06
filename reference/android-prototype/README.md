@@ -20,6 +20,8 @@ The report also measures what the zero-knowledge proof π_doc must handle on rea
 
 The button **Ballot proof benchmark (native prover)** opens a second screen. It makes the ballot proof π_vote three times with the native prover ([`../native-prover/`](../native-prover/)), from the same synthetic input and TEST-ONLY key as the browser benchmark, checks it on the phone and shows a result to share. It needs no passport and sends nothing. The app is built for 64-bit ARM phones only.
 
+Since v0.3 a second button runs the **enrolment proof π_doc** benchmark (577,678 constraints, TEST-ONLY random key, precomputed synthetic witness). It needs about 1 GB of memory and 150 MB of storage. The APK is therefore about 180 MB.
+
 ## Build
 
 The APK is built by GitHub Actions ([workflow](../../.github/workflows/android-prototype.yml)) on every change to this folder. Open the repository's **Actions** tab, choose the latest run of "Android chip reader (test build)" and download the artifact `proof-of-one-reader-debug-apk`. It contains the APK and its SHA-256.

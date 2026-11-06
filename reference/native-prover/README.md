@@ -30,9 +30,14 @@ The proofs verify with snarkjs and the public signals are identical to snarkjs's
 
 On this phone the native prover is about **6 times faster** than the browser.
 
+## Enrolment proof π_doc on the phone (benchmark, v0.3 of the app)
+
+The app's second button proves π_doc (577,678 constraints) with `ArkCircuit`: a proving key made by arkworks itself (random TEST-ONLY setup with `../prove-bench`'s `prove-mem`, compressed points, 125 MB), the constraint matrices (gzip, 14 MB) and a precomputed witness of a synthetic document. All three are made by the build workflow from the repository's sources. On the server: key reading 27 s (decompressing the points), proving 5.6 s, peak memory 0.9 GB (`doc-bench`). The witness on a phone, and a smaller download, are the next steps (N31).
+
 ## Files
 
 - `src/lib.rs` — `Circuit::load(zkey, graph)`, `prove`, `prove_checked`, and the JNI entry point `NativeProver.prove` for the Android app.
+- `src/bin/doc-bench.rs` — `doc-bench <pk_c.bin> <matrices.gz> <witness.wtns>`, the π_doc benchmark on a computer.
 - `src/main.rs` — `poo-prove`, a command-line timer: `poo-prove <graph> <zkey> <inputs.json> <proof.json> <public.json> [runs]`.
 - `graphs/ballot.graph` — witness graph of `../ballot-circuit/circuits/ballot.circom` (sha256 `cdd5d77ba663d956b17e90e2d586392a2b0c0a12d70ba2736792c876d1b01064`). The build is reproducible; rebuild it with `build-circuit` from circom-witnesscalc v0.3.0:
 
