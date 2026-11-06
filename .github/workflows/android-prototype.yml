@@ -81,7 +81,8 @@ jobs:
           cp reference/ballot-circuit/setup/ballot_test.zkey $A/
           cp reference/phone-bench/input.json $A/
           cp $RUNNER_TEMP/doc/pk_c.bin $A/doc_pk_c.bin
-          cp $RUNNER_TEMP/doc/doc_matrices.gz $A/
+          # not .gz: Android's packager strips a .gz suffix from asset names
+          cp $RUNNER_TEMP/doc/doc_matrices.gz $A/doc_matrices.gzdata
           cp reference/document-circuit/build/bench.wtns $A/doc.wtns
           sha256sum $A/* reference/android-prototype/app/src/main/jniLibs/arm64-v8a/*.so
       - name: Build the debug APK
