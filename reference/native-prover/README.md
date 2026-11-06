@@ -30,6 +30,10 @@ The proofs verify with snarkjs and the public signals are identical to snarkjs's
 
 On this phone the native prover is about **6 times faster** than the browser.
 
+| Phone | Enrolment proof π_doc (577,678 constraints, TEST-ONLY random key) |
+|---|---|
+| **Samsung Galaxy S24 Ultra**, founder, 6 Nov 2026 | **3.0 s**, verified on the phone; reading the compressed key and matrices 34.8 s; peak memory of the whole app 1,197 MB |
+
 ## Enrolment proof π_doc on the phone (benchmark, v0.3 of the app)
 
 The app's second button proves π_doc (577,678 constraints) with `ArkCircuit`: a proving key made by arkworks itself (random TEST-ONLY setup with `../prove-bench`'s `prove-mem`, compressed points, 125 MB), the constraint matrices (gzip, 14 MB) and a precomputed witness of a synthetic document. All three are made by the build workflow from the repository's sources. On the server: key reading 27 s (decompressing the points), proving 5.6 s, peak memory 0.9 GB (`doc-bench`). The witness on a phone, and a smaller download, are the next steps (N31).
