@@ -27,6 +27,24 @@ cd ../prove-bench && cargo build --release
 | Verifying | 3–4 ms |
 | Peak memory (setup and proving in one process) | 1.9 GB |
 
+### Memory of proving alone (6 November 2026, same machine)
+
+The 1.9 GB above includes the setup and arkworks building its constraint system at every proof. A phone does neither: it has the proving key and the constraint matrices, made once, and the witness. `prove-mem` measures that case in two processes:
+
+```bash
+./target/release/prove-mem setup ../document-circuit/build/document.r1cs ../document-circuit/build/bench.wtns <dir>   # random TEST-ONLY setup
+./target/release/prove-mem prove - ../document-circuit/build/bench.wtns <dir> 2                                         # loads, proves, verifies
+```
+
+| π_doc, suite 1 | Result |
+|---|---|
+| Peak memory of the proving process | **0.78 GB** (0.49 GB after loading) |
+| Proving | **7.2 s** (7.21, 7.18), verified |
+| Proving key, uncompressed | 250 MB |
+| Constraint matrices | 147 MB |
+
+So memory is less of an obstacle than it looked: 0.78 GB may fit phones with 3 GB, and perhaps 2 GB. The size of the files to download, about 400 MB, is now the larger problem (implementation note N31).
+
 Suite 2 of π_doc (SHA-1, RSA-3072, any exponent; 29 October 2026, same machine): 749,147 constraints, 745,324 wires, 0 unsatisfied; setup 35.7 s; proving **11.45 s, 11.95 s, 12.27 s**; verifying 3–4 ms; peak memory 2.5 GB. Run it with `node scripts/make-witness.js 2` and `./target/release/prove-bench ../document-circuit/build/document_s2.r1cs ../document-circuit/build/bench_s2.wtns 3`.
 
 These are server numbers with arkworks. Phones have more but slower cores and less free memory, and other native provers (for example rapidsnark) may be faster than arkworks. Only a measurement on phones settles it; that is part of the Android prototype (schedule 0.8).
