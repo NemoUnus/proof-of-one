@@ -132,7 +132,7 @@ class ProverActivity : Activity() {
                 shareText = listOf(
                     "Proof of One phone benchmark v0.1 (native, enrolment)",
                     "proof: pi_doc, 577,678 constraints, Groth16, arkworks (native), TEST-ONLY random key",
-                    "key and matrices loading: ${s(r.getLong("loadMs"))}",
+                    "key and matrices loading: ${s(r.getLong("loadMs"))}${if (r.optBoolean("cached")) " (uncompressed copy kept from an earlier run)" else " (first run: decompressing the key; later runs are faster)"}",
                     "proof: ${s(r.getLong("proveMs"))}",
                     "verified: ${if (ok) "yes" else "NO"}",
                     "peak memory of the app: ${r.getLong("peakMb")} MB",

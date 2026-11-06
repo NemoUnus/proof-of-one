@@ -36,7 +36,7 @@ On this phone the native prover is about **6 times faster** than the browser.
 
 ## Enrolment proof π_doc on the phone (benchmark, v0.3 of the app)
 
-The app's second button proves π_doc (577,678 constraints) with `ArkCircuit`: a proving key made by arkworks itself (random TEST-ONLY setup with `../prove-bench`'s `prove-mem`, compressed points, 125 MB), the constraint matrices (gzip, 14 MB) and a precomputed witness of a synthetic document. All three are made by the build workflow from the repository's sources. On the server: key reading 27 s (decompressing the points), proving 5.6 s, peak memory 0.9 GB (`doc-bench`). The witness on a phone, and a smaller download, are the next steps (N31).
+The app's second button proves π_doc (577,678 constraints) with `ArkCircuit`: a proving key made by arkworks itself (random TEST-ONLY setup with `../prove-bench`'s `prove-mem`, compressed points, 125 MB), the constraint matrices (gzip, 14 MB) and a precomputed witness of a synthetic document. All three are made by the build workflow from the repository's sources. On the server: proving 5.6 s, peak memory 0.9 GB (`doc-bench`). Decompressing the key's points takes about 30 s, so after the first use the app keeps an uncompressed copy (250 MB) and later reads it in about 1.3 s (`ArkCircuit::load_cached`). The witness on a phone, and a smaller download, are the next steps (N31).
 
 ## Files
 

@@ -98,6 +98,29 @@ impl ArkCircuit {
         Ok(ArkCircuit { pk, matrices, num_instance, num_constraints })
     }
 
+    /// Like `load`, but keeps an uncompressed copy of the key at `cache` after the first use:
+    /// decompressing 125 MB of points takes half a minute on a phone, reading 250 MB of
+    /// uncompressed points takes about a second. The copy is written to a temporary name and
+    /// renamed, so a half-written file is never used.
+    pub fn load_cached(pk_c: &str, matrices_gz: &str, cache: &str) -> Result<ArkCircuit, Error> {
+        use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Compress, Validate};
+        let mut raw = Vec::new();
+        std::io::Read::read_to_end(&mut flate2::read::GzDecoder::new(std::fs::File::open(matrices_gz)?), &mut raw)?;
+        let (matrices, num_instance, num_constraints) = read_matrices(&raw)?;
+        drop(raw);
+        let pk = match std::fs::File::open(cache) {
+            Ok(f) => ProvingKey::<Bn254>::deserialize_with_mode(std::io::BufReader::new(f), Compress::No, Validate::No)?,
+            Err(_) => {
+                let pk = ProvingKey::<Bn254>::deserialize_with_mode(std::io::BufReader::new(std::fs::File::open(pk_c)?), Compress::Yes, Validate::No)?;
+                let tmp = format!("{cache}.tmp");
+                pk.serialize_with_mode(std::io::BufWriter::new(std::fs::File::create(&tmp)?), Compress::No)?;
+                std::fs::rename(&tmp, cache)?;
+                pk
+            }
+        };
+        Ok(ArkCircuit { pk, matrices, num_instance, num_constraints })
+    }
+
     /// Prove from a .wtns and verify on the phone. Returns whether the proof verified.
     pub fn prove_wtns(&self, wtns: &[u8]) -> Result<bool, Error> {
         let w = parse_wtns(wtns)?;
@@ -221,12 +244,13 @@ mod android {
         let mats: String = env.get_string(mats)?.into();
         let wtns: String = env.get_string(wtns)?.into();
         let t = Instant::now();
-        let c = super::ArkCircuit::load(&std::fs::read(&pk)?, &std::fs::read(&mats)?)?;
+        let cached = std::path::Path::new(&format!("{pk}.raw")).exists();
+        let c = super::ArkCircuit::load_cached(&pk, &mats, &format!("{pk}.raw"))?;
         let load_ms = t.elapsed().as_millis();
         let w = std::fs::read(&wtns)?;
         let t = Instant::now();
         let ok = c.prove_wtns(&w)?;
-        Ok(format!(r#"{{"verified":{},"loadMs":{},"proveMs":{},"peakMb":{}}}"#, ok, load_ms, t.elapsed().as_millis(), super::peak_mb()))
+        Ok(format!(r#"{{"verified":{},"loadMs":{},"cached":{},"proveMs":{},"peakMb":{}}}"#, ok, load_ms, cached, t.elapsed().as_millis(), super::peak_mb()))
     }
 
     #[no_mangle]

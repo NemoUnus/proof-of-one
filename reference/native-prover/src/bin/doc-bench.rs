@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
-// Usage: doc-bench <pk_c.bin> <matrices.gz> <witness.wtns>   (π_doc, TEST-ONLY random setup; N31)
+// Usage: doc-bench <pk_c.bin> <matrices.gz> <witness.wtns> [cache.raw]   (π_doc, TEST-ONLY random setup; N31)
 use std::time::Instant;
 fn main() -> Result<(), poo_native_prover::Error> {
     let a: Vec<String> = std::env::args().collect();
     let t = Instant::now();
-    let c = poo_native_prover::ArkCircuit::load(&std::fs::read(&a[1])?, &std::fs::read(&a[2])?)?;
+    let c = match a.get(4) {
+        Some(cache) => poo_native_prover::ArkCircuit::load_cached(&a[1], &a[2], cache)?,   // [cache.raw]: keep an uncompressed key
+        None => poo_native_prover::ArkCircuit::load(&std::fs::read(&a[1])?, &std::fs::read(&a[2])?)?,
+    };
     println!("load {:.1} s, peak {} MB", t.elapsed().as_secs_f64(), poo_native_prover::peak_mb());
     let w = std::fs::read(&a[3])?;
     for i in 1..=2 {
