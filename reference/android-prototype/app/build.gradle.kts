@@ -18,7 +18,7 @@ android {
     }
     // The proving key and witness graph are read whole; storing them uncompressed avoids
     // inflating 25 MB at every start.
-    androidResources { noCompress += listOf("zkey", "graph", "bin", "gz", "wtns") }
+    androidResources { noCompress += listOf("zkey", "graph", "bin", "gzdata", "wtns") }
     buildTypes { release { isMinifyEnabled = false } }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

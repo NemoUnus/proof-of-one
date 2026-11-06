@@ -122,7 +122,7 @@ class ProverActivity : Activity() {
         status.text = "Preparing the files (first time only)…"
         thread {
             try {
-                val pk = file("doc_pk_c.bin"); val m = file("doc_matrices.gz"); val w = file("doc.wtns")
+                val pk = file("doc_pk_c.bin"); val m = file("doc_matrices.gzdata"); val w = file("doc.wtns")
                 runOnUiThread { status.text = "Reading the key and proving… keep the screen on." }
                 val r = JSONObject(NativeProver.proveDoc(pk, m, w))
                 if (r.has("error")) throw IllegalStateException(r.getString("error"))
