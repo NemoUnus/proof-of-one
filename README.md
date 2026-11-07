@@ -31,7 +31,7 @@ Participation is free. Topics of sponsored polls are chosen by participants them
 |---|---|
 | [One-page summary (PDF)](docs/summary/Proof_of_One_Summary_EN.pdf) · [Markdown](docs/summary/SUMMARY.en.md) | Plain-language overview — start here |
 | [Technical brief for reviewers](docs/review/technical-brief-v0.1.md) | Claims, constructions, trust assumptions, measurements and known weak points, in 15 minutes |
-| [Whitepaper v0.9 (PDF)](docs/whitepaper/Proof_of_One_Whitepaper_v0.9_EN.pdf) · [Markdown](docs/whitepaper/Proof_of_One_Whitepaper_v0.9_EN.md) | Full design, with measured sizes and costs from the reference code: identity, cryptography, ledger, polling, governance, limits. Each property is stated as a design goal with its assumptions |
+| [Whitepaper v1.0 (PDF)](docs/whitepaper/Proof_of_One_Whitepaper_v1.0_EN.pdf) · [Markdown](docs/whitepaper/Proof_of_One_Whitepaper_v1.0_EN.md) | Full design, with measured sizes and costs from the reference code, the public test network and phones: identity, cryptography, ledger, polling, governance, limits. Each property is stated as a design goal with its assumptions. Earlier versions are in [docs/whitepaper](docs/whitepaper/) |
 | [Second-model review of whitepaper v0.8](docs/review/second-model-review-whitepaper-v0.8.md) | 137 points from an independent AI model and what changed in v0.9 |
 | [Threat model v0.1](docs/specs/threat-model-v0.1.md) | Adversary with the resources of a state |
 | [Ballot and enrolment spec v0.1](docs/specs/ballot-and-enrolment-v0.1.md) | Encrypted ballots, public tally, unlinkable enrolment |
@@ -89,7 +89,8 @@ A member reads their passport chip over NFC; the phone proves in zero knowledge 
 | Stage | Meaning |
 |---|---|
 | 0. Open specification ← **we are here** | Whitepaper and specs published for review |
-| 1. Test network | Code on a public test network, volunteers in low-risk settings, public bug bounty |
+| 1a. Public test network, synthetic identities only ← **running now** | Contracts on Base Sepolia, voting from phones, a test relay (whitepaper §8.11) |
+| 1b. Volunteers | The test network with volunteers in low-risk settings, public bug bounty; after three independent reviews (Gate 0) |
 | 2. Independent audit | Review by independent human experts |
 | 3. Real participants | Only after the stages above, and participant-safety gates in whitepaper §14 |
 

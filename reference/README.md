@@ -18,7 +18,7 @@ Five small packages implement the core of the protocol end to end, and four fold
 | [`testnet/`](testnet/) | Phase 1a: every transaction of one synthetic poll prepared in advance, a local replay check, and a page that sends them from a test-only browser wallet | replay |
 | [`app/`](app/) | First piece of the voter app: "show my recorded answer" from the voter's receipt, read from the test network (Decision #45) | 2 |
 | [`relay/`](relay/) | Test ballot relay (Cloudflare Worker): submits phones' ballots with its own test coins, after the contract has checked them in a simulation | 4 cases |
-| [`contracts/`](contracts/) | Solidity identity and revocation registries, polls, ballots and results; single and batched ballot submission; full on-chain flow tested with real proofs | 9 |
+| [`contracts/`](contracts/) | Solidity identity and revocation registries, polls, ballots and results; single and batched ballot submission; full on-chain flow tested with real proofs | 10 |
 
 ## How they fit together
 
