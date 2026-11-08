@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Proof of One — test log key</title>
+<style>
+  body { margin:0; font:16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background:#f7f9fa; color:#12233d; }
+  main { max-width:680px; margin:0 auto; padding:20px 16px 64px; }
+  .warn { background:#fff4e5; border:1px solid #f0c27b; padding:10px 12px; border-radius:8px; font-size:14px; }
+  textarea { width:100%; box-sizing:border-box; font:12px ui-monospace, monospace; height:70px; }
+  button { font:inherit; padding:10px 16px; border-radius:8px; border:1px solid #1f7f84; background:#1f7f84; color:#fff; }
+  .mut { color:#5a6570; font-size:13px; }
+</style>
+</head>
+<body>
+<main>
+  <h1 style="font-size:21px">Make the test log's signing key</h1>
+  <div class="warn"><b>Test log only.</b> The key is made in this browser with its own random generator (WebCrypto Ed25519). Nothing is sent anywhere. Do not keep the private key anywhere except the repository's Actions secret <code>LOG_PRIVATE_KEY</code>.</div>
+  <p>Log name (origin): <input id="name" size="44" value="nemounus.github.io/proof-of-one/test-log/1"></p>
+  <button id="go">Make a key</button>
+  <h2 style="font-size:16px">Private key (for the secret LOG_PRIVATE_KEY)</h2>
+  <textarea id="priv" readonly></textarea>
+  <h2 style="font-size:16px">Public key (published in the repository)</h2>
+  <textarea id="pub" readonly></textarea>
+  <p class="mut">Format: C2SP signed-note keys, "PRIVATE+KEY+&lt;name&gt;+&lt;hash&gt;+&lt;key&gt;" and "&lt;name&gt;+&lt;hash&gt;+&lt;key&gt;", as Tessera and the Go note package use. Code: <code>reference/test-log/web/keygen.html</code>.</p>
+</main>
+<script>
+"use strict";
+const b64 = (u) => btoa(String.fromCharCode(...u));
+const cat = (...a) => { const o = new Uint8Array(a.reduce((n, x) => n + x.length, 0)); let i = 0; for (const x of a) { o.set(x, i); i += x.length; } return o; };
+document.getElementById("go").onclick = async () => {
+  try {
+    const name = document.getElementById("name").value.trim();
+    if (!/^[\x21-\x7e]+$/.test(name) || name.includes("+")) throw new Error("the name must be printable ASCII without spaces or '+'");
+    const kp = await crypto.subtle.generateKey({ name: "Ed25519" }, true, ["sign", "verify"]);
+    const pkcs8 = new Uint8Array(await crypto.subtle.exportKey("pkcs8", kp.privateKey));
+    const seed = pkcs8.slice(pkcs8.length - 32);                    // RFC 8410: the seed is the last 32 bytes
+    const pub = new Uint8Array(await crypto.subtle.exportKey("raw", kp.publicKey));
+    const h = new Uint8Array(await crypto.subtle.digest("SHA-256", cat(new TextEncoder().encode(name + "\n"), Uint8Array.of(1), pub)));
+    const hash = [...h.slice(0, 4)].map((x) => x.toString(16).padStart(2, "0")).join("");
+    document.getElementById("priv").value = `PRIVATE+KEY+${name}+${hash}+${b64(cat(Uint8Array.of(1), seed))}`;
+    document.getElementById("pub").value = `${name}+${hash}+${b64(cat(Uint8Array.of(1), pub))}`;
+  } catch (e) { alert("This browser cannot make Ed25519 keys: " + e.message); }
+};
+</script>
+</body>
+</html>

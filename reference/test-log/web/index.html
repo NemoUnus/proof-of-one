@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Proof of One — test ballot log</title>
+<style>
+  :root { --bg:#f7f9fa; --fg:#12233d; --mut:#5a6570; --ok:#1e7a45; --bad:#b3261e; --acc:#1f7f84; --card:#fff; --line:#dbe3e8; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0f1720; --fg:#e6edf3; --mut:#9aa7b3; --ok:#5cc98a; --bad:#ff8a80; --acc:#4fb3b8; --card:#16202b; --line:#2a3744; } }
+  body { margin:0; font:16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background:var(--bg); color:var(--fg); }
+  main { max-width:720px; margin:0 auto; padding:20px 16px 64px; }
+  h1 { font-size:21px; margin:0 0 4px; } h2 { font-size:16px; margin:22px 0 8px; }
+  .warn { background:#fff4e5; color:#5a3b00; border:1px solid #f0c27b; padding:10px 12px; border-radius:8px; font-size:14px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px 14px; margin:10px 0; }
+  .ok { color:var(--ok); font-weight:600; } .bad { color:var(--bad); font-weight:600; } .mut { color:var(--mut); font-size:13px; }
+  code { font-size:12px; word-break:break-all; } input { font:inherit; width:100%; box-sizing:border-box; padding:8px; border-radius:8px; border:1px solid var(--line); }
+  button { font:inherit; padding:8px 14px; border-radius:8px; border:1px solid var(--acc); background:var(--acc); color:#fff; margin-top:6px; }
+  table { border-collapse:collapse; width:100%; font-size:13px; } td, th { border-bottom:1px solid var(--line); padding:5px 4px; text-align:left; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Test ballot log</h1>
+  <p class="mut">A transparency log in the C2SP tlog-tiles format, built with Tessera from this repository by GitHub Actions and served as static files. This page checks everything itself: the log's signature on the checkpoint, the root hash recomputed from the tiles, and each entry's leaf hash. It trusts no server.</p>
+  <div class="warn"><b>Test log, synthetic ballots only.</b> No proofs are checked on entry yet, and no witnesses cosign it yet (docs/specs/transparency-log-ballots-v0.1.md).</div>
+
+  <div class="card" id="cp">Loading the checkpoint…</div>
+
+  <h2>Find a ballot</h2>
+  <div class="card">
+    <input id="q" placeholder="entry number, or the start of a ballot's nullifier">
+    <button id="find">Check</button>
+    <div id="res" class="mut"></div>
+  </div>
+
+  <h2>Latest entries</h2>
+  <table><thead><tr><th>#</th><th>Nullifier (start)</th><th>Poll</th><th>r</th></tr></thead><tbody id="list"></tbody></table>
+  <p class="mut">Code: <code>reference/test-log/web/tlog.js</code>, tested against Tessera's own test log.</p>
+</main>
+<script src="tlog.js"></script>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const LOG = "../log/";
+let vkey, note, cp, entries = [];
+const esc = (s) => String(s).replace(/[<&]/g, (c) => ({ "<": "&lt;", "&": "&amp;" }[c]));
+const fetchBytes = async (p) => { const r = await fetch(LOG + p, { cache: "no-store" }); if (!r.ok) throw new Error(p + ": " + r.status); return new Uint8Array(await r.arrayBuffer()); };
+const fetchText = async (u) => { const r = await fetch(u, { cache: "no-store" }); if (!r.ok) throw new Error(u + ": " + r.status); return r.text(); };
+
+async function load() {
+  try {
+    vkey = (await fetchText("../log.vkey")).trim();
+    note = await fetchText(LOG + "checkpoint");
+    const signed = await TLog.openNote(note, [vkey]);
+    if (!signed.verified.length) throw new Error("the checkpoint is not signed by the log's published key");
+    cp = TLog.parseCheckpoint(signed.text);
+    const r = TLog.reader(fetchBytes, cp.size);
+    const root = cp.size ? await r.root() : null;
+    const same = !cp.size || TLog.toB64(root) === TLog.toB64(cp.root);
+    $("cp").innerHTML = `Log <code>${esc(cp.origin)}</code>: <b>${cp.size}</b> entries.<br>` +
+      `<span class="ok">✓ Checkpoint signed by the log's key</span><br>` +
+      (same ? `<span class="ok">✓ Root hash recomputed from the tiles matches</span>` : `<span class="bad">✗ The tiles do not give the signed root</span>`) +
+      `<br><span class="mut">Root ${esc(TLog.toB64(cp.root))}</span>`;
+    const from = Math.max(0, cp.size - 20);
+    for (let i = cp.size - 1; i >= from; i--) {
+      const e = JSON.parse(new TextDecoder().decode(await r.entry(i)));
+      entries[i] = e;
+      $("list").insertAdjacentHTML("beforeend", `<tr><td>${i}</td><td><code>${esc(e.nf.slice(0, 14))}…</code></td><td>${esc(e.poll)}</td><td>${esc(e.r)}</td></tr>`);
+    }
+  } catch (e) { $("cp").innerHTML = `<span class="bad">${esc(e.message)}</span>`; }
+}
+
+async function find() {
+  const q = $("q").value.trim(); $("res").textContent = "Checking…";
+  try {
+    let i = /^\d{1,7}$/.test(q) && Number(q) < cp.size ? Number(q) : -1;
+    if (i < 0) {   // search by nullifier: reads every entry bundle, as a phone would, without asking the server
+      const r = TLog.reader(fetchBytes, cp.size);
+      for (let j = 0; j < cp.size && i < 0; j++) { const e = entries[j] || JSON.parse(new TextDecoder().decode(await r.entry(j))); entries[j] = e; if (e.nf.startsWith(q)) i = j; }
+      if (i < 0) { $("res").innerHTML = '<span class="bad">No entry with that nullifier in this checkpoint.</span>'; return; }
+    }
+    const res = await TLog.checkEntry(fetchBytes, note, vkey, i);
+    const e = JSON.parse(new TextDecoder().decode(res.entry));
+    $("res").innerHTML = `<span class="ok">✓ Entry ${i} is in the tree the log signed (size ${res.checkpoint.size}).</span><br>Poll ${esc(e.poll)}, revision ${esc(e.r)}, nullifier <code>${esc(e.nf)}</code>`;
+  } catch (e) { $("res").innerHTML = `<span class="bad">${esc(e.message)}</span>`; }
+}
+$("find").onclick = find;
+load();
+</script>
+</body>
+</html>
