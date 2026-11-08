@@ -37,11 +37,11 @@ Every contract was created at the address the plan computed in advance from the 
 - The polls contract reports 4 distinct voters.
 - The receipt check in [`../app/`](../app/) shows each synthetic voter their own recorded answer, read from this network.
 
-## Still to do
+## Result of poll 1 and what is still to do
 
 | Step | When | Expected |
 |---|---|---|
-| 19. Publish the result | after the poll closes on 7 November 2026 | totals 1 · 2 · 0 · 1, checked by the contract against its encrypted totals |
+| 19. Publish the result | **done** (after the poll closed on 7 November 2026) | totals **1 · 2 · 0 · 1**, as expected from the synthetic choices; accepted by the contract after checking them against its own encrypted totals; 4 distinct voters |
 | 20. Finalize | 7 days after step 19 | state Final |
 
 ## Poll 2: vote from your phone
