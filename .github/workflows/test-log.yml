@@ -1,0 +1,77 @@
+# SPDX-License-Identifier: Apache-2.0
+# Test transparency log (Phase 1a, synthetic ballots only).
+# Run it by hand from the Actions tab ("Run workflow"), giving how many synthetic ballots to add.
+# It also runs when new entry files are pushed to reference/test-log/entries/pending/.
+# Steps: make synthetic ballots -> append them to the log with Tessera (posix-oneshot, which signs
+# a new checkpoint with the secret LOG_PRIVATE_KEY) -> check the whole log as any reader would ->
+# commit the log back to the repository, where GitHub Pages serves it to the viewer.
+name: test-log
+
+on:
+  workflow_dispatch:
+    inputs:
+      count:
+        description: "Number of synthetic ballots to add (0 = only those already pending)"
+        required: true
+        default: "8"
+  push:
+    branches: [main]
+    paths: ["reference/test-log/entries/pending/**"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: test-log
+  cancel-in-progress: false
+
+jobs:
+  append:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: reference/test-log
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          cache: false
+
+      - name: Check the verifier against Tessera's own test log
+        run: node test/tlog.test.js
+
+      - name: Make synthetic ballots
+        if: github.event_name == 'workflow_dispatch' && inputs.count != '0'
+        run: node make-entries.js "${{ inputs.count }}"
+
+      - name: Append pending ballots with Tessera and sign a new checkpoint
+        env:
+          LOG_PRIVATE_KEY: ${{ secrets.LOG_PRIVATE_KEY }}
+        run: |
+          if [ -z "$LOG_PRIVATE_KEY" ]; then echo "The repository secret LOG_PRIVATE_KEY is not set."; exit 1; fi
+          shopt -s nullglob
+          files=(entries/pending/*.json)
+          if [ ${#files[@]} -eq 0 ]; then echo "No pending ballots."; exit 0; fi
+          go run github.com/transparency-dev/tessera/cmd/examples/posix-oneshot@v1.0.4 \
+            --storage_dir="$PWD/log" --entries="$PWD/entries/pending/*.json"
+          mkdir -p entries/added
+          for f in entries/pending/*.json; do mv "$f" entries/added/; done
+
+      - name: Check the whole log as any reader would
+        run: node verify-log.js log log.vkey
+
+      - name: Commit the log
+        run: |
+          find log -name '*.lock' -delete
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A log entries
+          if git diff --cached --quiet; then echo "Nothing to commit."; exit 0; fi
+          git commit -m "test-log: append synthetic ballots (size $(sed -n 2p log/checkpoint))"
+          git push
