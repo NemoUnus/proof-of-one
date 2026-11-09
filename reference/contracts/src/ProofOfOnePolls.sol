@@ -13,6 +13,8 @@ interface IIdentityRegistry {
 
 interface IRevocationRegistry {
     function root() external view returns (uint256);
+    function previousRoot() external view returns (uint256);
+    function rootSince() external view returns (uint64);
     function revokedCount() external view returns (uint256);
 }
 
@@ -84,7 +86,7 @@ contract ProofOfOnePolls {
         uint64 openTime;
         uint64 closeTime;
         bytes32 metadataHash;
-        uint256 pollHash;   // binds the nine per-poll values the ballot proof uses
+        uint256 pollHash;   // binds the nine per-poll values the ballot proof uses, with the revocation root at creation
         bytes32 trusteeKeysHash; // keccak256(abi.encode(uint256[2][] PK_i)), trustee i at position i−1
         uint8 threshold;    // t: partial decryptions needed
         uint8 trustees;     // n
@@ -102,6 +104,14 @@ contract ProofOfOnePolls {
     }
 
     IBallotVerifier public immutable verifier;
+    /// @notice A ballot proves non-revocation against the current revocation root, so that a
+    ///         revoked identity cannot vote in polls that are already open (Decision Log #52).
+    ///         A proof made against the root before the latest revocation is still accepted for
+    ///         this long, so that a revocation does not void ballots being sent at that moment.
+    uint64 public constant REVOCATION_GRACE = 10 minutes;
+    /// @notice pollHash of a poll for a given revocation root (the other eight values fixed).
+    mapping(uint256 => mapping(uint256 => uint256)) public pollHashAt;
+    mapping(uint256 => uint256) internal _policyHash;   // h2 of the pollHash, per poll
     ITallyVerifier public immutable tallyVerifier;
     IBallotBatchVerifier public immutable batchVerifier;
     IIdentityRegistry public immutable identity;
@@ -155,6 +165,8 @@ contract ProofOfOnePolls {
     ///      ballot pays the same, lower price for updating them.
     mapping(uint256 => uint256[16]) private _agg;
 
+    /// @notice A poll began accepting proofs against this revocation root.
+    event PollRevocationRoot(uint256 indexed pollId, uint256 revRoot, uint256 pollHash);
     event PollCreated(uint256 indexed pollId, address creator, uint256 idRoot, uint256 revRoot, uint64 openTime, uint64 closeTime, bytes32 metadataHash);
     event Ballot(uint256 indexed pollId, uint256 indexed nf, uint256[16] ciphertexts, uint16 count);
     event ResultPublished(uint256 indexed pollId, uint256[K] counts, uint256[2][K] D, uint256[] trustees, bytes32 transcriptHash, bytes32 archiveHash);
@@ -247,6 +259,8 @@ contract ProofOfOnePolls {
         uint256 h1 = poseidon5.poseidon([s.idRoot, s.revRoot, pollId, p.tallyPK[0], p.tallyPK[1]]);
         uint256 h2 = poseidon5.poseidon([uint256(p.maxBirthDay), uint256(p.minBirthDay), uint256(p.minExpiryMonth), uint256(p.requiredNat), contextHash(pollId)]);
         s.pollHash = poseidon3.poseidon([uint256(7), h1, h2]);
+        _policyHash[pollId] = h2;
+        pollHashAt[pollId][s.revRoot] = s.pollHash;
         s.state = State.Open;
         emit PollCreated(pollId, msg.sender, s.idRoot, s.revRoot, p.openTime, p.closeTime, p.metadataHash);
     }
@@ -302,10 +316,14 @@ contract ProofOfOnePolls {
         Poll storage p = _openPoll(pollId);
         // Public inputs: the poll's own pollHash, the nullifier and the ciphertexts.
         uint256[18] memory pub;
-        pub[0] = p.pollHash;
+        (uint256 cur, uint256 prv) = _pollHashes(pollId, p);
+        pub[0] = cur;
         pub[1] = nf;
         for (uint256 i = 0; i < 16; i++) pub[2 + i] = ct[i];
-        if (!verifier.verifyProof(pa, pb, pc, pub)) revert InvalidProof();
+        if (!verifier.verifyProof(pa, pb, pc, pub)) {
+            pub[0] = prv;
+            if (prv == 0 || !verifier.verifyProof(pa, pb, pc, pub)) revert InvalidProof();
+        }
         if (!invited(pollId, nf)) revert NotInvited();
 
         Counters memory cnt = _counters[pollId];
@@ -336,7 +354,8 @@ contract ProofOfOnePolls {
         // cannot choose which of a member's answers counts (whitepaper v0.9, 8.5). Re-votes go
         // in separate transactions, ordered by the ledger. One comparison per ballot.
         for (uint256 i = 1; i < nfs.length; i++) if (nfs[i] <= nfs[i - 1]) revert BadBatch();
-        if (!batchVerifier.verifyBallots(p.pollHash, nfs, cts, proofs)) revert InvalidProof();
+        (uint256 cur, uint256 prv) = _pollHashes(pollId, p);
+        if (!batchVerifier.verifyBallots(cur, nfs, cts, proofs) && (prv == 0 || !batchVerifier.verifyBallots(prv, nfs, cts, proofs))) revert InvalidProof();
         if (sampling[pollId].threshold != 0) for (uint256 i = 0; i < nfs.length; i++) if (!invited(pollId, nfs[i])) revert NotInvited();
 
         Counters memory cnt = _counters[pollId];
@@ -357,6 +376,26 @@ contract ProofOfOnePolls {
         ballotChain[pollId] = chain;
         _counters[pollId] = cnt;
         _storeAgg(pollId, agg);
+    }
+
+    /// @dev The pollHash for the current revocation root and, within the grace period after
+    ///      a revocation, for the root before it (0 otherwise). Computed once per root and poll.
+    function _pollHashes(uint256 pollId, Poll storage p) internal returns (uint256 cur, uint256 prv) {
+        cur = _pollHashFor(pollId, p, revocation.root());
+        // The root before is accepted only if it is not older than the poll's snapshot: if the
+        // root has not changed since the poll was created, there is nothing to grant.
+        uint256 now_ = revocation.root();
+        if (now_ != p.revRoot && block.timestamp < uint256(revocation.rootSince()) + REVOCATION_GRACE) prv = _pollHashFor(pollId, p, revocation.previousRoot());
+    }
+
+    function _pollHashFor(uint256 pollId, Poll storage p, uint256 revRoot) internal returns (uint256 h) {
+        h = pollHashAt[pollId][revRoot];
+        if (h == 0) {
+            uint256 h1 = poseidon5.poseidon([p.idRoot, revRoot, pollId, p.tallyPK[0], p.tallyPK[1]]);
+            h = poseidon3.poseidon([uint256(7), h1, _policyHash[pollId]]);
+            pollHashAt[pollId][revRoot] = h;
+            emit PollRevocationRoot(pollId, revRoot, h);
+        }
     }
 
     function _openPoll(uint256 pollId) internal view returns (Poll storage p) {

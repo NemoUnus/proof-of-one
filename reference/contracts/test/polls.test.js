@@ -210,8 +210,13 @@ test("forged or replayed ballots are rejected", async () => {
   await reverts(sendStatic(a, other), polls, "InvalidProof");
 });
 
-test("re-enrolment: the old identity is revoked on-chain and cannot vote in later polls", async () => {
+test("re-enrolment: the old identity is revoked on-chain; it cannot vote in later polls, nor any longer in polls already open", async () => {
   const alice = people[0];
+  // Ballots for the open poll, proven against the revocation root before the revocation:
+  // one by another member (sent during the revocation), one by the identity being revoked.
+  const v0 = await syncTrees();
+  const other = await makeBallot(people[2], 1, pollId, v0);   // same answer as before: totals unchanged
+  const stale = await makeBallot(alice, 0, pollId, v0);
   const alice2 = await enrol({ fingerprint: alice.fingerprint, reenrol: true });
   assert.equal(alice2.revokeOld, alice.member.rn);
 
@@ -221,6 +226,14 @@ test("re-enrolment: the old identity is revoked on-chain and cannot vote in late
   await reverts(revocation.revoke.staticCall(alice2.revokeOld, 1, newRoot + 1n, rp.a, rp.b, rp.c), revocation, "InvalidProof");
   gas.revoke = await used(revocation.revoke(alice2.revokeOld, 1, newRoot, rp.a, rp.b, rp.c));
   assert.equal(await revocation.revokedCount(), 1n);
+
+  // In the poll already open (Decision Log #52): a proof against the previous root is still
+  // accepted for REVOCATION_GRACE, so ballots in flight are not lost...
+  gas.voteNewRevRoot = await used(send(other, pollId));
+  // ...but not after it, and the revoked identity cannot prove against the new root at all.
+  await increase(11 * 60);
+  await reverts(sendStatic(stale, pollId), polls, "InvalidProof");
+  await assert.rejects(makeBallot(alice, 0, pollId, { ...v0, rev: (await syncTrees()).rev }), /revoked/);
 
   people.push(alice2, await enrol(), await enrol(), await enrol());
   await used((await insertNextBatch()).tx);

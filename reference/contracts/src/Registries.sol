@@ -133,6 +133,8 @@ contract RevocationRegistry {
     address public immutable enclaveOperator;
 
     uint256 public root;
+    uint256 public previousRoot;  // the root before the latest revocation
+    uint64 public rootSince;      // when the latest revocation changed the root
     uint256 public nextIndex;
     uint256 public revokedCount;
     mapping(uint256 => bool) public isHistoricalRoot;
@@ -155,7 +157,9 @@ contract RevocationRegistry {
         if (msg.sender != enclaveOperator) revert NotOperator();
         uint256 idx = nextIndex;
         if (!verifier.verifyProof(a, b, c, [root, newRoot, rn, idx])) revert InvalidProof();
+        previousRoot = root;
         root = newRoot;
+        rootSince = uint64(block.timestamp);
         nextIndex = idx + 1;
         revokedCount++;
         isHistoricalRoot[newRoot] = true;
