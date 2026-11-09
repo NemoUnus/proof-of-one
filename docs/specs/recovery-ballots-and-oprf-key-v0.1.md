@@ -88,7 +88,12 @@ Whitepaper v1.0, §7.5, has the phone unblind the OPRF output and send F to the 
 - Z = r·W;
 - F = H(x, W).
 
-π_doc already proves that B is the blinded point of the signed fields. Together the two proofs show that F belongs to the document. The circuit needs two scalar multiplications and a hash, a few thousand constraints. The same applies to the document key D (whitepaper §7.5, domain 3).
+π_doc already proves that B is the blinded point of the signed fields. Together the two proofs show that F belongs to the document, provided the inputs are bound as follows (added 9 November 2026, from the second-model review of whitepaper v1.1, finding 8):
+
+- The enclave takes B from π_doc's public output, never from a separate message.
+- The enclave receives the t values Z_i with their DLEQ proofs, checks each against operator i's key share K_i on the ledger, and computes Z = Σ λ_i·Z_i itself. The phone can therefore substitute neither B nor Z.
+- π_unblind has public inputs (B, Z, F) and private inputs (r, x, W).
+- x is formed inside π_doc from the trust-list rule, the path's domain separator (1, 2 or 3) and the signed fields. Only B leaves π_doc, so the issuer, series, rule version and path are bound through B. The circuit needs two scalar multiplications and a hash, a few thousand constraints. The same applies to the document key D (whitepaper §7.5, domain 3).
 
 This gap was not among the 25 findings of the second-model review. It was found while designing §2, and it goes into whitepaper v1.1 and into the threat model.
 
