@@ -2,7 +2,7 @@
 
 *Review by a second AI model (ChatGPT), received 8 November 2026, of whitepaper v1.0 (47 pages). It is not an independent human review and does not count towards Gate 0. Every finding below was checked against the v1.0 text; all quoted passages were found as cited.*
 
-**Summary.** 25 findings: 6 high, 13 medium, 6 low. None is rejected. Four needed a design decision by the founder; all four are now decided (Decision Log #52 and #53); the rest are corrections of wording or status and go into v1.1.
+**Summary.** 25 findings: 5 high, 15 medium, 5 low. None is rejected. Four needed a design decision by the founder; all four are now decided (Decision Log #52 and #53); the rest are corrections of wording or status and go into v1.1.
 
 ## Findings that need a decision
 

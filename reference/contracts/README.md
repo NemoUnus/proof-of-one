@@ -86,8 +86,8 @@ The tests run on ganache, an in-process EVM. They use **real** Groth16 proofs fo
 | `insertBatch`, 4 leaves, with π_batch | **293,548** (was 4,205,814 with on-chain hashing) | about 400,000 per batch |
 | `revoke`, with π_revoke | **294,646** (was 4,027,982 with on-chain hashing) | — |
 | `createPoll` (subgroup checks of the tally key and 5 trustee keys, key consistency, `pollHash`, the 16 slots of the running sum) | 3,640,236 (921,874 before the tally checks) | — |
-| `vote`, a voter's first ballot | **514,047** (392,084 before the running sum) | about 420,000 |
-| `vote`, re-vote | **520,183** (374,839 before the running sum) | about 400,000 |
+| `vote`, a voter's first ballot | **522,580** (514,047 before revocations reached open polls; 392,084 before the running sum) | about 420,000 |
+| `vote`, re-vote | **528,789** (520,183 before revocations reached open polls; 374,839 before the running sum) | about 400,000 |
 | `voteBatch`, n ballots | **about 440,000 + 124,000 · n** (measured for n = 1, 2, 4, 7; was 349,000 + 101,000 · n) | — |
 | `vote`, first ballot of a poll after a revocation, proven against the previous root (computes the new `pollHash` and verifies twice) | 1,018,969 | — |
 | `publish`, with the tally proof π_tally (t = 3, 4 options) | 853,274 (227,095 with challenges; 158,145 before) | — |

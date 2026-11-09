@@ -31,7 +31,7 @@ Participation is free. Topics of sponsored polls are chosen by participants them
 |---|---|
 | [One-page summary (PDF)](docs/summary/Proof_of_One_Summary_EN.pdf) · [Markdown](docs/summary/SUMMARY.en.md) | Plain-language overview — start here |
 | [Technical brief for reviewers](docs/review/technical-brief-v0.1.md) | Claims, constructions, trust assumptions, measurements and known weak points, in 15 minutes |
-| [Whitepaper v1.0 (PDF)](docs/whitepaper/Proof_of_One_Whitepaper_v1.0_EN.pdf) · [Markdown](docs/whitepaper/Proof_of_One_Whitepaper_v1.0_EN.md) | Full design, with measured sizes and costs from the reference code, the public test network and phones: identity, cryptography, ledger, polling, governance, limits. Each property is stated as a design goal with its assumptions. Earlier versions are in [docs/whitepaper](docs/whitepaper/) |
+| [Whitepaper v1.1 (PDF)](docs/whitepaper/Proof_of_One_Whitepaper_v1.1_EN.pdf) · [Markdown](docs/whitepaper/Proof_of_One_Whitepaper_v1.1_EN.md) | Full design, with measured sizes and costs from the reference code, the public test network and phones, corrected after the [review of v1.0](docs/review/second-model-review-whitepaper-v1.0.md): identity, cryptography, ledger, polling, governance, limits. Each property is stated as a design goal with its assumptions. Earlier versions are in [docs/whitepaper](docs/whitepaper/) |
 | [Second-model review of whitepaper v0.8](docs/review/second-model-review-whitepaper-v0.8.md) | 137 points from an independent AI model and what changed in v0.9 |
 | [Threat model v0.1](docs/specs/threat-model-v0.1.md) | Adversary with the resources of a state |
 | [Ballot and enrolment spec v0.1](docs/specs/ballot-and-enrolment-v0.1.md) | Encrypted ballots, public tally, unlinkable enrolment |
