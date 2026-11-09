@@ -4,6 +4,8 @@
 
 First run of the plan in this folder on a public test network, sent by Nemo Unus from a test-only wallet.
 
+**Contract version.** The contracts deployed here are the version with result challenges and a 7-day challenge period (bytecode in `web/plan.json`). Since 9 November 2026 the reference contracts accept a result only with a tally proof and have no challenge period (Decision Log #53; [tally-circuit](../tally-circuit/)). Polls 1 and 2 finish under the deployed version: `publish.js` makes their results with the keccak challenge that version checks. `plan.js` and `plan2.js` describe this deployment and will be updated for the next one.
+
 | | |
 |---|---|
 | Network | Base Sepolia (chain id 84532) |

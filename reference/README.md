@@ -8,6 +8,7 @@ Five small packages implement the core of the protocol end to end, and four fold
 |---|---|---|
 | [`tally/`](tally/) | Encrypted one-hot ballots, nullifiers, robust trustee key generation with public complaints, voter self-verification, homomorphic tally, threshold decryption with DLEQ proofs, independent recount tool | 25 |
 | [`ballot-circuit/`](ballot-circuit/) | Zero-knowledge ballot proof π_vote (Circom, Groth16): membership, non-revocation, nullifier, eligibility with up to three nationalities, age range on the poll date, well-formed encrypted ballot, all per-poll values bound by one `pollHash` | 18 |
+| [`tally-circuit/`](tally-circuit/) | Tally proof π_tally (Circom, Groth16): every trustee's partial decryption proof, their combination and the counts, against the contract's encrypted totals; the contract accepts a result only with it | 4 |
 | [`enrolment-circuit/`](enrolment-circuit/) | Unlinkable registration proof π_reg, batch insertion proof π_batch and revocation proof π_revoke (Circom, Groth16), enclave credential issuance including added documents, registry rules | 21 |
 | [`document-circuit/`](document-circuit/) | Document-validity proof π_doc (Circom, Groth16): ICAO 9303 passive authentication of a passport chip in zero knowledge (RSA-2048, SHA-256), tree of checked document signers, expiry, attribute outputs; synthetic test passports; the trust list of country signing certificates | 20 |
 | [`phone-bench/`](phone-bench/) | Web page that measures how fast a phone makes the ballot proof | — |
@@ -19,7 +20,7 @@ Five small packages implement the core of the protocol end to end, and four fold
 | [`app/`](app/) | First piece of the voter app: "show my recorded answer" from the voter's receipt, read from the test network (Decision #45) | 2 |
 | [`relay/`](relay/) | Test ballot relay (Cloudflare Worker): submits phones' ballots with its own test coins, after the contract has checked them in a simulation | 4 cases |
 | [`test-log/`](test-log/) | Test transparency log of synthetic ballots (C2SP tlog-tiles, written by Tessera in GitHub Actions), with a browser viewer and verifier | verifier against Tessera's test log |
-| [`contracts/`](contracts/) | Solidity identity and revocation registries, polls, ballots and results; single and batched ballot submission; full on-chain flow tested with real proofs | 10 |
+| [`contracts/`](contracts/) | Solidity identity and revocation registries, polls, ballots and results checked with a tally proof; single and batched ballot submission; full on-chain flow tested with real proofs | 10 |
 
 ## How they fit together
 

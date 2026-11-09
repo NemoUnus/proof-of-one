@@ -1,6 +1,6 @@
 # On-chain tally verification v0.1
 
-*Proof of One specification. Status: draft, 3 November 2026. Schedule item 0.5-11, from the second-model review of whitepaper v0.8 (§8). Drafted by the project's AI agents; not audited.*
+*Proof of One specification. Status: draft, 3 November 2026; §6 added 9 November 2026, replacing the challenges of §3 by a tally proof (Decision Log #53). Schedule item 0.5-11, from the second-model review of whitepaper v0.8 (§8). Drafted by the project's AI agents; not audited.*
 
 ## 1. The gap
 
@@ -96,3 +96,29 @@ The running sum is the only cost every voter pays. The challenges cost about 0.5
 4. **Trustee keys vs. the tally key.** The contract checks that the first t keys combine to the tally key. That every other set of t trustees also does needs the commitments of key generation ([trustee key generation](trustee-key-generation-v0.1.md)); it is not checked on-chain. If some other set does not fit, a decryption by that set fails the count check at publication; it cannot make a wrong result pass, and the first t trustees, whose keys are checked, can always decrypt.
 5. **Breakdown cells.** With breakdowns (whitepaper 7.9), each cell has its own aggregate, and the cost of the running sum grows with the number of cells. This needs measuring together with the small-cell design (0.5-13).
 6. **Recursive aggregation.** If ballots are later aggregated by a validity proof ([ballot aggregation](ballot-aggregation-v0.1.md)), that proof can output the aggregate directly, and the per-ballot running sum can be dropped.
+
+## 6. Update, 9 November 2026: every result checked at publication
+
+*Decision Log #53, from the second-model review of whitepaper v1.0 (finding 3).*
+
+**Why.** With challenges, a wrong result became final if nobody challenged it within 7 days. Correctness depended on someone watching.
+
+**First attempt, not adopted.** Checking every trustee's proof directly in the contract costs about 2.03 million gas per proof (§4: three subgroup checks and four scalar multiplications on Baby Jubjub in Solidity). With t = 3 trustees and k = 4 options, that is 12 proofs, about 26 million gas with the combination. This is above Base's limit of 16,777,216 gas per transaction (EIP-7825), and the cost grows with the number of trustees.
+
+**Adopted: a tally proof π_tally** ([tally-circuit](../../reference/tally-circuit/)). The publisher proves in zero knowledge what §3 left to challenges: every Chaum–Pedersen proof (step 2), the Lagrange combination (step 3), and B_j = D_j + count_j·G (step 4), against the contract's own running sum (step 1). The contract builds the 38 public inputs itself: the poll id, its running totals, the counts and D_j, the keys of the t trustees (checked against the commitment from poll creation), and their Lagrange coefficients. No secret is needed, so anyone holding the published partial decryptions can make the proof.
+
+| | Challenges (§3, §4) | π_tally |
+|---|---|---|
+| A wrong result | final unless challenged within 7 days | refused at publication |
+| `publish` | 227,095 gas | 853,274 gas |
+| Time to a final result | 7 days after publication | at publication |
+| Proving | — | 137,300 constraints; 16–19 s with snarkjs on 2 server cores |
+
+**Changes.**
+
+1. The trustees' DLEQ challenge becomes Poseidon(2, pollId, j, G, PK_i, A_j, D_ij, T1_ij, T2_ij), which is cheap inside the circuit. The keccak challenge stays for the contracts deployed in Phase 1a.
+2. `challengeCombination`, `challengePartial`, `finalize` and the 7-day challenge period are removed. A result that passes is final at once. Points 1–3 of §5 lapse: a wrong result can no longer force a republication or delay, and no challenger incentives are needed.
+3. Subgroup membership is proven by giving each point as 8 times another point, since 8·E is exactly the prime-order subgroup. This is cheaper than multiplying by the group order, which the circuit's Montgomery scalar multiplication cannot do safely.
+4. The circuit is fixed at t = 3, and the reference contract accepts only that threshold. Other thresholds need their own circuit and verifier.
+
+**Still open.** The setup is TEST-ONLY (issue #7). The partial decryptions are no longer passed to the contract; they go into the published transcript, which anyone uses to re-make or re-check the proof. Who may publish (trustee signatures, §5.1) no longer affects correctness, only who pays.

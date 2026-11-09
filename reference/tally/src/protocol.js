@@ -23,7 +23,15 @@ const curve = require("./curve");
 const hash = require("./hash");
 const dkgLib = require("./dkg");
 
-async function create() {
+// opts.dleq selects the Fiat–Shamir hash of the trustees' Chaum–Pedersen proofs:
+//   "keccak"   (default) keccak256(abi.encode(...)) mod ℓ, checked by the polls contract deployed
+//              in Phase 1a, whose challenges recompute it in Solidity;
+//   "poseidon" Poseidon(2, pollId, j, G, PK_i, A, D, T1, T2), checked inside the tally proof
+//              π_tally (tally-circuit/), with which the contract verifies every result at
+//              publication (Decision Log #53).
+async function create(opts = {}) {
+  const DLEQ_HASH = opts.dleq || "keccak";
+  if (DLEQ_HASH !== "keccak" && DLEQ_HASH !== "poseidon") throw new Error("dleq must be keccak or poseidon");
   const C = await curve.init();
   const Hs = await hash.init();
   const { G, O, L, mod, add, mul, sub, eq, isValidPoint, randScalar, coords } = C;
@@ -132,6 +140,7 @@ async function create() {
   // keccak256(abi.encode(TAG_DLEQ, pollId, j, G, PK_i, Â, D, T1, T2)) mod ℓ: it binds
   // the poll, the option index and every point in the statement.
   function dleqChallenge(ctx, PKi, A, D, T1, T2) {
+    if (DLEQ_HASH === "poseidon") return H([TAG.DLEQ, ...ctx, ...[G, PKi, A, D, T1, T2].flatMap(coords)]);
     const words = [TAG.DLEQ, ...ctx, ...[G, PKi, A, D, T1, T2].flatMap(coords)].map(u256);
     return mod(BigInt(keccak(...words)));
   }
@@ -255,7 +264,7 @@ async function create() {
   return {
     curve: C, hash: Hs, nullifier, dkg, dkgProtocol, encryptBallot, reencrypt, ballotHash, createLedger, replay,
     aggregate, partialDecrypt, verifyPartial, combine, combinedD, lagrange0, modInv, discreteLog, checkResult, recount,
-    voterCheckRecorded, voterCheckCounted,
+    voterCheckRecorded, voterCheckCounted, dleqHash: DLEQ_HASH,
   };
 }
 
