@@ -14,6 +14,10 @@
   .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px 14px; margin:10px 0; }
   button { font:inherit; padding:10px 16px; border-radius:8px; border:1px solid var(--acc); background:var(--acc); color:#fff; cursor:pointer; width:100%; margin:4px 0; }
   button:disabled { opacity:.45; }
+  button.sec { background:transparent; color:var(--acc); }
+  input { font:inherit; width:100%; box-sizing:border-box; padding:8px; margin:4px 0; border-radius:8px; border:1px solid var(--line); background:var(--card); color:var(--fg); }
+  .prof { display:flex; gap:8px; align-items:center; border-bottom:1px solid var(--line); padding:6px 0; } .prof:last-child { border-bottom:0; }
+  .prof b { flex:1; } .prof button { width:auto; margin:0; padding:6px 12px; }
   select { font:inherit; width:100%; box-sizing:border-box; padding:8px; border-radius:8px; border:1px solid var(--line); background:var(--card); color:var(--fg); }
   label.opt { display:block; padding:8px 4px; border-bottom:1px solid var(--line); } label.opt:last-child { border-bottom:0; }
   .big { font-size:20px; font-weight:700; } .ok { color:var(--ok); } .bad { color:var(--bad); } .mut { color:var(--mut); font-size:13px; }
@@ -23,13 +27,22 @@
 <body>
 <main>
   <h1>Vote from your phone</h1>
-  <p class="mut">Proof of One, Phase 1a, test poll 2. Your phone encrypts your answer, proves in zero knowledge that the ballot is valid and comes from an eligible member, and keeps a private receipt. Nothing leaves the phone until you send the ballot.</p>
+  <p class="mut">Proof of One, Phase 1a test poll. Your phone encrypts your answer, proves in zero knowledge that the ballot is valid and comes from an eligible member, and keeps a private receipt. Nothing leaves the phone until you send the ballot.</p>
   <div class="warn"><b>Test network, synthetic members only.</b> The four member kits below are synthetic and published on purpose, so anyone can try. Anyone who uses the same kit can replace its ballot (up to 50 times): the latest one counts.</div>
 
-  <div class="card" id="poll">Loading test poll 2…</div>
+  <div class="card" id="poll">Loading the test poll…</div>
 
   <h2>1. Member</h2>
-  <div class="card"><select id="kit"></select></div>
+  <div class="card" id="profiles"></div>
+  <div class="card" id="pick"><select id="kit"></select>
+    <button id="addProf" class="sec">Keep this member on this phone as a profile, with its own PIN</button></div>
+  <div class="card" id="addForm" style="display:none">
+    <b>New profile</b> <span class="mut">(Decision Log #54: up to 4 members on one phone)</span><br>
+    <input id="pName" placeholder="Name shown on this phone, e.g. Mother" maxlength="24">
+    <input id="pPin" type="password" inputmode="numeric" placeholder="PIN, at least 6 digits">
+    <input id="pPin2" type="password" inputmode="numeric" placeholder="The same PIN again">
+    <button id="pSave">Save the profile</button><button id="pCancel" class="sec">Cancel</button>
+    <div id="pMsg" class="mut"></div></div>
 
   <h2>2. Your answer</h2>
   <div class="card" id="opts"></div>
@@ -84,7 +97,91 @@ const store = {  // per-viewer convenience only; the page works without it
   get(k) { try { return JSON.parse(localStorage.getItem(k) || "null"); } catch (e) { return null; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* private mode */ } },
 };
-const kit = () => plan.kits[Number($("kit").value)];
+// ---- Several members on one phone (Decision Log #54) -----------------------------------
+// Each profile holds one member's kit, encrypted with that member's own PIN (PBKDF2-SHA-256,
+// 310,000 iterations, then AES-GCM), so another user of the phone cannot open it. With more
+// than one profile the phone keeps no receipts, so people sharing it cannot see each other's
+// answers. A real app would also check the member's face before each ballot, as a deterrent
+// only; this test page has no camera step. Synthetic kits only: their secrets are published.
+const MAX_PROFILES = 4;
+let openProfile = null;   // { name, kit } while a profile is open
+const profKey = () => `poo-profiles-${plan.chainId}-${plan.contracts.ProofOfOnePolls}-${plan.pollId}`;
+const profiles = () => store.get(profKey()) || [];
+const shared = () => profiles().length > 1;
+const b64 = (u) => btoa(String.fromCharCode(...new Uint8Array(u)));
+const unb64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+async function pinKey(pin, salt) {
+  const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(pin), "PBKDF2", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey({ name: "PBKDF2", hash: "SHA-256", salt, iterations: 310000 }, base, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+}
+async function sealKit(k, pin) {
+  const salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await pinKey(pin, salt), new TextEncoder().encode(S(k)));
+  return { salt: b64(salt), iv: b64(iv), ct: b64(ct) };
+}
+async function openKit(sealed, pin) {
+  const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: unb64(sealed.iv) }, await pinKey(pin, unb64(sealed.salt)), unb64(sealed.ct));
+  return JSON.parse(new TextDecoder().decode(pt));
+}
+function renderProfiles() {
+  const list = profiles();
+  const box = $("profiles");
+  if (openProfile) {
+    box.innerHTML = `<span class="ok">Profile open: <b>${esc(openProfile.name)}</b></span>
+      <button id="pClose" class="sec">Close this profile</button>` + (shared() ? `<div class="mut">This phone holds ${list.length} profiles, so no receipt is kept after sending. On the real app the camera would first check that you are ${esc(openProfile.name)} (a deterrent, not a guarantee).</div>` : "");
+    $("pClose").onclick = closeProfile;
+    $("pick").style.display = "none";
+    return;
+  }
+  $("pick").style.display = "";
+  $("addProf").disabled = list.length >= MAX_PROFILES;
+  if (!list.length) { box.innerHTML = '<span class="mut">No profiles on this phone yet. Choose a published member below, or keep one as a profile with its own PIN.</span>'; return; }
+  box.innerHTML = `<b>Profiles on this phone</b> <span class="mut">(${list.length} of ${MAX_PROFILES})</span>` +
+    list.map((p, i) => `<div class="prof"><b>${esc(p.name)}</b><input type="password" inputmode="numeric" placeholder="PIN" id="pin${i}" style="width:7em;margin:0"><button data-open="${i}">Open</button><button class="sec" data-del="${i}">Remove</button></div>`).join("") +
+    '<span class="mut">Or vote as a published member without a profile:</span>';
+  box.querySelectorAll("[data-open]").forEach((b) => (b.onclick = () => askPin(Number(b.dataset.open))));
+  box.querySelectorAll("[data-del]").forEach((b) => (b.onclick = () => removeProfile(Number(b.dataset.del))));
+}
+let tries = 0, lockedUntil = 0;
+async function askPin(i) {
+  const p = profiles()[i];
+  if (Date.now() < lockedUntil) { alertBox(`Too many wrong PINs. Try again in ${Math.ceil((lockedUntil - Date.now()) / 1000)} s.`); return; }
+  const pin = $("pin" + i).value;
+  if (!pin) { alertBox(`Enter the PIN of ${p.name} first.`); return; }
+  try {
+    openProfile = { name: p.name, kit: await openKit(p.sealed, pin) };
+    tries = 0; ballot = null; renderProfiles();
+    ["made", "sent", "out"].forEach((id) => { $(id).style.display = "none"; });
+  } catch (e) {
+    tries++; if (tries >= 5) { lockedUntil = Date.now() + 60000; tries = 0; }
+    alertBox("Wrong PIN.");
+  }
+}
+function alertBox(t) { $("profiles").insertAdjacentHTML("beforeend", `<div class="bad">${esc(t)}</div>`); }
+function closeProfile() { openProfile = null; ballot = null; ["made", "sent", "out"].forEach((id) => { $(id).style.display = "none"; }); renderProfiles(); }
+function removeProfile(i) {
+  // two taps, without a browser dialog (some in-wallet browsers block them)
+  const list = profiles(), b = document.querySelector(`[data-del="${i}"]`);
+  if (b.dataset.sure !== "1") { b.dataset.sure = "1"; b.textContent = "Tap again to remove"; return; }
+  list.splice(i, 1); store.set(profKey(), list); renderProfiles();
+}
+async function saveProfile() {
+  const name = $("pName").value.trim(), pin = $("pPin").value, pin2 = $("pPin2").value, msgEl = $("pMsg");
+  const list = profiles();
+  if (!name) return (msgEl.textContent = "Give the profile a name.");
+  if (!/^[0-9]{6,}$/.test(pin)) return (msgEl.textContent = "The PIN must have at least 6 digits.");
+  if (pin !== pin2) return (msgEl.textContent = "The two PINs differ.");
+  if (list.length >= MAX_PROFILES) return (msgEl.textContent = `A phone holds at most ${MAX_PROFILES} profiles.`);
+  const k = plan.kits[Number($("kit").value)];
+  if (list.some((p) => p.nf === String(k.nf))) return (msgEl.textContent = "This member already has a profile on this phone.");
+  msgEl.textContent = "Encrypting…";
+  list.push({ name, nf: String(k.nf), sealed: await sealKit(k, pin) });
+  store.set(profKey(), list);
+  ["pName", "pPin", "pPin2"].forEach((id) => ($(id).value = ""));
+  $("addForm").style.display = "none"; msgEl.textContent = "";
+  renderProfiles();
+}
+const kit = () => (openProfile ? openProfile.kit : plan.kits[Number($("kit").value)]);
 const choice = () => Number((document.querySelector('input[name="opt"]:checked') || {}).value);
 const esc = (s) => String(s).replace(/[<&]/g, (c) => ({ "<": "&lt;", "&": "&amp;" }[c]));
 const S = (o) => JSON.stringify(o, (k, v) => (typeof v === "bigint" ? v.toString() : v));
@@ -93,6 +190,7 @@ async function load() {
   try {
     plan = await (await fetch(Q.get("plan") || "../../testnet/web/plan2.json", { cache: "no-store" })).json();
     $("kit").innerHTML = plan.kits.map((k, i) => `<option value="${i}">Synthetic member ${k.member}</option>`).join("");
+    renderProfiles();
     $("opts").innerHTML = [1, 2, 3, 4].map((n) => `<label class="opt"><input type="radio" name="opt" value="${n - 1}"> Option ${n}</label>`).join("");
     document.querySelectorAll('input[name="opt"]').forEach((e) => (e.onchange = () => ($("make").disabled = false)));
     const rpc = Q.get("rpc") || RPC[Number(plan.chainId)];
@@ -169,7 +267,7 @@ async function voteArgs(b, box) {
   return [plan.pollId, b.receipt.nf, b.enc.ct, prev, [p.pi_a[0], p.pi_a[1]], [[p.pi_b[0][1], p.pi_b[0][0]], [p.pi_b[1][1], p.pi_b[1][0]]], [p.pi_c[0], p.pi_c[1]]];
 }
 async function recorded(box, hash) {
-  store.set(ballot.key, { ...ballot.receipt, ct: ballot.enc.ct.map(String) });
+  if (!shared()) store.set(ballot.key, { ...ballot.receipt, ct: ballot.enc.ct.map(String) });
   const ex = EXPLORER[Number(plan.chainId)];
   box.innerHTML = `<span class="ok big">Ballot recorded</span>${ex ? `<br><a href="${ex}/tx/${hash}" target="_blank" rel="noopener">The transaction</a>` : ""}`;
   await check();
@@ -236,8 +334,10 @@ async function check() {
   const out = $("out"); out.style.display = "block"; out.innerHTML = "Checking…";
   try {
     const k = kit();
-    const rc = (ballot && ballot.k === k && store.get(ballot.key)) || store.get(`poo-receipt-${plan.chainId}-${k.nf}`);
-    if (!rc) { out.innerHTML = "This browser has no receipt for this member yet. Make and send a ballot first."; return; }
+    // On a shared phone nothing is stored: only the ballot just sent, kept in this page, can be checked.
+    const rc = shared() ? (ballot && String(ballot.k.nf) === String(k.nf) ? ballot.receipt : null)
+      : (ballot && ballot.k === k && store.get(ballot.key)) || store.get(`poo-receipt-${plan.chainId}-${k.nf}`);
+    if (!rc) { out.innerHTML = shared() ? "This phone is shared, so it keeps no receipts. A ballot can be checked only right after it is sent, before the profile is closed." : "This browser has no receipt for this member yet. Make and send a ballot first."; return; }
     const slot = await reader.ballots(plan.pollId, rc.nf);
     if (Number(slot.count) === 0) { out.innerHTML = '<span class="bad big">No ballot found</span><br>The ledger holds no ballot for this member yet.'; return; }
     const ans = PoOCheck.recordedAnswer(ethers.keccak256, rc, slot.ballotHash);
@@ -247,6 +347,9 @@ async function check() {
   } catch (e) { out.innerHTML = `<span class="bad">Error: ${esc(e.shortMessage || e.message)}</span>`; }
 }
 
+$("addProf").onclick = () => { $("addForm").style.display = "block"; };
+$("pCancel").onclick = () => { $("addForm").style.display = "none"; };
+$("pSave").onclick = saveProfile;
 $("make").onclick = make; $("send").onclick = send; $("relaySend").onclick = sendViaRelay; $("check").onclick = check;
 load();
 </script>
