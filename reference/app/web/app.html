@@ -257,13 +257,25 @@ async function voteArgs(b) {
   const p = polls[b.i], slot = await p.c.ballots(p.plan.pollId, b.receipt.nf);
   let prev = Array(16).fill(0n);
   if (Number(slot.count) > 0) {
-    const same = (ct) => PoOCheck.ballotHash(ethers.keccak256, reorder(ct)).slice(0, 58) === slot.ballotHash.toLowerCase().slice(0, 58);
-    const latest = await provider.getBlockNumber(); let ct = null;
-    for (let to = latest; !ct && to >= 0 && latest - to < 400000; to -= 10000) {
-      const ev = await p.c.queryFilter(p.c.filters.Ballot(p.plan.pollId, b.receipt.nf), Math.max(0, to - 9999), to).catch(() => []);
-      for (let j = ev.length - 1; j >= 0 && !ct; j--) { const x = ev[j].args.ciphertexts.map(String); if (same(x)) ct = x; }
+    // A changed answer names the ballot it replaces. Its ciphertexts are public: kept on this
+    // phone if it sent the ballot, otherwise read from the ledger's Ballot events, searched
+    // backwards from now to the poll's opening in windows the public node accepts, with retries.
+    const same = (ct) => ct && PoOCheck.ballotHash(ethers.keccak256, reorder(ct)).slice(0, 58) === slot.ballotHash.toLowerCase().slice(0, 58);
+    const kept = store.get(`poo-app-receipt-${p.plan.contracts.ProofOfOnePolls}-${b.receipt.nf}`);
+    let ct = kept && same(kept.ct) ? kept.ct : null;
+    if (!ct) {
+      $("sent").textContent = "This person answered before. Reading that ballot from the public record…";
+      const latest = await provider.getBlockNumber(), now = (await provider.getBlock(latest)).timestamp;
+      const g = await p.c.getPoll(p.plan.pollId);
+      const from = Math.max(0, latest - Math.ceil((now - Number(g.openTime)) / 2) - 2000);   // Base: one block every 2 s
+      const logs = async (a, z) => { for (let t = 0; t < 4; t++) { try { return await p.c.queryFilter(p.c.filters.Ballot(p.plan.pollId, b.receipt.nf), a, z); } catch (e) { await new Promise((r) => setTimeout(r, 800 * (t + 1))); } } return null; };
+      for (let to = latest; !ct && to >= from; to -= 5000) {
+        const ev = await logs(Math.max(from, to - 4999), to);
+        if (ev === null) throw new Error("The public node did not answer. Try again in a minute.");
+        for (let j = ev.length - 1; j >= 0 && !ct; j--) { const x = ev[j].args.ciphertexts.map(String); if (same(x)) ct = x; }
+      }
     }
-    if (!ct) throw new Error("This person already answered, and the public node did not return that ballot. Try again later.");
+    if (!ct) throw new Error("This person answered before, but that ballot was not found in the public record. Try again later.");
     prev = ct.map(BigInt);
   }
   const q = b.proof;
@@ -271,7 +283,7 @@ async function voteArgs(b) {
 }
 async function done(hash) {
   const p = polls[ballot.i], box = $("sent");
-  if (!shared()) store.set(`poo-app-receipt-${p.plan.contracts.ProofOfOnePolls}-${ballot.receipt.nf}`, ballot.receipt);
+  if (!shared()) store.set(`poo-app-receipt-${p.plan.contracts.ProofOfOnePolls}-${ballot.receipt.nf}`, { ...ballot.receipt, ct: ballot.enc.ct.map(String) });
   const slot = await p.c.ballots(p.plan.pollId, ballot.receipt.nf);
   const ans = PoOCheck.recordedAnswer(ethers.keccak256, ballot.receipt, slot.ballotHash);
   box.innerHTML = `<span class="ok big">Counted: option ${ans + 1}</span><br>The phone read the public record and opened the recorded ballot with its own values. <a href="${EXPLORER}/tx/${hash}" target="_blank" rel="noopener">The transaction</a>.
