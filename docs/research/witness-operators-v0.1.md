@@ -20,7 +20,7 @@ Witnesses see only checkpoints: a tree size, a root hash and a signature. They s
 
 **The Witness Network** (witness-network.org) is a community-maintained list of approved logs and witnesses, with separate testing, staging and production lists [w6].
 - Witnesses that take part pull the lists and configure themselves to cosign every approved log.
-- A log joins with a pull request that gives its verification key, its maximum number of checkpoints per day ("qpd") and a contact. A maintainer reviews it. An example is a recent test log with a qpd of 2,880, one checkpoint every 30 seconds [w7].
+- A log joins by a request to the network's maintainers that gives its origin, its verification key, its maximum number of checkpoints per day ("qpd") and a contact; a maintainer adds it to a list. *Update, 10 November 2026:* the network now asks for these requests by e-mail to its participation list, whose archive is public, and says that maintainers may ignore requests from AI agents and prefer human-to-human contact. Our request was therefore written and sent by the founder. An example is a recent test log with a qpd of 2,880, one checkpoint every 30 seconds [w7].
 - The service describes itself as experimental and a work in progress.
 
 ## 3. What this means for Proof of One
@@ -37,11 +37,13 @@ Witnesses see only checkpoints: a tree size, a root hash and a signature. They s
 |---|---|---|
 | 1. Finish the red-team review of the log specification | Now | AI team |
 | 2. Run a test ballot log (Tessera) with synthetic ballots | With the test network (activity 1.6) | AI team |
-| 3. Add it to the Witness Network **testing** list by pull request (draft below) | After step 2 | Founder, as Nemo Unus |
+| 3. Add it to the Witness Network **testing** list (request below) | Sent 10 November 2026 | Founder, as Nemo Unus |
 | 4. Measure latency, checkpoint rate and failure handling with real witnesses | After step 3 | AI team |
 | 5. Ask independent organisations to run production witnesses, enough for a 5-of-7 policy | Before the first large open poll | Founder, with the sponsor (0.14) |
 
-## 5. Draft pull request text (step 3; to be sent only after step 2 exists)
+## 5. Request (step 3)
+
+*Sent by e-mail on 10 November 2026, in the founder's words, with: origin `nemounus.github.io/proof-of-one/test-log/1`; key `nemounus.github.io/proof-of-one/test-log/1+6c8de921+AVO8MnBSYew20E2zE5lwIGQ4WGOk7BVE5fFVFfwynAUV`; qpd 24 (the log is appended by hand-started runs); testing list; a statement that the project is written with AI coding agents and that the founder reviews the work and is the contact. The earlier draft follows for reference.*
 
 > **Add Proof of One test ballot log to the testing list**
 >
