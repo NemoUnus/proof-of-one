@@ -30,6 +30,7 @@ Participation is free. Topics of sponsored polls are chosen by participants them
 | Document | Description |
 |---|---|
 | [One-page summary (PDF)](docs/summary/Proof_of_One_Summary_EN.pdf) · [Markdown](docs/summary/SUMMARY.en.md) | Plain-language overview — start here |
+| [Introduction for organisations (PDF)](docs/summary/Proof_of_One_Introduction_EN.pdf) · [Markdown](docs/summary/INTRODUCTION.en.md) | Three pages without technical terms: why it matters, what it does and does not promise, where it stands, and the advice we are asking for |
 | [Technical brief for reviewers](docs/review/technical-brief-v0.1.md) | Claims, constructions, trust assumptions, measurements and known weak points, in 15 minutes |
 | [Whitepaper v1.2 (PDF)](docs/whitepaper/Proof_of_One_Whitepaper_v1.2_EN.pdf) · [Markdown](docs/whitepaper/Proof_of_One_Whitepaper_v1.2_EN.md) | Full design, with measured sizes and costs from the reference code, the public test network and phones, corrected after the reviews of [v1.0](docs/review/second-model-review-whitepaper-v1.0.md) and [v1.1](docs/review/second-model-review-whitepaper-v1.1.md): identity, cryptography, ledger, polling, governance, limits. Each property is stated as a design goal with its assumptions. Earlier versions are in [docs/whitepaper](docs/whitepaper/) |
 | [Second-model review of whitepaper v0.8](docs/review/second-model-review-whitepaper-v0.8.md) | 137 points from an independent AI model and what changed in v0.9 |
