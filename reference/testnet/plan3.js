@@ -30,7 +30,7 @@ const E = require("../enrolment-circuit/src/enrolment");
 const ROOT = path.join(__dirname, "..");
 const SNARK_FIELD = 21888242871839275222246405745257275088548364400416034343698204186575808495617n;
 const REVOKE_ZKEY = path.join(ROOT, "enrolment-circuit", "setup", "revoke_test.zkey");
-const SECRETS = path.join(ROOT, "..", "private", "poll3-secrets.json");
+const SECRETS = process.env.POLL3_SECRETS || path.join(ROOT, "..", "private", "poll3-secrets.json");
 const art = (n) => JSON.parse(fs.readFileSync(path.join(ROOT, "contracts", "build", n + ".json"), "utf8"));
 const sp = (p) => ({ a: [p.pi_a[0], p.pi_a[1]], b: [[p.pi_b[0][1], p.pi_b[0][0]], [p.pi_b[1][1], p.pi_b[1][0]]], c: [p.pi_c[0], p.pi_c[1]] });
 const json = (o) => JSON.stringify(o, (k, v) => (typeof v === "bigint" ? v.toString() : v), 2);

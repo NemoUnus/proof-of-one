@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Proof of One — app prototype</title>
+<style>
+  :root { --bg:#f6f4ef; --fg:#14233b; --mut:#5d6672; --ok:#1e7a45; --bad:#b3261e; --acc:#1f7f84; --acc2:#b5892f; --card:#fff; --line:#e2ddd2; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0f1720; --fg:#e8edf2; --mut:#9aa7b3; --ok:#5cc98a; --bad:#ff8a80; --acc:#4fb3b8; --acc2:#d6ad55; --card:#17212c; --line:#2a3744; } }
+  * { box-sizing:border-box; }
+  body { margin:0; font:17px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background:var(--bg); color:var(--fg); }
+  header { background:var(--acc); color:#fff; padding:14px 16px 12px; position:sticky; top:0; z-index:2;
+    background-image: radial-gradient(circle at 10px 10px, rgba(255,255,255,.10) 2px, transparent 3px), linear-gradient(45deg, rgba(255,255,255,.05) 25%, transparent 25%, transparent 75%, rgba(255,255,255,.05) 75%);
+    background-size: 20px 20px, 20px 20px; }
+  header b { font-size:19px; } header .mut { color:#e3f2f2; }
+  main { max-width:560px; margin:0 auto; padding:16px 16px 80px; }
+  h2 { font-size:20px; margin:8px 0 10px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px 16px; margin:12px 0; }
+  .warn { background:#fff4e5; color:#5a3b00; border:1px solid #f0c27b; padding:10px 12px; border-radius:10px; font-size:14px; }
+  button { font:inherit; padding:12px 16px; border-radius:12px; border:1px solid var(--acc); background:var(--acc); color:#fff; cursor:pointer; width:100%; margin:6px 0; }
+  button.sec { background:transparent; color:var(--acc); } button:disabled { opacity:.45; }
+  input, select { font:inherit; width:100%; padding:12px; margin:6px 0; border-radius:12px; border:1px solid var(--line); background:var(--card); color:var(--fg); }
+  .row { display:flex; justify-content:space-between; align-items:center; gap:10px; }
+  .badge { background:var(--acc2); color:#fff; border-radius:999px; padding:2px 10px; font-size:14px; white-space:nowrap; }
+  .mut { color:var(--mut); font-size:14px; } .ok { color:var(--ok); } .bad { color:var(--bad); } .big { font-size:21px; font-weight:700; }
+  .step { display:flex; gap:10px; align-items:center; padding:6px 0; } .step i { width:22px; text-align:center; font-style:normal; }
+  .doc { border:2px solid var(--line); border-radius:12px; padding:10px 12px; margin:8px 0; cursor:pointer; } .doc.sel { border-color:var(--acc); }
+  label.opt { display:flex; gap:10px; align-items:center; padding:12px 4px; border-bottom:1px solid var(--line); } label.opt:last-child { border-bottom:0; }
+  label.opt input { width:auto; margin:0; }
+  .bar { height:22px; background:var(--acc); border-radius:6px; min-width:2px; }
+  .back { background:none; border:0; color:var(--acc); width:auto; padding:4px 0; margin:0 0 6px; }
+  pre { font-size:12px; white-space:pre-wrap; word-break:break-all; }
+</style>
+</head>
+<body>
+<header><b>Proof of One</b> <span class="mut">· app prototype · test network</span></header>
+<main id="view">Loading…</main>
+<script src="../../testnet/web/ethers.umd.min.js"></script>
+<script src="../../phone-bench/snarkjs.min.js"></script>
+<script src="check.js"></script>
+<script>
+"use strict";
+// One flow, as the real app will have it: add a person (document chip and face, then a PIN),
+// see the open polls each person may answer, answer, check the recorded answer, and see the
+// result once it is published. SYNTHETIC: the document scan is simulated and each profile gets
+// one of the published synthetic members 5–8. Voting, proofs and results are real, on Base Sepolia.
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[<&"]/g, (c) => ({ "<": "&lt;", "&": "&amp;", '"': "&quot;" }[c]));
+const S = (o) => JSON.stringify(o, (k, v) => (typeof v === "bigint" ? v.toString() : v));
+const Q = new URLSearchParams(location.search);
+const RPC = Q.get("rpc") || "https://sepolia.base.org";
+const EXPLORER = "https://sepolia.basescan.org";
+const FILES = { wasm: "../../phone-bench/ballot.wasm", zkey: "../../ballot-circuit/setup/ballot_test.zkey", vkey: "../../ballot-circuit/setup/vkey_test.json" };
+// The polls this prototype knows about. A real app reads them from the ledger.
+const POLLS = [
+  { plan: "../../testnet/web/plan2.json", title: "Test poll 2", relayOk: true },
+  { plan: "../../testnet/web/plan3.json", title: "Test poll 3 (tally proof; revocation in an open poll)", relayOk: false },
+];
+const MEMBERS = [5, 6, 7, 8];
+const DOCS = { 5: "Synthetic passport · issuer TEST · born 1990", 6: "Synthetic passport · issuer TEST · born 1985", 7: "Synthetic ID card · issuer TEST · born 1979", 8: "Synthetic passport · issuer TEST · born 2001" };
+const MAX_PROFILES = 4;
+const POLL_ABI_EXTRA = ["event Ballot(uint256 indexed pollId, uint256 indexed nf, uint256[16] ciphertexts, uint16 count)",
+  "error InvalidProof()", "error PollNotOpen()", "error RevoteCapReached()", "error BadPrevious()", "error NotInvited()"];
+const WHY = { InvalidProof: "The network refused this ballot: this person's identity has been revoked, or the poll's revocation list changed since this test kit was made.",
+  PollNotOpen: "This poll is not open.", RevoteCapReached: "This person has changed their answer too many times.", BadPrevious: "A newer ballot exists. Try again." };
+const why = (e) => (e && e.revert && WHY[e.revert.name]) || (e && (e.shortMessage || e.message)) || String(e);
+const store = {
+  get(k) { try { return JSON.parse(localStorage.getItem(k) || "null"); } catch (e) { return null; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* private mode */ } },
+};
+const KEY = "poo-app-profiles-v1";
+let polls = [], provider, files = null, relay = null, open = null; // open = { idx, name, member, kits }
+const profiles = () => store.get(KEY) || [];
+const shared = () => profiles().length > 1;
+
+// ---- PIN encryption of a profile (PBKDF2-SHA-256, 310,000 rounds, AES-GCM) -----------------
+const b64 = (u) => btoa(String.fromCharCode(...new Uint8Array(u)));
+const unb64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+async function pinKey(pin, salt) {
+  const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(pin), "PBKDF2", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey({ name: "PBKDF2", hash: "SHA-256", salt, iterations: 310000 }, base, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+}
+async function seal(obj, pin) {
+  const salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await pinKey(pin, salt), new TextEncoder().encode(S(obj)));
+  return { salt: b64(salt), iv: b64(iv), ct: b64(ct) };
+}
+async function unseal(s, pin) {
+  return JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv: unb64(s.iv) }, await pinKey(pin, unb64(s.salt)), unb64(s.ct))));
+}
+
+// ---- ledger -----------------------------------------------------------------------------
+async function load() {
+  provider = new ethers.JsonRpcProvider(RPC, 84532, { staticNetwork: true });
+  for (const p of POLLS) {
+    const plan = await (await fetch(p.plan, { cache: "no-store" })).json();
+    const c = new ethers.Contract(plan.contracts.ProofOfOnePolls, [...plan.abi.ProofOfOnePolls, ...POLL_ABI_EXTRA.filter((x) => !plan.abi.ProofOfOnePolls.some((a) => x.includes(" " + a.name + "(")))], provider);
+    polls.push({ ...p, plan, c });
+  }
+  try { relay = (await (await fetch("config.json", { cache: "no-store" })).json()).relay || null; } catch (e) { relay = null; }
+  home();
+}
+async function pollStatus(p) {
+  const now = BigInt((await provider.getBlock("latest")).timestamp);
+  const g = await p.c.getPoll(p.plan.pollId);
+  const st = Number(g.state);
+  if (st === 0) return { kind: "none" };
+  if (now < g.openTime) return { kind: "soon", g };
+  if (now < g.closeTime && st === 1) return { kind: "open", g, left: Number(g.closeTime - now) };
+  if (st === 2 || st === 3) return { kind: "result", g, r: await p.c.getResult(p.plan.pollId), final: st === 3 };
+  return { kind: "closed", g };
+}
+// Whether a member may answer: the rules every poll states (age, document validity, nationality).
+function eligible(g, kit) {
+  const i = kit.input, bd = BigInt(i.birthDay);
+  if (bd > BigInt(g.maxBirthDay) || bd < BigInt(g.minBirthDay)) return false;
+  const docs = i.nat.map((n, j) => ({ nat: BigInt(n), exp: BigInt(i.exp[j]) })).filter((d) => d.nat > 0n);
+  return docs.some((d) => d.exp >= BigInt(g.minExpiryMonth) && (BigInt(g.requiredNat) === 0n || d.nat === BigInt(g.requiredNat)));
+}
+const human = (s) => (s > 86400 ? `${Math.floor(s / 86400)} days` : s > 3600 ? `${Math.floor(s / 3600)} hours` : `${Math.max(1, Math.floor(s / 60))} minutes`);
+
+// ---- screens ----------------------------------------------------------------------------
+function home() {
+  const list = profiles();
+  let h = `<div class="warn"><b>Prototype on a test network.</b> The document scan is simulated, and every person is one of four published synthetic test members. Never use a real document here.</div>`;
+  if (!list.length) {
+    h += `<h2>Welcome</h2><div class="card">Proof of One lets you answer polls once, privately, and check that your answer was counted. Nobody, including the people who run it, can see what you answered.
+      <p class="mut">It does not hide from someone holding your unlocked phone that you took part. Read more in the introduction on the project page.</p></div>`;
+  } else {
+    h += `<h2>People on this phone <span class="mut">(${list.length} of ${MAX_PROFILES})</span></h2>`;
+    list.forEach((p, i) => (h += `<div class="card"><div class="row"><b>${esc(p.name)}</b><span class="badge" id="b${i}">…</span></div>
+      <input type="password" inputmode="numeric" id="pin${i}" placeholder="${esc(p.name)}'s PIN"><button data-open="${i}">Open</button><div id="m${i}" class="bad"></div></div>`));
+    if (shared()) h += `<p class="mut">This phone is shared, so it keeps no receipts of answers.</p>`;
+  }
+  h += `<button id="add" ${list.length >= MAX_PROFILES ? "disabled" : ""} class="${list.length ? "sec" : ""}">Add a person (scan their passport or ID card)</button>`;
+  $("view").innerHTML = h;
+  $("add").onclick = addPerson;
+  document.querySelectorAll("[data-open]").forEach((b) => (b.onclick = () => openProfile(Number(b.dataset.open))));
+  list.forEach((p, i) => countOpen(p.member).then((n) => { const e = $("b" + i); if (e) e.textContent = n ? `${n} open poll${n > 1 ? "s" : ""}` : "no open polls"; }));
+}
+// The number of open polls a member may answer. It needs no PIN: eligibility uses the public
+// rules and the member number kept beside the profile, as a notification would.
+async function countOpen(member) {
+  let n = 0;
+  for (const p of polls) {
+    const kit = p.plan.kits.find((k) => k.member === member); if (!kit) continue;
+    const s = await pollStatus(p).catch(() => ({ kind: "none" }));
+    if (s.kind === "open" && eligible(s.g, kit)) n++;
+  }
+  return n;
+}
+
+// Add a person: choose the (synthetic) document, read the chip, check the face, set a PIN.
+function addPerson() {
+  const used = profiles().map((p) => p.member);
+  let h = `<button class="back" id="bk">← Back</button><h2>Add a person</h2>
+    <div class="card"><b>1. The document</b><p class="mut">On a real phone you hold the passport or ID card to the back of the phone. Here, choose a synthetic document:</p>`;
+  MEMBERS.forEach((m) => (h += `<div class="doc ${used.includes(m) ? "" : ""}" data-m="${m}" style="${used.includes(m) ? "opacity:.4;pointer-events:none" : ""}">${DOCS[m]}<br><span class="mut">synthetic member ${m}${used.includes(m) ? " · already on this phone" : ""}</span></div>`));
+  h += `</div><div class="card" id="scan" style="display:none"></div>`;
+  $("view").innerHTML = h; $("bk").onclick = home;
+  document.querySelectorAll(".doc").forEach((d) => (d.onclick = () => { document.querySelectorAll(".doc").forEach((x) => x.classList.remove("sel")); d.classList.add("sel"); scan(Number(d.dataset.m)); }));
+}
+async function scan(member) {
+  const box = $("scan"); box.style.display = "block";
+  const steps = ["Reading the chip", "Checking the issuing state's signature", "Checking that the document is valid and not expired", "Live face check against the chip photo", "Checking that this person has not joined before", "Creating an anonymous membership"];
+  box.innerHTML = `<b>2. Reading and checking</b>` + steps.map((s, i) => `<div class="step" id="s${i}"><i>○</i>${s}</div>`).join("") + `<p class="mut">Simulated in this prototype. In the app, the chip is read over NFC, the face is matched on the phone, and only an anonymous commitment is registered.</p>`;
+  for (let i = 0; i < steps.length; i++) { await new Promise((r) => setTimeout(r, 450)); $("s" + i).innerHTML = `<i class="ok">✓</i>${steps[i]}`; }
+  box.insertAdjacentHTML("beforeend", `<b>3. Name and PIN</b>
+    <input id="nm" placeholder="Name shown on this phone, e.g. Mother" maxlength="24">
+    <input id="p1" type="password" inputmode="numeric" placeholder="PIN, at least 6 digits">
+    <input id="p2" type="password" inputmode="numeric" placeholder="The same PIN again">
+    <button id="sv">Save</button><div id="er" class="bad"></div>`);
+  $("sv").onclick = async () => {
+    const name = $("nm").value.trim(), pin = $("p1").value;
+    if (!name) return ($("er").textContent = "Give a name.");
+    if (!/^[0-9]{6,}$/.test(pin)) return ($("er").textContent = "The PIN must have at least 6 digits.");
+    if (pin !== $("p2").value) return ($("er").textContent = "The two PINs differ.");
+    $("er").textContent = ""; $("sv").disabled = true; $("sv").textContent = "Encrypting…";
+    const kits = {}; polls.forEach((p, i) => { const k = p.plan.kits.find((x) => x.member === member); if (k) kits[i] = k; });
+    const list = profiles(); list.push({ name, member, sealed: await seal(kits, pin) }); store.set(KEY, list);
+    home();
+  };
+}
+let tries = 0, lockedUntil = 0;
+async function openProfile(i) {
+  const p = profiles()[i], pin = $("pin" + i).value;
+  if (Date.now() < lockedUntil) return ($("m" + i).textContent = `Too many wrong PINs. Wait ${Math.ceil((lockedUntil - Date.now()) / 1000)} s.`);
+  try { open = { idx: i, name: p.name, member: p.member, kits: await unseal(p.sealed, pin) }; tries = 0; person(); }
+  catch (e) { tries++; if (tries >= 5) { lockedUntil = Date.now() + 60000; tries = 0; } $("m" + i).textContent = "Wrong PIN."; }
+}
+async function person() {
+  $("view").innerHTML = `<button class="back" id="bk">← Close ${esc(open.name)}'s profile</button><h2>${esc(open.name)}'s polls</h2><div id="pl">Reading the ledger…</div>`;
+  $("bk").onclick = () => { open = null; home(); };
+  let h = "";
+  for (const [i, p] of polls.entries()) {
+    const kit = open.kits[i]; if (!kit) continue;
+    const s = await pollStatus(p).catch(() => ({ kind: "none" }));
+    if (s.kind === "none") continue;
+    const ok = s.g && eligible(s.g, kit);
+    const label = s.kind === "open" ? `<span class="badge">open · closes in ${human(s.left)}</span>` : s.kind === "result" ? `<span class="badge" style="background:var(--ok)">result${s.final ? "" : " (not yet final)"}</span>` : s.kind === "soon" ? `<span class="badge">opens soon</span>` : `<span class="badge" style="background:var(--mut)">closed · result not yet published</span>`;
+    h += `<div class="card"><div class="row"><b>${esc(p.title)}</b></div>${label}
+      <p class="mut">${ok ? "You may answer this poll." : "This poll's rules (age, document, nationality) do not include you."}</p>
+      ${s.kind === "open" && ok ? `<button data-vote="${i}">Answer</button>` : ""}${s.kind === "result" ? `<button class="sec" data-res="${i}">See the result</button>` : ""}</div>`;
+  }
+  $("pl").innerHTML = h || `<div class="card">No polls yet.</div>`;
+  document.querySelectorAll("[data-vote]").forEach((b) => (b.onclick = () => answer(Number(b.dataset.vote))));
+  document.querySelectorAll("[data-res]").forEach((b) => (b.onclick = () => result(Number(b.dataset.res))));
+}
+async function result(i) {
+  const p = polls[i], s = await pollStatus(p), counts = s.r.counts.map(Number), tot = counts.reduce((a, b) => a + b, 0);
+  let h = `<button class="back" id="bk">← ${esc(open.name)}'s polls</button><h2>${esc(p.title)}: result</h2><div class="card">`;
+  counts.forEach((c, j) => (h += `<div style="margin:8px 0"><div class="row"><span>Option ${j + 1}</span><b>${c}</b></div><div class="bar" style="width:${tot ? (100 * c) / tot : 0}%"></div></div>`));
+  h += `<p class="mut">${tot} participants. ${s.final ? "Final: checked by the contract." : "Published; becomes final after the check period of this older contract."} Anyone can recount these totals from the public ledger.</p></div>`;
+  $("view").innerHTML = h; $("bk").onclick = person;
+}
+
+// ---- answering -------------------------------------------------------------------------
+let ballot = null;
+function answer(i) {
+  const p = polls[i];
+  let h = `<button class="back" id="bk">← ${esc(open.name)}'s polls</button><h2>${esc(p.title)}</h2>
+    <div class="card"><b>Your answer</b>${[1, 2, 3, 4].map((n) => `<label class="opt"><input type="radio" name="o" value="${n - 1}"> Option ${n}</label>`).join("")}</div>
+    <div class="card mut">Before each answer the app checks ${esc(open.name)}'s face against the enrolment, as a deterrent; not in this prototype.</div>
+    <button id="mk" disabled>Make the ballot (encrypt and prove on this phone)</button><div class="card" id="made" style="display:none"></div>
+    <button id="rs" disabled ${p.relayOk && relay ? "" : "style='display:none'"}>Send (no wallet needed)</button>
+    <button id="ws" disabled class="${p.relayOk && relay ? "sec" : ""}">Send with a test wallet</button>
+    <div class="card" id="sent" style="display:none"></div>`;
+  $("view").innerHTML = h; $("bk").onclick = person;
+  document.querySelectorAll('input[name="o"]').forEach((e) => (e.onchange = () => ($("mk").disabled = false)));
+  $("mk").onclick = () => make(i); $("rs").onclick = () => sendRelay(i); $("ws").onclick = () => sendWallet(i);
+}
+async function loadFiles() {
+  if (files) return files;
+  const get = async (u) => { const r = await fetch(u); if (!r.ok) throw new Error("could not load " + u); return new Uint8Array(await r.arrayBuffer()); };
+  const [wasm, zkey, vkey] = await Promise.all([get(FILES.wasm), get(FILES.zkey), fetch(FILES.vkey).then((r) => r.json())]);
+  return (files = { wasm, zkey, vkey });
+}
+async function make(i) {
+  const box = $("made"), k = open.kits[i], c = Number(document.querySelector('input[name="o"]:checked').value);
+  box.style.display = "block"; $("mk").disabled = true;
+  try {
+    box.textContent = "Downloading the proof files (about 24 MB, once)…";
+    const f = await loadFiles();
+    box.textContent = "Encrypting and proving…";
+    const t0 = performance.now();
+    const enc = PoOCheck.encrypt(k.PK, k.k, c);
+    const input = { ...k.input, CA: enc.CA.map((p) => p.map(String)), CB: enc.CB.map((p) => p.map(String)), v: Array.from({ length: k.k }, (_, j) => (j === c ? "1" : "0")), r: enc.r.map(String) };
+    const { proof, publicSignals } = await snarkjs.groth16.fullProve(input, { type: "mem", data: f.wasm }, { type: "mem", data: f.zkey });
+    if (!(await snarkjs.groth16.verify(f.vkey, publicSignals, proof))) throw new Error("the proof did not verify on this phone");
+    ballot = { i, k, c, enc, proof, receipt: { pollId: String(k.pollId), nf: String(k.nf), PK: k.PK.map(String), r: enc.r.map(String) } };
+    box.innerHTML = `<span class="ok big">Ready</span><br>Encrypted and proved in ${((performance.now() - t0) / 1000).toFixed(1)} s. Nobody can read it; only the poll's totals are ever unlocked.`;
+    $("rs").disabled = false; $("ws").disabled = false;
+  } catch (e) { box.innerHTML = `<span class="bad">${esc(e.message)}</span>`; $("mk").disabled = false; }
+}
+function reorder(ct) { const w = ct.map(BigInt), o = []; for (let j = 0; j < 4; j++) o.push(w[2 * j], w[2 * j + 1], w[8 + 2 * j], w[8 + 2 * j + 1]); return o; }
+async function voteArgs(b) {
+  const p = polls[b.i], slot = await p.c.ballots(p.plan.pollId, b.receipt.nf);
+  let prev = Array(16).fill(0n);
+  if (Number(slot.count) > 0) {
+    const same = (ct) => PoOCheck.ballotHash(ethers.keccak256, reorder(ct)).slice(0, 58) === slot.ballotHash.toLowerCase().slice(0, 58);
+    const latest = await provider.getBlockNumber(); let ct = null;
+    for (let to = latest; !ct && to >= 0 && latest - to < 400000; to -= 10000) {
+      const ev = await p.c.queryFilter(p.c.filters.Ballot(p.plan.pollId, b.receipt.nf), Math.max(0, to - 9999), to).catch(() => []);
+      for (let j = ev.length - 1; j >= 0 && !ct; j--) { const x = ev[j].args.ciphertexts.map(String); if (same(x)) ct = x; }
+    }
+    if (!ct) throw new Error("This person already answered, and the public node did not return that ballot. Try again later.");
+    prev = ct.map(BigInt);
+  }
+  const q = b.proof;
+  return [p.plan.pollId, b.receipt.nf, b.enc.ct, prev, [q.pi_a[0], q.pi_a[1]], [[q.pi_b[0][1], q.pi_b[0][0]], [q.pi_b[1][1], q.pi_b[1][0]]], [q.pi_c[0], q.pi_c[1]]];
+}
+async function done(hash) {
+  const p = polls[ballot.i], box = $("sent");
+  if (!shared()) store.set(`poo-app-receipt-${p.plan.contracts.ProofOfOnePolls}-${ballot.receipt.nf}`, ballot.receipt);
+  const slot = await p.c.ballots(p.plan.pollId, ballot.receipt.nf);
+  const ans = PoOCheck.recordedAnswer(ethers.keccak256, ballot.receipt, slot.ballotHash);
+  box.innerHTML = `<span class="ok big">Counted: option ${ans + 1}</span><br>The phone read the public record and opened the recorded ballot with its own values. <a href="${EXPLORER}/tx/${hash}" target="_blank" rel="noopener">The transaction</a>.
+    <p class="mut">${shared() ? "This phone is shared, so it keeps no receipt." : "A private receipt is kept on this phone for 30 days."}</p>`;
+  $("rs").disabled = true; $("ws").disabled = true;
+}
+async function sendRelay() {
+  const box = $("sent"); box.style.display = "block"; box.textContent = "Sending…";
+  try {
+    const [pollId, nf, ct, prev, a, b, c] = (await voteArgs(ballot)).map((x) => JSON.parse(S(x)));
+    const r = await fetch(relay, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ pollId: String(pollId), nf: String(nf), ct, prev, a, b, c }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error("The relay refused it: " + (j.error || r.status));
+    box.textContent = "Submitted. Waiting for it to be included…";
+    const rc = await provider.waitForTransaction(j.tx, 1, 120000);
+    if (!rc || rc.status !== 1) throw new Error("The transaction failed or was not included in 2 minutes.");
+    await done(j.tx);
+  } catch (e) { box.innerHTML = `<span class="bad">${esc(why(e))}</span>`; }
+}
+async function sendWallet() {
+  const box = $("sent"); box.style.display = "block";
+  try {
+    if (!window.ethereum) throw new Error("No wallet in this browser. Open the page in a test wallet's browser, or use “Send”.");
+    const bp = new ethers.BrowserProvider(window.ethereum); await bp.send("eth_requestAccounts", []);
+    if (Number((await bp.getNetwork()).chainId) !== 84532) await bp.send("wallet_switchEthereumChain", [{ chainId: "0x14a34" }]);
+    const p = polls[ballot.i], c = p.c.connect(await bp.getSigner()), args = await voteArgs(ballot);
+    await c.vote.staticCall(...args);
+    box.textContent = "Approve the transaction in your wallet…";
+    const tx = await c.vote(...args); box.textContent = "Sent. Waiting for it to be included…";
+    const rc = await tx.wait(); if (rc.status !== 1) throw new Error("The transaction failed.");
+    await done(tx.hash);
+  } catch (e) { box.innerHTML = `<span class="bad">${esc(why(e))}</span>`; }
+}
+load().catch((e) => ($("view").innerHTML = `<div class="card bad">Could not start: ${esc(e.message)}</div>`));
+</script>
+</body>
+</html>
