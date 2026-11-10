@@ -63,3 +63,21 @@ After the close, the encrypted totals and ballot chain shown by the page go to [
 
 - **Wallet warning.** MetaMask flagged the page (served from `github.io`) as possibly deceptive, and marked each transaction as a high-risk request. Each request was checked before it was confirmed: a contract deployment or a call, no change to the wallet’s assets, and a fee of a few cents at mainnet prices. The page is open source in this folder. A report to MetaMask asking for a review of the warning is still to be sent.
 - **Test coins** came from a faucet that asks only for an address and a captcha.
+
+## Deployment 2 and test poll 3 (from 10 November 2026)
+
+The contracts changed since the first deployment go on the test network: results are accepted only with a tally proof and are final at once (Decision Log #53), and ballots prove non-revocation against the current revocation root, so a revocation reaches polls already open (Decision Log #52). The identity registry with its 8 synthetic members, the ballot verifiers and the Poseidon contracts of the first deployment are reused.
+
+| Step | What | When |
+|---|---|---|
+| 1–3 | Deploy RevocationRegistry, TallyVerifier and ProofOfOnePolls | Now |
+| 4 | Create test poll 3 (poll id 1 of the new polls contract; 4 options; 7 days), with published kits for members 5–8 | Now |
+| — | Members 5–8 vote from phones: `reference/app/web/vote.html?plan=../../testnet/web/plan3.json` | While the poll is open |
+| 5 | Revoke member 8. The page waits until member 8 has voted. After 10 minutes, member 8's ballots are refused | After member 8 has voted |
+| — | Publish the result with the tally proof (`publish.js`, which now also handles `plan3.json`); final at once | After the close |
+
+Open the page as `reference/testnet/web/index.html?plan=plan3.json`. The plan assumes the wallet has sent 26 transactions. If it has sent another number, the page says so before anything is sent, and the plan is made again for that number.
+
+Rehearsed on a local chain with deployment 1 and poll 2 replayed first (`node test/plan3.e2e.js web/plan.json web/plan2.json`). Results: deployment 397,258 + 1,628,104 + 3,753,741 gas; poll creation 3,704,914; ballots about 523,000 (557,000 for the first); member 8's re-vote accepted within the grace and refused after it; result 1 · 2 · 1 · 0 published with the tally proof for 853,284 gas, final at once.
+
+Known limit: after the revocation, the other members' published kits still carry the revocation path of the old root, so their re-votes are refused after the grace. The app does not yet rebuild the revocation path from the ledger (implementation note N33).

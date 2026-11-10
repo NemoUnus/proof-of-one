@@ -17,6 +17,7 @@ const { ethers } = require("../contracts/node_modules/ethers");
 const { create } = require("../tally/src/protocol");
 
 async function makePublish(plan, secrets, state) {
+  if (plan.tally === "proof") return makePublishWithProof(plan, secrets, state);
   const P = await create();
   const C = P.curve, pt = (X) => C.coords(X);
   const k = 4, pollId = BigInt(plan.pollId);
@@ -43,6 +44,44 @@ async function makePublish(plan, secrets, state) {
         data: iface.encodeFunctionData("publish", [pollId, result, partials.map(toP)]), note: "waitUntilClosed", check: { type: "pollState", min: 2 } },
       { step: 2, kind: "call", name: "Finalize the result (after the 7-day challenge period)", to: plan.contracts.ProofOfOnePolls,
         data: iface.encodeFunctionData("finalize", [pollId]), note: "waitUntilFinal", check: { type: "pollState", min: 3 } },
+    ].map(S),
+  };
+}
+
+// Deployment 2 (plan3.json): the contract accepts a result only with the tally proof π_tally,
+// and it is final at once. The trustees' DLEQ proofs use the Poseidon challenge; the proof is
+// made here from the published partial decryptions (no secret is needed for that step).
+async function makePublishWithProof(plan, secrets, state) {
+  const snarkjs = require("../ballot-circuit/node_modules/snarkjs");
+  const { tallyInput } = require("../tally-circuit/src/input");
+  const P = await create({ dleq: "poseidon" });
+  const C = P.curve, pt = (X) => C.coords(X);
+  const k = 4, pollId = BigInt(plan.pollId);
+  if (BigInt(secrets.pollId) !== pollId || secrets.dleq !== "poseidon") throw new Error("secrets are for another poll");
+  const pts = state.aggregate.map((p) => C.fromJSON(p.map(String)));
+  const agg = Array.from({ length: k }, (_, j) => ({ A: pts[j], B: pts[k + j] }));
+  const shares = secrets.shares.slice(0, 3).map((s) => ({ index: s.index, x: BigInt(s.x) }));
+  const publicShares = secrets.publicShares.map((s) => ({ index: s.index, PK: C.fromJSON(s.PK) }));
+  const partials = shares.map((sh) => ({ index: sh.index, parts: P.partialDecrypt(sh, publicShares[sh.index - 1].PK, agg, pollId) }));
+  const counts = P.combine(agg, partials, 3, Number(state.distinctVoters));
+  const D = P.combinedD(partials, 3, k);
+  const TALLY = path.join(__dirname, "..", "tally-circuit");
+  const { proof } = await snarkjs.groth16.fullProve(tallyInput(P, { pollId, agg, publicShares, partials, counts }),
+    path.join(TALLY, "build", "tally_js", "tally.wasm"), path.join(TALLY, "setup", "tally_test.zkey"));
+  const a = [proof.pi_a[0], proof.pi_a[1]], b = [[proof.pi_b[0][1], proof.pi_b[0][0]], [proof.pi_b[1][1], proof.pi_b[1][0]]], c = [proof.pi_c[0], proof.pi_c[1]];
+  const result = { counts, finalBallotChain: state.ballotChain, transcriptHash: ethers.ZeroHash, archiveHash: ethers.ZeroHash, D: D.map(pt), publishedAt: 0 };
+  const keys = secrets.publicShares.map((s) => s.PK);
+  const iface = new ethers.Interface(plan.abi.ProofOfOnePolls);
+  const S = (v) => JSON.parse(JSON.stringify(v, (_, x) => (typeof x === "bigint" ? x.toString() : x)));
+  if (globalThis.curve_bn128) await globalThis.curve_bn128.terminate();
+  return {
+    title: `Proof of One — Phase 1a: publish the result of test poll 3 (poll id ${pollId}), with the tally proof`,
+    warning: plan.warning, chainId: plan.chainId, deployer: plan.deployer, pollId: plan.pollId, contracts: plan.contracts,
+    expectedCounts: counts.map(String), abi: plan.abi,
+    partials: S(partials.map((q) => ({ index: q.index, parts: q.parts.map((x) => ({ D: pt(x.D), T1: pt(x.proof.T1), T2: pt(x.proof.T2), z: x.proof.z })) }))),
+    txs: [
+      { step: 1, kind: "call", name: `Publish the result of poll ${pollId} with its tally proof (final at once)`, to: plan.contracts.ProofOfOnePolls,
+        data: iface.encodeFunctionData("publish", [pollId, result, partials.map((q) => q.index), keys, a, b, c]), note: "waitUntilClosed", check: { type: "pollState", min: 3 } },
     ].map(S),
   };
 }

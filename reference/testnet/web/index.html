@@ -101,6 +101,7 @@ async function isDone(t) {
   if (c.type === "leafCount") return (await identity.leafCount()) >= BigInt(c.min);
   if (c.type === "pollCount") return (await polls.pollCount()) >= BigInt(c.min);
   if (c.type === "distinctVoters") return (await polls.pollCount()) >= BigInt(plan.pollId) && (await polls.distinctVoters(plan.pollId)) >= BigInt(c.min);
+  if (c.type === "revokedCount") return (await code(plan.contracts.RevocationRegistry)) && (await new ethers.Contract(plan.contracts.RevocationRegistry, ["function revokedCount() view returns (uint256)"], provider).revokedCount()) >= BigInt(c.min);
   if (c.type === "pollState") return (await polls.pollCount()) >= BigInt(plan.pollId) && Number((await polls.getPoll(plan.pollId)).state) >= c.min && Number((await polls.getPoll(plan.pollId)).state) !== 5;
   return false;
 }
@@ -139,6 +140,10 @@ async function waitReason(t) {
   if (t.note === "waitUntilClosed") {
     const p = await polls.getPoll(plan.pollId), now = await chainNow();
     if (now < Number(p.closeTime) + 30) return `Waiting for the poll to close: ${new Date(Number(p.closeTime) * 1000).toLocaleString()}. Come back after that time.`;
+  }
+  if (t.waitForBallot) {
+    const b = await polls.ballots(plan.pollId, t.waitForBallot);
+    if (BigInt(b.ballotHash) === 0n) return `Step ${t.step} waits until member 8 has voted in this poll (reference/app/web/vote.html). Then press "Connect wallet" again.`;
   }
   if (t.note === "waitUntilFinal") {
     const r = await polls.getResult(plan.pollId), now = await chainNow();
