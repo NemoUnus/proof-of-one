@@ -76,7 +76,7 @@ The contracts changed since the first deployment go on the test network: results
 | 5 | Revoke member 8. The page waits until member 8 has voted. After 10 minutes, member 8's ballots are refused | After member 8 has voted |
 | — | Publish the result with the tally proof (`publish.js`, which now also handles `plan3.json`); final at once | After the close |
 
-Open the page as `reference/testnet/web/index.html?plan=plan3.json`. The plan assumes the wallet has sent 26 transactions. If it has sent another number, the page says so before anything is sent, and the plan is made again for that number.
+Open the page as `reference/testnet/web/index.html?plan=plan3.json`. The plan starts at the wallet's 13th transaction (12 sent before; the first guess, 26, was refused by the page before anything was sent, as designed).
 
 Rehearsed on a local chain with deployment 1 and poll 2 replayed first (`node test/plan3.e2e.js web/plan.json web/plan2.json`). Results: deployment 397,258 + 1,628,104 + 3,753,741 gas; poll creation 3,704,914; ballots about 523,000 (557,000 for the first); member 8's re-vote accepted within the grace and refused after it; result 1 · 2 · 1 · 0 published with the tally proof for 853,284 gas, final at once.
 
