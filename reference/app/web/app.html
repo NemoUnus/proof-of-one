@@ -57,6 +57,10 @@ const POLLS = [
   { plan: "../../testnet/web/plan3.json", title: "Test poll 3 (tally proof; revocation in an open poll)", relayOk: false },
 ];
 const MEMBERS = [5, 6, 7, 8];
+// Public nodes tried in turn for log queries (the first one is also used for everything else).
+const LOG_RPCS = Q.get("rpc") ? [Q.get("rpc")] : ["https://sepolia.base.org", "https://base-sepolia-rpc.publicnode.com", "https://base-sepolia.drpc.org"];
+let _logNodes = null;
+const logNodes = () => (_logNodes ||= LOG_RPCS.map((u) => new ethers.JsonRpcProvider(u, 84532, { staticNetwork: true })));
 const DOCS = { 5: "Synthetic passport · issuer TEST · born 1990", 6: "Synthetic passport · issuer TEST · born 1985", 7: "Synthetic ID card · issuer TEST · born 1979", 8: "Synthetic passport · issuer TEST · born 2001" };
 const MAX_PROFILES = 4;
 const POLL_ABI_EXTRA = ["event Ballot(uint256 indexed pollId, uint256 indexed nf, uint256[16] ciphertexts, uint16 count)",
@@ -268,11 +272,28 @@ async function voteArgs(b) {
       const latest = await provider.getBlockNumber(), now = (await provider.getBlock(latest)).timestamp;
       const g = await p.c.getPoll(p.plan.pollId);
       const from = Math.max(0, latest - Math.ceil((now - Number(g.openTime)) / 2) - 2000);   // Base: one block every 2 s
-      const logs = async (a, z) => { for (let t = 0; t < 4; t++) { try { return await p.c.queryFilter(p.c.filters.Ballot(p.plan.pollId, b.receipt.nf), a, z); } catch (e) { await new Promise((r) => setTimeout(r, 800 * (t + 1))); } } return null; };
-      for (let to = latest; !ct && to >= from; to -= 5000) {
-        const ev = await logs(Math.max(from, to - 4999), to);
-        if (ev === null) throw new Error("The public node did not answer. Try again in a minute.");
-        for (let j = ev.length - 1; j >= 0 && !ct; j--) { const x = ev[j].args.ciphertexts.map(String); if (same(x)) ct = x; }
+      // Public nodes limit log queries in different ways (range, rate). Each window is tried on
+      // several public nodes, and halved if refused, down to 500 blocks.
+      const topic = p.c.interface.getEvent("Ballot").topicHash;
+      const filter = { address: p.plan.contracts.ProofOfOnePolls, topics: [topic, ethers.toBeHex(BigInt(p.plan.pollId), 32), ethers.toBeHex(BigInt(b.receipt.nf), 32)] };
+      let lastErr = "";
+      const logs = async (a, z) => {
+        for (const n of logNodes()) {
+          for (let t = 0; t < 2; t++) {
+            try { return await n.getLogs({ ...filter, fromBlock: a, toBlock: z }); }
+            catch (e) { lastErr = (e.shortMessage || e.message || "").slice(0, 120); await new Promise((r) => setTimeout(r, 600)); }
+          }
+        }
+        return null;
+      };
+      let win = 5000;
+      for (let to = latest; !ct && to >= from; ) {
+        const a = Math.max(from, to - win + 1), ev = await logs(a, to);
+        if (ev === null) { if (win > 500) { win = Math.floor(win / 2); continue; } throw new Error("The public nodes did not answer (" + lastErr + "). Try again in a minute."); }
+        for (let j = ev.length - 1; j >= 0 && !ct; j--) {
+          const x = p.c.interface.parseLog(ev[j]).args.ciphertexts.map(String); if (same(x)) ct = x;
+        }
+        to = a - 1;
       }
     }
     if (!ct) throw new Error("This person answered before, but that ballot was not found in the public record. Try again later.");
