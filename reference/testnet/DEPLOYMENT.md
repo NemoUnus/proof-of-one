@@ -81,3 +81,14 @@ Open the page as `reference/testnet/web/index.html?plan=plan3.json`. The plan st
 Rehearsed on a local chain with deployment 1 and poll 2 replayed first (`node test/plan3.e2e.js web/plan.json web/plan2.json`). Results: deployment 397,258 + 1,628,104 + 3,753,741 gas; poll creation 3,704,914; ballots about 523,000 (557,000 for the first); member 8's re-vote accepted within the grace and refused after it; result 1 · 2 · 1 · 0 published with the tally proof for 853,284 gas, final at once.
 
 Known limit: after the revocation, the other members' published kits still carry the revocation path of the old root, so their re-votes are refused after the grace. The app does not yet rebuild the revocation path from the ledger (implementation note N33).
+
+### What happened on the test network (10 November 2026, times in UTC+4)
+
+| Time | Event |
+|---|---|
+| 17:13–17:21 | Steps 1–4 sent: contracts deployed and poll 3 created; members 5–8 voted from a phone with the wallet (options 1, 2, 2 and 4) |
+| 17:21 | Step 5 sent: member 8 revoked while poll 3 was open |
+| 17:24 | Member 8 changed its answer to option 3, proven against the previous root: **accepted**, within the 10-minute grace |
+| 17:48 | Member 8 tried again: **refused** by the contract (`InvalidProof`) in the simulation before sending, so nothing was spent |
+
+Expected result when poll 3 closes on 17 November: 1 · 2 · 1 · 0. Since this run, `vote.html` explains the contract's refusals in plain words, instead of "unknown custom error".

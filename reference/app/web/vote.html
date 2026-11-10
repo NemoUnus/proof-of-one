@@ -67,7 +67,18 @@ const ABI = [
   "function ballots(uint256, uint256) view returns (bytes28 ballotHash, uint32 count)",
   "event Ballot(uint256 indexed pollId, uint256 indexed nf, uint256[16] ciphertexts, uint16 count)",
   "function vote(uint256 pollId, uint256 nf, uint256[16] ct, uint256[16] prev, uint256[2] a, uint256[2][2] b, uint256[2] c)",
+  // the contract's errors that a ballot can meet, so that a refusal can say why
+  "error InvalidProof()", "error PollNotOpen()", "error RevoteCapReached()", "error BadPrevious()", "error NotInvited()",
 ];
+// Plain explanations of the contract's refusals.
+const WHY = {
+  InvalidProof: "The network refused this ballot: its proof does not match the poll as it is now. This happens when the member's identity has been revoked (after a 10-minute grace), or when a revocation since this kit was made changed the poll's revocation root (the app does not yet rebuild it).",
+  PollNotOpen: "The network refused this ballot: the poll is not open.",
+  RevoteCapReached: "The network refused this ballot: this member has reached the maximum number of changed answers.",
+  BadPrevious: "The network refused this ballot: it does not replace the member's latest ballot. Reload the page and try again.",
+  NotInvited: "The network refused this ballot: this member is not in the poll's sample.",
+};
+const why = (e) => (e && e.revert && WHY[e.revert.name]) || (e && (e.shortMessage || e.message)) || String(e);
 let plan, reader, ballot = null, files = null, relay = null;
 const store = {  // per-viewer convenience only; the page works without it
   get(k) { try { return JSON.parse(localStorage.getItem(k) || "null"); } catch (e) { return null; } },
@@ -205,7 +216,7 @@ async function send() {
     const rc = await tx.wait();
     if (rc.status !== 1) throw new Error("the transaction failed");
     await recorded(box, tx.hash);
-  } catch (e) { box.innerHTML = `<span class="bad">${esc(e.shortMessage || e.message)}</span>`; }
+  } catch (e) { box.innerHTML = `<span class="bad">${esc(why(e))}</span>`; }
   busy(false);
 }
 // The latest Ballot event of a nullifier, searched backwards in windows of 10,000 blocks
