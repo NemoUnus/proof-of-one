@@ -79,7 +79,7 @@ const { makePublish } = require("../../testnet/publish.js");
   const sent = (await page.textContent("#sent")).replace(/\s+/g, " ");
   console.log("sent:", sent.slice(0, 120));
   if (!sent.includes("Counted: option 2")) throw new Error("answer not counted");
-  // change the answer: this phone is shared, so it kept nothing; the replaced ballot is read from the ledger
+  // change the answer: the replaced ballot comes from the receipt locked with Father's PIN
   await page.click("#bk"); await page.waitForFunction(() => document.querySelectorAll("[data-vote]").length > 0, null, { timeout: 30000 });
   await page.click('[data-vote="1"]'); await page.check('input[name="o"][value="2"]'); await page.click("#mk");
   await page.waitForFunction(() => /Ready|could not|did not/.test(document.getElementById("made").textContent), null, { timeout: 180000 });
@@ -88,6 +88,17 @@ const { makePublish } = require("../../testnet/publish.js");
   const sent2 = (await page.textContent("#sent")).replace(/\s+/g, " ");
   console.log("changed answer:", sent2.slice(0, 60));
   if (!sent2.includes("Counted: option 3")) throw new Error("changed answer not counted");
+  // change it again with the receipts deleted: the replaced ballot is read from the public record
+  // (the explorer is unreachable here, so this exercises the node path)
+  await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith("poo-app-r-")).forEach((k) => localStorage.removeItem(k)));
+  await page.click("#bk"); await page.waitForFunction(() => document.querySelectorAll("[data-vote]").length > 0, null, { timeout: 30000 });
+  await page.click('[data-vote="1"]'); await page.check('input[name="o"][value="3"]'); await page.click("#mk");
+  await page.waitForFunction(() => /Ready|could not|did not/.test(document.getElementById("made").textContent), null, { timeout: 180000 });
+  await page.click("#ws");
+  await page.waitForFunction(() => /Counted|refused|failed|could not be read|did not answer/i.test(document.getElementById("sent").textContent), null, { timeout: 180000 });
+  const sent3 = (await page.textContent("#sent")).replace(/\s+/g, " ");
+  console.log("changed again from the record:", sent3.slice(0, 60));
+  if (!sent3.includes("Counted: option 4")) throw new Error("second change not counted: " + sent3.slice(0, 200));
 
   // close poll 3 and publish its result with the tally proof, then see it in the app
   await inc(7 * 24 * 3600 + 400);

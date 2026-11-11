@@ -60,6 +60,7 @@ const MEMBERS = [5, 6, 7, 8];
 // Public nodes tried in turn for log queries (the first one is also used for everything else).
 const LOG_RPCS = Q.get("rpc") ? [Q.get("rpc")] : ["https://sepolia.base.org", "https://base-sepolia-rpc.publicnode.com", "https://base-sepolia.drpc.org"];
 let _logNodes = null;
+const EXPLORER_API = Q.get("explorer") || "https://base-sepolia.blockscout.com/api";
 const logNodes = () => (_logNodes ||= LOG_RPCS.map((u) => new ethers.JsonRpcProvider(u, 84532, { staticNetwork: true })));
 const DOCS = { 5: "Synthetic passport · issuer TEST · born 1990", 6: "Synthetic passport · issuer TEST · born 1985", 7: "Synthetic ID card · issuer TEST · born 1979", 8: "Synthetic passport · issuer TEST · born 2001" };
 const MAX_PROFILES = 4;
@@ -134,7 +135,7 @@ function home() {
     h += `<h2>People on this phone <span class="mut">(${list.length} of ${MAX_PROFILES})</span></h2>`;
     list.forEach((p, i) => (h += `<div class="card"><div class="row"><b>${esc(p.name)}</b><span class="badge" id="b${i}">…</span></div>
       <input type="password" inputmode="numeric" id="pin${i}" placeholder="${esc(p.name)}'s PIN"><button data-open="${i}">Open</button><div id="m${i}" class="bad"></div></div>`));
-    if (shared()) h += `<p class="mut">This phone is shared, so it keeps no receipts of answers.</p>`;
+    if (shared()) h += `<p class="mut">This phone is shared. Each person's receipts are locked with their own PIN, so nobody else using the phone can see their answers.</p>`;
   }
   h += `<button id="add" ${list.length >= MAX_PROFILES ? "disabled" : ""} class="${list.length ? "sec" : ""}">Add a person (scan their passport or ID card)</button>`;
   $("view").innerHTML = h;
@@ -185,11 +186,24 @@ async function scan(member) {
     home();
   };
 }
+// Receipts (they reveal the answer) are kept per person, encrypted with that person's PIN key,
+// for 30 days after the poll closes (Decision Log #45, #54 as amended on 10 November 2026).
+const RKEY = (pl, nf) => `poo-app-r-${pl.contracts.ProofOfOnePolls}-${nf}`;
+async function saveReceipt(pl, rc, closeTime) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, open.key, new TextEncoder().encode(S(rc)));
+  store.set(RKEY(pl, rc.nf), { iv: b64(iv), ct: b64(ct), until: Number(closeTime) + 30 * 86400 });
+}
+async function readReceipt(pl, nf) {
+  const x = store.get(RKEY(pl, nf)); if (!x) return null;
+  if (Date.now() / 1000 > x.until) { try { localStorage.removeItem(RKEY(pl, nf)); } catch (e) {} return null; }
+  try { return JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv: unb64(x.iv) }, open.key, unb64(x.ct)))); } catch (e) { return null; }
+}
 let tries = 0, lockedUntil = 0;
 async function openProfile(i) {
   const p = profiles()[i], pin = $("pin" + i).value;
   if (Date.now() < lockedUntil) return ($("m" + i).textContent = `Too many wrong PINs. Wait ${Math.ceil((lockedUntil - Date.now()) / 1000)} s.`);
-  try { open = { idx: i, name: p.name, member: p.member, kits: await unseal(p.sealed, pin) }; tries = 0; person(); }
+  try { open = { idx: i, name: p.name, member: p.member, kits: await unseal(p.sealed, pin), key: await pinKey(pin, unb64(p.sealed.salt)) }; tries = 0; person(); }
   catch (e) { tries++; if (tries >= 5) { lockedUntil = Date.now() + 60000; tries = 0; } $("m" + i).textContent = "Wrong PIN."; }
 }
 async function person() {
@@ -265,8 +279,11 @@ async function voteArgs(b) {
     // phone if it sent the ballot, otherwise read from the ledger's Ballot events, searched
     // backwards from now to the poll's opening in windows the public node accepts, with retries.
     const same = (ct) => ct && PoOCheck.ballotHash(ethers.keccak256, reorder(ct)).slice(0, 58) === slot.ballotHash.toLowerCase().slice(0, 58);
-    const kept = store.get(`poo-app-receipt-${p.plan.contracts.ProofOfOnePolls}-${b.receipt.nf}`);
-    let ct = kept && same(kept.ct) ? kept.ct : null;
+    // 1. this person's receipt, locked with their PIN; 2. a receipt the voting page (vote.html)
+    // left on this phone for the same ballot; 3. the public record.
+    const kept = await readReceipt(p.plan, b.receipt.nf), older = store.get(`poo-receipt-${p.plan.chainId}-${b.receipt.nf}`);
+    let lastErr = "";
+    let ct = [kept, older].map((x) => x && x.ct).find(same) || null;
     if (!ct) {
       $("sent").textContent = "This person answered before. Reading that ballot from the public record…";
       const latest = await provider.getBlockNumber(), now = (await provider.getBlock(latest)).timestamp;
@@ -276,16 +293,27 @@ async function voteArgs(b) {
       // several public nodes, and halved if refused, down to 500 blocks.
       const topic = p.c.interface.getEvent("Ballot").topicHash;
       const filter = { address: p.plan.contracts.ProofOfOnePolls, topics: [topic, ethers.toBeHex(BigInt(p.plan.pollId), 32), ethers.toBeHex(BigInt(b.receipt.nf), 32)] };
-      let lastErr = "";
       const logs = async (a, z) => {
+        let empty = null;
         for (const n of logNodes()) {
           for (let t = 0; t < 2; t++) {
-            try { return await n.getLogs({ ...filter, fromBlock: a, toBlock: z }); }
+            try { const ev = await n.getLogs({ ...filter, fromBlock: a, toBlock: z }); if (ev.length) return ev; empty = ev; break; }
             catch (e) { lastErr = (e.shortMessage || e.message || "").slice(0, 120); await new Promise((r) => setTimeout(r, 600)); }
           }
         }
-        return null;
+        return empty;
       };
+      // First the explorer's log index: one GET request over the whole poll, no range limits.
+      try {
+        const q = new URLSearchParams({ module: "logs", action: "getLogs", fromBlock: String(from), toBlock: "latest", address: filter.address,
+          topic0: filter.topics[0], topic1: filter.topics[1], topic2: filter.topics[2], topic0_1_opr: "and", topic1_2_opr: "and", topic0_2_opr: "and" });
+        const r = await fetch(`${EXPLORER_API}?${q}`), j = await r.json();
+        for (const ev of (Array.isArray(j.result) ? j.result : []).reverse()) {
+          const x = p.c.interface.parseLog({ topics: ev.topics.filter(Boolean), data: ev.data }).args.ciphertexts.map(String); if (same(x)) { ct = x; break; }
+        }
+      } catch (e) { lastErr = "explorer: " + (e.message || "").slice(0, 80); }
+      // Then the public nodes, window by window. A node that answers "nothing here" is not
+      // trusted alone: the window is asked of the other nodes too.
       let win = 5000;
       for (let to = latest; !ct && to >= from; ) {
         const a = Math.max(from, to - win + 1), ev = await logs(a, to);
@@ -296,7 +324,7 @@ async function voteArgs(b) {
         to = a - 1;
       }
     }
-    if (!ct) throw new Error("This person answered before, but that ballot was not found in the public record. Try again later.");
+    if (!ct) throw new Error("This person answered before, but that earlier ballot could not be read from the public record" + (lastErr ? " (" + lastErr + ")" : "") + ". Try again later. Ballots made from now on keep a receipt, locked with this person's PIN, so a later change does not need the public record.");
     prev = ct.map(BigInt);
   }
   const q = b.proof;
@@ -304,11 +332,11 @@ async function voteArgs(b) {
 }
 async function done(hash) {
   const p = polls[ballot.i], box = $("sent");
-  if (!shared()) store.set(`poo-app-receipt-${p.plan.contracts.ProofOfOnePolls}-${ballot.receipt.nf}`, { ...ballot.receipt, ct: ballot.enc.ct.map(String) });
+  await saveReceipt(p.plan, { ...ballot.receipt, ct: ballot.enc.ct.map(String) }, (await p.c.getPoll(p.plan.pollId)).closeTime);
   const slot = await p.c.ballots(p.plan.pollId, ballot.receipt.nf);
   const ans = PoOCheck.recordedAnswer(ethers.keccak256, ballot.receipt, slot.ballotHash);
   box.innerHTML = `<span class="ok big">Counted: option ${ans + 1}</span><br>The phone read the public record and opened the recorded ballot with its own values. <a href="${EXPLORER}/tx/${hash}" target="_blank" rel="noopener">The transaction</a>.
-    <p class="mut">${shared() ? "This phone is shared, so it keeps no receipt." : "A private receipt is kept on this phone for 30 days."}</p>`;
+    <p class="mut">A receipt is kept on this phone, locked with ${esc(open.name)}'s PIN, until 30 days after the poll closes.</p>`;
   $("rs").disabled = true; $("ws").disabled = true;
 }
 async function sendRelay() {
