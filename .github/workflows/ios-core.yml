@@ -1,0 +1,73 @@
+# SPDX-License-Identifier: Apache-2.0
+# Builds the app's Rust core (reference/native-prover) for iPhones on GitHub's macOS servers,
+# to check that the core shared with Android also builds and proves on Apple's platforms
+# (Decision Log #56: one Rust core, a thin Swift interface on iOS). Steps:
+#   1. static libraries for iPhones (arm64) and for the iPhone simulator on Apple-silicon Macs;
+#   2. an XCFramework with the C header, which a Swift app links; attached to the run;
+#   3. the C interface tested on the Mac itself: one SYNTHETIC ballot proved twice and verified;
+#   4. the same test run inside an iPhone simulator.
+# Test build only, with the TEST-ONLY ballot key. No Apple account or signing is needed for
+# any of these steps; publishing an app is a separate question (decision 56, point 2).
+name: iOS core (build check)
+
+on:
+  push:
+    paths:
+      - "reference/native-prover/**"
+      - ".github/workflows/ios-core.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    env:
+      IPHONEOS_DEPLOYMENT_TARGET: "15.0"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tools
+        run: |
+          brew install protobuf
+          rustup target add aarch64-apple-ios aarch64-apple-ios-sim
+          rustc --version; xcodebuild -version
+      - name: Static libraries for iPhone and simulator
+        working-directory: reference/native-prover
+        # circom-witnesscalc's build script runs bindgen on a C header; it is given each SDK.
+        run: |
+          export BINDGEN_EXTRA_CLANG_ARGS_aarch64_apple_ios="--target=arm64-apple-ios15.0 -isysroot $(xcrun --sdk iphoneos --show-sdk-path)"
+          export BINDGEN_EXTRA_CLANG_ARGS_aarch64_apple_ios_sim="--target=arm64-apple-ios15.0-simulator -isysroot $(xcrun --sdk iphonesimulator --show-sdk-path)"
+          for T in aarch64-apple-ios aarch64-apple-ios-sim; do
+            cargo rustc --release --locked --lib --crate-type staticlib --target $T
+          done
+          ls -l target/aarch64-apple-ios/release/libpoo_native_prover.a target/aarch64-apple-ios-sim/release/libpoo_native_prover.a
+      - name: XCFramework
+        working-directory: reference/native-prover
+        run: |
+          xcodebuild -create-xcframework \
+            -library target/aarch64-apple-ios/release/libpoo_native_prover.a -headers include \
+            -library target/aarch64-apple-ios-sim/release/libpoo_native_prover.a -headers include \
+            -output PoONativeProver.xcframework
+          du -sh PoONativeProver.xcframework
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PoONativeProver-xcframework-test-build
+          path: reference/native-prover/PoONativeProver.xcframework
+          retention-days: 30
+      - name: C interface on the Mac (Apple silicon)
+        working-directory: reference/native-prover
+        run: |
+          cargo rustc --release --locked --lib --crate-type staticlib
+          clang -O2 -I include test/ffi_test.c target/release/libpoo_native_prover.a \
+            -framework Security -framework CoreFoundation -o ffi_test_mac
+          ./ffi_test_mac graphs/ballot.graph ../ballot-circuit/setup/ballot_test.zkey test/ballot_input_synthetic.json
+      - name: C interface inside an iPhone simulator
+        working-directory: reference/native-prover
+        run: |
+          xcrun --sdk iphonesimulator clang -O2 -arch arm64 -mios-simulator-version-min=15.0 -I include \
+            test/ffi_test.c target/aarch64-apple-ios-sim/release/libpoo_native_prover.a \
+            -framework Security -framework CoreFoundation -o ffi_test_sim
+          UDID=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(x["udid"] for k,v in d.items() if "iOS" in k for x in v if x["name"].startswith("iPhone")))')
+          echo "simulator: $UDID"; xcrun simctl boot "$UDID"; xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl spawn "$UDID" "$PWD/ffi_test_sim" "$PWD/graphs/ballot.graph" "$PWD/../ballot-circuit/setup/ballot_test.zkey" "$PWD/test/ballot_input_synthetic.json"
