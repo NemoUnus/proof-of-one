@@ -282,7 +282,7 @@ async function voteArgs(b) {
     // 1. this person's receipt, locked with their PIN; 2. a receipt the voting page (vote.html)
     // left on this phone for the same ballot; 3. the public record.
     const kept = await readReceipt(p.plan, b.receipt.nf), older = store.get(`poo-receipt-${p.plan.chainId}-${b.receipt.nf}`);
-    let lastErr = "";
+    const notes = [];   // what each source answered, shown if the ballot is not found
     let ct = [kept, older].map((x) => x && x.ct).find(same) || null;
     if (!ct) {
       $("sent").textContent = "This person answered before. Reading that ballot from the public record…";
@@ -293,12 +293,14 @@ async function voteArgs(b) {
       // several public nodes, and halved if refused, down to 500 blocks.
       const topic = p.c.interface.getEvent("Ballot").topicHash;
       const filter = { address: p.plan.contracts.ProofOfOnePolls, topics: [topic, ethers.toBeHex(BigInt(p.plan.pollId), 32), ethers.toBeHex(BigInt(b.receipt.nf), 32)] };
+      const stat = LOG_RPCS.map(() => ({ ok: 0, err: 0, last: "" }));
+      const nodeNotes = () => stat.map((x, i) => `${new URL(LOG_RPCS[i]).hostname}: ${x.ok} answers, ${x.err} errors${x.last ? " (" + x.last + ")" : ""}`);
       const logs = async (a, z) => {
         let empty = null;
-        for (const n of logNodes()) {
+        for (const [i, n] of logNodes().entries()) {
           for (let t = 0; t < 2; t++) {
-            try { const ev = await n.getLogs({ ...filter, fromBlock: a, toBlock: z }); if (ev.length) return ev; empty = ev; break; }
-            catch (e) { lastErr = (e.shortMessage || e.message || "").slice(0, 120); await new Promise((r) => setTimeout(r, 600)); }
+            try { const ev = await n.getLogs({ ...filter, fromBlock: a, toBlock: z }); stat[i].ok++; if (ev.length) return ev; empty = ev; break; }
+            catch (e) { stat[i].err++; stat[i].last = (e.shortMessage || e.message || "").slice(0, 60); await new Promise((r) => setTimeout(r, 600)); }
           }
         }
         return empty;
@@ -308,23 +310,26 @@ async function voteArgs(b) {
         const q = new URLSearchParams({ module: "logs", action: "getLogs", fromBlock: String(from), toBlock: "latest", address: filter.address,
           topic0: filter.topics[0], topic1: filter.topics[1], topic2: filter.topics[2], topic0_1_opr: "and", topic1_2_opr: "and", topic0_2_opr: "and" });
         const r = await fetch(`${EXPLORER_API}?${q}`), j = await r.json();
-        for (const ev of (Array.isArray(j.result) ? j.result : []).reverse()) {
+        const list = Array.isArray(j.result) ? j.result : [];
+        for (const ev of list.slice().reverse()) {
           const x = p.c.interface.parseLog({ topics: ev.topics.filter(Boolean), data: ev.data }).args.ciphertexts.map(String); if (same(x)) { ct = x; break; }
         }
-      } catch (e) { lastErr = "explorer: " + (e.message || "").slice(0, 80); }
+        notes.push(`explorer: HTTP ${r.status}, ${list.length} ballot(s)${list.length && !ct ? ", none matches" : ""}${Array.isArray(j.result) ? "" : ", " + String(j.message || "").slice(0, 60)}`);
+      } catch (e) { notes.push("explorer: " + (e.name || "") + " " + (e.message || "").slice(0, 80)); }
       // Then the public nodes, window by window. A node that answers "nothing here" is not
       // trusted alone: the window is asked of the other nodes too.
       let win = 5000;
       for (let to = latest; !ct && to >= from; ) {
         const a = Math.max(from, to - win + 1), ev = await logs(a, to);
-        if (ev === null) { if (win > 500) { win = Math.floor(win / 2); continue; } throw new Error("The public nodes did not answer (" + lastErr + "). Try again in a minute."); }
+        if (ev === null) { if (win > 500) { win = Math.floor(win / 2); continue; } throw new Error("The public record could not be read. " + [...notes, ...nodeNotes()].join("; ") + ". Try again in a minute."); }
         for (let j = ev.length - 1; j >= 0 && !ct; j--) {
           const x = p.c.interface.parseLog(ev[j]).args.ciphertexts.map(String); if (same(x)) ct = x;
         }
         to = a - 1;
       }
+      if (!ct) notes.push(...nodeNotes(), `searched blocks ${from}–${latest}`);
     }
-    if (!ct) throw new Error("This person answered before, but that earlier ballot could not be read from the public record" + (lastErr ? " (" + lastErr + ")" : "") + ". Try again later. Ballots made from now on keep a receipt, locked with this person's PIN, so a later change does not need the public record.");
+    if (!ct) throw new Error("This person answered before, but that earlier ballot could not be read from the public record. Try again later. Ballots made from now on keep a receipt, locked with this person's PIN, so a later change does not need the public record. Details: " + notes.join("; "));
     prev = ct.map(BigInt);
   }
   const q = b.proof;

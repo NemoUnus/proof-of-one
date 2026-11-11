@@ -55,7 +55,18 @@ const { makePublish } = require("../../testnet/publish.js");
       const j = await r.json(); if (j.error) throw Object.assign(new Error(j.error.message), j.error); return j.result; } };`;
   const browser = await chromium.launch(); const ctx = await browser.newContext(); await ctx.addInitScript(wallet);
   const page = await ctx.newPage(); page.on("pageerror", (e) => console.log("pageerror", e.message));
-  await page.goto("http://127.0.0.1:8092/reference/app/web/app.html?rpc=http://127.0.0.1:8546");
+  await page.goto("http://127.0.0.1:8092/reference/app/web/app.html?rpc=http://127.0.0.1:8546&explorer=http://explorer.test/api");
+  // A stand-in for the explorer's log API, in its format (topics padded with null), served from
+  // the local chain; switched on below.
+  let explorerOn = false, nodesFail = false;
+  await page.route("http://explorer.test/**", async (route) => {
+    if (!explorerOn) return route.abort();
+    const u = new URL(route.request().url()), g = (k) => u.searchParams.get(k);
+    const logs = await provider.getLogs({ address: g("address"), topics: [g("topic0"), g("topic1"), g("topic2")], fromBlock: Number(g("fromBlock")), toBlock: "latest" });
+    route.fulfill({ status: 200, headers: { "access-control-allow-origin": "*", "content-type": "application/json" },
+      body: JSON.stringify({ message: "OK", result: logs.map((l) => ({ address: l.address.toLowerCase(), blockNumber: "0x" + l.blockNumber.toString(16), data: l.data, topics: [...l.topics, null] })) }) });
+  });
+  await page.route("http://127.0.0.1:8546/**", (route) => (nodesFail && /eth_getLogs/.test(route.request().postData() || "") ? route.fulfill({ status: 400, body: "" }) : route.continue()));
   await page.waitForSelector("#add");
   async function addPerson(m, name, pin) {
     await page.click("#add"); await page.click(`.doc[data-m="${m}"]`);
@@ -89,7 +100,7 @@ const { makePublish } = require("../../testnet/publish.js");
   console.log("changed answer:", sent2.slice(0, 60));
   if (!sent2.includes("Counted: option 3")) throw new Error("changed answer not counted");
   // change it again with the receipts deleted: the replaced ballot is read from the public record
-  // (the explorer is unreachable here, so this exercises the node path)
+  // (the explorer is unreachable here, so this exercises the node path; then the explorer path)
   await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith("poo-app-r-")).forEach((k) => localStorage.removeItem(k)));
   await page.click("#bk"); await page.waitForFunction(() => document.querySelectorAll("[data-vote]").length > 0, null, { timeout: 30000 });
   await page.click('[data-vote="1"]'); await page.check('input[name="o"][value="3"]'); await page.click("#mk");
@@ -99,6 +110,29 @@ const { makePublish } = require("../../testnet/publish.js");
   const sent3 = (await page.textContent("#sent")).replace(/\s+/g, " ");
   console.log("changed again from the record:", sent3.slice(0, 60));
   if (!sent3.includes("Counted: option 4")) throw new Error("second change not counted: " + sent3.slice(0, 200));
+  // once more, with the nodes refusing log queries: the explorer's log index must be enough
+  explorerOn = true; nodesFail = true;
+  await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith("poo-app-r-")).forEach((k) => localStorage.removeItem(k)));
+  await page.click("#bk"); await page.waitForFunction(() => document.querySelectorAll("[data-vote]").length > 0, null, { timeout: 30000 });
+  await page.click('[data-vote="1"]'); await page.check('input[name="o"][value="2"]'); await page.click("#mk");
+  await page.waitForFunction(() => /Ready|could not|did not/.test(document.getElementById("made").textContent), null, { timeout: 180000 });
+  await page.click("#ws");
+  await page.waitForFunction(() => /Counted|refused|failed|could not be read|did not answer/i.test(document.getElementById("sent").textContent), null, { timeout: 180000 });
+  const sent4 = (await page.textContent("#sent")).replace(/\s+/g, " ");
+  console.log("changed again from the explorer:", sent4.slice(0, 60));
+  if (!sent4.includes("Counted: option 3")) throw new Error("explorer path failed: " + sent4.slice(0, 300));
+  // and with both refusing, the message must say what each source answered
+  explorerOn = false;
+  await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith("poo-app-r-")).forEach((k) => localStorage.removeItem(k)));
+  await page.click("#bk"); await page.waitForFunction(() => document.querySelectorAll("[data-vote]").length > 0, null, { timeout: 30000 });
+  await page.click('[data-vote="1"]'); await page.check('input[name="o"][value="1"]'); await page.click("#mk");
+  await page.waitForFunction(() => /Ready|could not|did not/.test(document.getElementById("made").textContent), null, { timeout: 180000 });
+  await page.click("#ws");
+  await page.waitForFunction(() => /Counted|refused|failed|could not be read|did not answer/i.test(document.getElementById("sent").textContent), null, { timeout: 300000 });
+  const sent5 = (await page.textContent("#sent")).replace(/\s+/g, " ");
+  console.log("both refusing:", sent5.slice(0, 260));
+  if (!/explorer: .*127\.0\.0\.1: 0 answers/.test(sent5)) throw new Error("no details in the message");
+  nodesFail = false;
 
   // close poll 3 and publish its result with the tally proof, then see it in the app
   await inc(7 * 24 * 3600 + 400);
