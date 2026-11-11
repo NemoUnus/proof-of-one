@@ -286,17 +286,32 @@ async function voteArgs(b) {
     let ct = [kept, older].map((x) => x && x.ct).find(same) || null;
     if (!ct) {
       $("sent").textContent = "This person answered before. Reading that ballot from the public record…";
-      const latest = await provider.getBlockNumber();
-      const g = await p.c.getPoll(p.plan.pollId);
-      // The first block of the poll, found by its timestamp. (Block times change: Base Sepolia
-      // went from 2 s to a fraction of a second, so the block number cannot be estimated.)
-      let lo = 0, hi = latest;
-      while (hi - lo > 1000) { const mid = Math.floor((lo + hi) / 2); if ((await provider.getBlock(mid)).timestamp < Number(g.openTime)) lo = mid; else hi = mid; }
-      const from = lo;
       // Public nodes limit log queries in different ways (range, rate). Each window is tried on
       // several public nodes, and halved if refused, down to 500 blocks.
       const topic = p.c.interface.getEvent("Ballot").topicHash;
       const filter = { address: p.plan.contracts.ProofOfOnePolls, topics: [topic, ethers.toBeHex(BigInt(p.plan.pollId), 32), ethers.toBeHex(BigInt(b.receipt.nf), 32)] };
+      // First the explorer's log index: one GET request over the whole history, no range limits.
+      try {
+        const q = new URLSearchParams({ module: "logs", action: "getLogs", fromBlock: "0", toBlock: "latest", address: filter.address,
+          topic0: filter.topics[0], topic1: filter.topics[1], topic2: filter.topics[2], topic0_1_opr: "and", topic1_2_opr: "and", topic0_2_opr: "and" });
+        const r = await fetch(`${EXPLORER_API}?${q}`), j = await r.json();
+        const list = Array.isArray(j.result) ? j.result : [];
+        for (const ev of list.slice().reverse()) {
+          const x = p.c.interface.parseLog({ topics: ev.topics.filter(Boolean), data: ev.data }).args.ciphertexts.map(String); if (same(x)) { ct = x; break; }
+        }
+        notes.push(`explorer: HTTP ${r.status}, ${list.length} ballot(s)${list.length && !ct ? ", none matches" : ""}${Array.isArray(j.result) ? "" : ", " + String(j.message || "").slice(0, 60)}`);
+      } catch (e) { notes.push("explorer: " + (e.name || "") + " " + (e.message || "").slice(0, 80)); }
+      // Then the public nodes, from the poll's first block. Its number is estimated from the block
+      // rate measured over the last day, with a margin: block times change (Base Sepolia went from
+      // 2 s to a fraction of a second), and public nodes refuse long series of requests.
+      let latest = 0, from = 0;
+      if (!ct) {
+        const blockAt = async (n) => { for (const x of [provider, ...logNodes()]) { try { const k = await x.getBlock(n); if (k) return k; } catch (e) {} } throw new Error("The public nodes did not answer. Try again in a minute."); };
+        const g = await p.c.getPoll(p.plan.pollId), top = await blockAt("latest"); latest = top.number;
+        const back = Math.min(latest, 400000), old = await blockAt(latest - back);
+        const rate = back / Math.max(1, top.timestamp - old.timestamp);   // blocks per second
+        from = Math.max(0, Math.floor(latest - (top.timestamp - Number(g.openTime)) * rate * 1.2) - 5000);
+      }
       const stat = LOG_RPCS.map(() => ({ ok: 0, err: 0, last: "" }));
       const nodeNotes = () => stat.map((x, i) => `${new URL(LOG_RPCS[i]).hostname}: ${x.ok} answers, ${x.err} errors${x.last ? " (" + x.last + ")" : ""}`);
       const logs = async (a, z) => {
@@ -309,17 +324,6 @@ async function voteArgs(b) {
         }
         return empty;
       };
-      // First the explorer's log index: one GET request over the whole poll, no range limits.
-      try {
-        const q = new URLSearchParams({ module: "logs", action: "getLogs", fromBlock: "0", toBlock: "latest", address: filter.address,
-          topic0: filter.topics[0], topic1: filter.topics[1], topic2: filter.topics[2], topic0_1_opr: "and", topic1_2_opr: "and", topic0_2_opr: "and" });
-        const r = await fetch(`${EXPLORER_API}?${q}`), j = await r.json();
-        const list = Array.isArray(j.result) ? j.result : [];
-        for (const ev of list.slice().reverse()) {
-          const x = p.c.interface.parseLog({ topics: ev.topics.filter(Boolean), data: ev.data }).args.ciphertexts.map(String); if (same(x)) { ct = x; break; }
-        }
-        notes.push(`explorer: HTTP ${r.status}, ${list.length} ballot(s)${list.length && !ct ? ", none matches" : ""}${Array.isArray(j.result) ? "" : ", " + String(j.message || "").slice(0, 60)}`);
-      } catch (e) { notes.push("explorer: " + (e.name || "") + " " + (e.message || "").slice(0, 80)); }
       // Then the public nodes, window by window. A node that answers "nothing here" is not
       // trusted alone: the window is asked of the other nodes too.
       let win = 5000;
