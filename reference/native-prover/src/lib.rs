@@ -275,3 +275,56 @@ mod android {
         env.new_string(out).map(|s| s.into_raw()).unwrap_or(std::ptr::null_mut())
     }
 }
+
+// ---------------------------------------------------------------- iOS and other C callers
+// Swift calls these through the C header include/poo_native_prover.h (decision 56: one Rust
+// core, a thin native interface per platform). Same JSON result as the Android call above.
+// The returned string must be released with poo_string_free.
+pub mod ffi {
+    use super::Circuit;
+    use std::ffi::{CStr, CString};
+    use std::os::raw::c_char;
+    use std::sync::Mutex;
+    use std::time::Instant;
+
+    static CACHE: Mutex<Option<(usize, Circuit)>> = Mutex::new(None);
+
+    fn run(graph: &[u8], zkey: &[u8], inputs: &str) -> Result<String, super::Error> {
+        let mut cache = CACHE.lock().map_err(|_| "prover lock poisoned")?;
+        let t = Instant::now();
+        if cache.as_ref().map(|c| c.0) != Some(zkey.len()) {
+            *cache = Some((zkey.len(), Circuit::load(zkey, graph.to_vec())?));
+        }
+        let load_ms = t.elapsed().as_millis();
+        let t = Instant::now();
+        let (proof, public, ok) = cache.as_ref().unwrap().1.prove_checked(inputs)?;
+        Ok(format!(r#"{{"proof":{},"public":{},"verified":{},"loadMs":{},"proveMs":{}}}"#, proof, public, ok, load_ms, t.elapsed().as_millis()))
+    }
+
+    /// Proves one ballot. `graph` and `zkey` are the circuit's witness graph and proving key,
+    /// `inputs` the circuit inputs as NUL-terminated JSON. Returns NUL-terminated JSON.
+    ///
+    /// # Safety
+    /// The pointers must be valid for the given lengths, and `inputs` NUL-terminated.
+    #[no_mangle]
+    pub unsafe extern "C" fn poo_prove(graph: *const u8, graph_len: usize, zkey: *const u8, zkey_len: usize, inputs: *const c_char) -> *mut c_char {
+        let out = if graph.is_null() || zkey.is_null() || inputs.is_null() {
+            Err::<String, super::Error>("null argument".into())
+        } else {
+            let g = std::slice::from_raw_parts(graph, graph_len);
+            let z = std::slice::from_raw_parts(zkey, zkey_len);
+            CStr::from_ptr(inputs).to_str().map_err(|e| e.into()).and_then(|i| run(g, z, i))
+        };
+        let s = out.unwrap_or_else(|e| serde_json::json!({ "error": e.to_string() }).to_string());
+        CString::new(s).map(|c| c.into_raw()).unwrap_or(std::ptr::null_mut())
+    }
+
+    /// Releases a string returned by poo_prove.
+    ///
+    /// # Safety
+    /// `s` must come from poo_prove and be released once.
+    #[no_mangle]
+    pub unsafe extern "C" fn poo_string_free(s: *mut c_char) {
+        if !s.is_null() { drop(CString::from_raw(s)); }
+    }
+}

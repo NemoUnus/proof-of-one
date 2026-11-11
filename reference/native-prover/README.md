@@ -63,6 +63,18 @@ circom-witnesscalc's build script reads the compiler from `CC_aarch64-linux-andr
 
 GitHub Actions builds it for Android on every change ([workflow](../../.github/workflows/android-prototype.yml)).
 
+### iPhone (Decision Log #56)
+
+Swift calls the prover through a C interface, [`include/poo_native_prover.h`](include/poo_native_prover.h): `poo_prove(graph, graph_len, zkey, zkey_len, inputs_json)` returns the same JSON as the Android call, and `poo_string_free` releases it. [`test/ffi_test.c`](test/ffi_test.c) proves a synthetic ballot ([`test/ballot_input_synthetic.json`](test/ballot_input_synthetic.json)) twice through this interface, checks that both proofs verify, and checks that bad input returns an error. On a Linux server (2 cores): first proof 0.86 s after loading the key in 3.3 s, second 0.92 s with the key already loaded.
+
+```sh
+cargo build --release --lib
+cc -I include test/ffi_test.c -L target/release -lpoo_native_prover -o ffi_test
+LD_LIBRARY_PATH=target/release ./ffi_test graphs/ballot.graph ../ballot-circuit/setup/ballot_test.zkey test/ballot_input_synthetic.json
+```
+
+GitHub Actions builds static libraries for iPhones and the iPhone simulator, packs them into an XCFramework, and runs the same test on a Mac and inside an iPhone simulator ([workflow](../../.github/workflows/ios-core.yml)). No Apple account is needed for this. Publishing the app is a separate question ([research note](../../docs/research/iphone-app-v0.1.md)).
+
 ## Open points
 
 - **Enrolment proof π_doc** (577,678 constraints): measured on the server with a random setup at about 11 s and 1.9 GB of memory (`../prove-bench/`). The memory is the problem for 2 GB phones. The next step is a phone measurement, and then a lower-memory prover (rapidsnark, or a streaming key format).
