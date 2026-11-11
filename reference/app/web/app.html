@@ -286,9 +286,13 @@ async function voteArgs(b) {
     let ct = [kept, older].map((x) => x && x.ct).find(same) || null;
     if (!ct) {
       $("sent").textContent = "This person answered before. Reading that ballot from the public record…";
-      const latest = await provider.getBlockNumber(), now = (await provider.getBlock(latest)).timestamp;
+      const latest = await provider.getBlockNumber();
       const g = await p.c.getPoll(p.plan.pollId);
-      const from = Math.max(0, latest - Math.ceil((now - Number(g.openTime)) / 2) - 2000);   // Base: one block every 2 s
+      // The first block of the poll, found by its timestamp. (Block times change: Base Sepolia
+      // went from 2 s to a fraction of a second, so the block number cannot be estimated.)
+      let lo = 0, hi = latest;
+      while (hi - lo > 1000) { const mid = Math.floor((lo + hi) / 2); if ((await provider.getBlock(mid)).timestamp < Number(g.openTime)) lo = mid; else hi = mid; }
+      const from = lo;
       // Public nodes limit log queries in different ways (range, rate). Each window is tried on
       // several public nodes, and halved if refused, down to 500 blocks.
       const topic = p.c.interface.getEvent("Ballot").topicHash;
@@ -307,7 +311,7 @@ async function voteArgs(b) {
       };
       // First the explorer's log index: one GET request over the whole poll, no range limits.
       try {
-        const q = new URLSearchParams({ module: "logs", action: "getLogs", fromBlock: String(from), toBlock: "latest", address: filter.address,
+        const q = new URLSearchParams({ module: "logs", action: "getLogs", fromBlock: "0", toBlock: "latest", address: filter.address,
           topic0: filter.topics[0], topic1: filter.topics[1], topic2: filter.topics[2], topic0_1_opr: "and", topic1_2_opr: "and", topic0_2_opr: "and" });
         const r = await fetch(`${EXPLORER_API}?${q}`), j = await r.json();
         const list = Array.isArray(j.result) ? j.result : [];
