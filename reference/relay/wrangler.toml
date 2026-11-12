@@ -9,8 +9,8 @@ preview_urls = false   # one public address only: the relay that config.json nam
 [vars]
 RPC_URL = "https://sepolia.base.org"
 CHAIN_ID = "84532"
-POLLS = "0x64Bf8A3db2D45a993304eBE228dcD7d81d6098CC"
-POLL_IDS = "2"
+POLLS = "0xe452f371DF42b58a022a6C0F3F7f46507b7fe4bB"   # deployment 2 (poll 2 on the first deployment closed on 12 Nov)
+POLL_IDS = "1"   # test poll 3
 
 [observability]
 enabled = false   # no request logs: the relay keeps no record of who sent what

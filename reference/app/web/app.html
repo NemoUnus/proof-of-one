@@ -55,8 +55,8 @@ const EXPLORER = "https://sepolia.basescan.org";
 const FILES = { wasm: "../../phone-bench/ballot.wasm", zkey: "../../ballot-circuit/setup/ballot_test.zkey", vkey: "../../ballot-circuit/setup/vkey_test.json" };
 // The polls this prototype knows about. A real app reads them from the ledger.
 const POLLS = [
-  { plan: "../../testnet/web/plan2.json", title: "Test poll 2", relayOk: true },
-  { plan: "../../testnet/web/plan3.json", title: "Test poll 3 (tally proof; revocation in an open poll)", relayOk: false },
+  { plan: "../../testnet/web/plan2.json", title: "Test poll 2" },
+  { plan: "../../testnet/web/plan3.json", title: "Test poll 3 (tally proof; revocation in an open poll)" },
 ];
 const MEMBERS = [5, 6, 7, 8];
 // Public nodes tried in turn for log queries (the first one is also used for everything else).
@@ -105,6 +105,13 @@ async function load() {
     polls.push({ ...p, plan, c });
   }
   try { relay = (await (await fetch("config.json", { cache: "no-store" })).json()).relay || null; } catch (e) { relay = null; }
+  // The relay says which contract and polls it serves; the "no wallet" button appears only there.
+  if (relay) {
+    try {
+      const r = await (await fetch(relay, { cache: "no-store" })).json(), ids = (r.pollIds || []).map(String);
+      for (const p of polls) p.relayOk = String(r.polls || "").toLowerCase() === p.plan.contracts.ProofOfOnePolls.toLowerCase() && ids.includes(String(p.plan.pollId));
+    } catch (e) { /* relay unreachable: wallet only */ }
+  }
   home();
 }
 async function pollStatus(p) {
