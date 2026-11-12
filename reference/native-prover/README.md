@@ -73,7 +73,7 @@ cc -I include test/ffi_test.c -L target/release -lpoo_native_prover -o ffi_test
 LD_LIBRARY_PATH=target/release ./ffi_test graphs/ballot.graph ../ballot-circuit/setup/ballot_test.zkey test/ballot_input_synthetic.json
 ```
 
-GitHub Actions builds static libraries for iPhones and the iPhone simulator, packs them into an XCFramework, and runs the same test on a Mac and inside an iPhone simulator ([workflow](../../.github/workflows/ios-core.yml)). No Apple account is needed for this. Publishing the app is a separate question ([research note](../../docs/research/iphone-app-v0.1.md)).
+GitHub Actions builds static libraries for iPhones and the iPhone simulator, packs them into an XCFramework, and runs the same test on a Mac and inside an iPhone simulator ([workflow](../../.github/workflows/ios-core.yml)). No Apple account is needed for this. First successful run (12 November 2026, run #2): both proofs verified inside the iPhone simulator; there the key loaded in 8.5 s and the proofs took 3.4 s and 8.1 s. A simulator on a shared cloud Mac is much slower and less steady than a phone, so these times say nothing about speed on a real iPhone; they show only that the core builds and proves correctly on Apple's platforms. Publishing the app is a separate question ([research note](../../docs/research/iphone-app-v0.1.md)).
 
 ## Open points
 
