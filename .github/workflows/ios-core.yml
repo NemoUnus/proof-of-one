@@ -23,8 +23,6 @@ permissions:
 jobs:
   build:
     runs-on: macos-15
-    env:
-      IPHONEOS_DEPLOYMENT_TARGET: "15.0"
     steps:
       - uses: actions/checkout@v4
       - name: Tools
@@ -35,6 +33,10 @@ jobs:
       - name: Static libraries for iPhone and simulator
         working-directory: reference/native-prover
         # circom-witnesscalc's build script runs bindgen on a C header; it is given each SDK.
+        # The deployment target is set only for the iPhone steps: clang also reads it, and on
+        # the Mac step it would make clang link for iOS.
+        env:
+          IPHONEOS_DEPLOYMENT_TARGET: "15.0"
         run: |
           export BINDGEN_EXTRA_CLANG_ARGS_aarch64_apple_ios="--target=arm64-apple-ios15.0 -isysroot $(xcrun --sdk iphoneos --show-sdk-path)"
           export BINDGEN_EXTRA_CLANG_ARGS_aarch64_apple_ios_sim="--target=arm64-apple-ios15.0-simulator -isysroot $(xcrun --sdk iphonesimulator --show-sdk-path)"
@@ -59,7 +61,7 @@ jobs:
         working-directory: reference/native-prover
         run: |
           cargo rustc --release --locked --lib --crate-type staticlib
-          clang -O2 -I include test/ffi_test.c target/release/libpoo_native_prover.a \
+          clang -O2 -mmacosx-version-min=13.0 -I include test/ffi_test.c target/release/libpoo_native_prover.a \
             -framework Security -framework CoreFoundation -o ffi_test_mac
           ./ffi_test_mac graphs/ballot.graph ../ballot-circuit/setup/ballot_test.zkey test/ballot_input_synthetic.json
       - name: C interface inside an iPhone simulator
