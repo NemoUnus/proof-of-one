@@ -17,6 +17,14 @@ When a phone sends a ballot, it keeps a private **receipt**: the poll, the ballo
 
 The kits are shared, so anyone can replace a kit's ballot (up to 50 ballots per kit); the latest counts. With a real identity only its holder could. With the relay, sending needs nothing; with a wallet, a little test ETH.
 
+## The integrated prototype (`web/app.html`)
+
+`https://nemounus.github.io/proof-of-one/reference/app/web/app.html` joins the pieces: add up to four people on one phone (synthetic documents, each person with their own PIN, Decision Log #54), see each person's open polls, answer, change the answer, and see results.
+
+- **Receipts.** Each ballot's receipt is kept on the phone, encrypted with that person's PIN key (AES-GCM, PBKDF2), until 30 days after the poll closes (Decision Log #54, amended). A changed answer uses it to name the ballot it replaces.
+- **Without a receipt** (for example after reinstalling), the replaced ballot is read from the public record: first an explorer's log index, then several public nodes, every node asked before a window counts as empty (implementation note N34).
+- **Revocations in open polls.** If someone has been revoked since a kit was made, the app reads the public list of revoked handles, rebuilds the revocation tree, checks its root against the registry's, and proves against it ([`web/revocation.js`](web/revocation.js), implementation note N33). It uses Poseidon from [poseidon-lite](https://github.com/vimwitch/poseidon-lite) 0.3.0 (MIT), bundled as `web/poseidon.min.js` (`poseidon2`, `poseidon3`, `poseidon5`; esbuild 0.21.5, IIFE, minified).
+
 ## How it works
 
 1. Each option j of a ballot is encrypted as C_j = (r_j·G, v_j·G + r_j·PK), with v_j = 1 for the chosen option and 0 for the others.
@@ -40,9 +48,13 @@ node test/e2e-vote.js ../testnet/web/plan.json ../testnet/web/plan2.json
 #   local chain + headless browser with a test wallet: vote, re-vote from the same browser and from
 #   another one, check the recorded answer each time; with SECRETS=<trustee shares file> it also
 #   publishes and finalizes poll 2 and checks the totals
+node test/revocation.test.js                  # revocation.js against the reference trees (ballot-circuit/); needs poseidon-lite
+node test/app.e2e.js ../testnet/web/plan.json ../testnet/web/plan2.json <plan3.json> <poll3-secrets.json>
+#   the integrated prototype on a local chain: profiles, votes, changed answers from the receipt,
+#   from public nodes and from an explorer, a changed answer after a revocation, and the result
 ```
 
-The end-to-end test needs Playwright with Chromium.
+The end-to-end tests need Playwright with Chromium.
 
 ## Limits
 

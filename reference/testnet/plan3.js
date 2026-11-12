@@ -98,7 +98,7 @@ async function main() {
   txs.push({ step: txs.length + 1, kind: "call", name: "Revoke member 8 (send only after member 8 has voted)", to: revocation,
     data: RRi.encodeFunctionData("revoke", [rn8, 1, newRoot, rp.a, rp.b, rp.c]),
     waitForBallot: String(kits[3].nf),
-    info: "From this moment member 8's ballots are refused in poll 3, after a 10-minute grace. The other members' kits were made for the old revocation root, so re-votes from them also stop after the grace: the app does not yet rebuild the revocation path (N33).",
+    info: "From this moment member 8's ballots are refused in poll 3, after a 10-minute grace. The other members' kits were made for the old revocation root, so re-votes from them also stop after the grace: the voting page does not rebuild the revocation path; the app prototype does (N33).",
     check: { type: "revokedCount", min: 1 } });
 
   fs.mkdirSync(path.dirname(SECRETS), { recursive: true });

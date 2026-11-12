@@ -2741,7 +2741,7 @@
       "to": "0x722d4FCe8f71337062205497bB92f4de484C67C6",
       "data": "0xd739a36f05a1cd6ec36d9f8baeb6c4548571d82e0c3fb4e74c8592f927476e94587c48e70000000000000000000000000000000000000000000000000000000000000001087738f2811e060756f9750cfa4b3f9f6f0a0e6f325a95ed580914f25fc7df321e5a2101f51abaa176a6279e56165974b3320153c47d80aa725373b0fdede8cf0693ddf150115bd8c91c1dabd86c8c1d33a6e930afd85242154b11faf6554f3f2d889e5efe4249b41b5431ec8d3e43128c05d1e5018ea256f671352efd436c240c0b69eba7d6d11aa1be2cb997203761019e3a023f8f193bc86b654726abcf6d1d9c97926ef63f2d5307a43982402f7748d005a59b7f237a2fdfc4a6ddf68edc0cfddb626cf9a4f148774f333f96d7d985f140abafb2f774d0ece34a6dee8069215cc874daa5b51c01c3defde7f6883b412c9fc949334caa5c2ac92e06b071061dc8c7a1d402f5913747edee5692007d1c6285ac4b3f5f7dc8779f8cd8a26640",
       "waitForBallot": "16065917313408889103708067506004674169232727368681953560168252348099134011168",
-      "info": "From this moment member 8's ballots are refused in poll 3, after a 10-minute grace. The other members' kits were made for the old revocation root, so re-votes from them also stop after the grace: the app does not yet rebuild the revocation path (N33).",
+      "info": "From this moment member 8's ballots are refused in poll 3, after a 10-minute grace. The other members' kits were made for the old revocation root, so re-votes from them also stop after the grace: the voting page does not rebuild the revocation path; the app prototype does (N33).",
       "check": {
         "type": "revokedCount",
         "min": 1

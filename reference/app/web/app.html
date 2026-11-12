@@ -38,6 +38,8 @@
 <script src="../../testnet/web/ethers.umd.min.js"></script>
 <script src="../../phone-bench/snarkjs.min.js"></script>
 <script src="check.js"></script>
+<script src="poseidon.min.js"></script>
+<script src="revocation.js"></script>
 <script>
 "use strict";
 // One flow, as the real app will have it: add a person (document chip and face, then a PIN),
@@ -261,14 +263,54 @@ async function make(i) {
     const f = await loadFiles();
     box.textContent = "Encrypting and proving…";
     const t0 = performance.now();
+    const base = await currentInput(i, k);
     const enc = PoOCheck.encrypt(k.PK, k.k, c);
-    const input = { ...k.input, CA: enc.CA.map((p) => p.map(String)), CB: enc.CB.map((p) => p.map(String)), v: Array.from({ length: k.k }, (_, j) => (j === c ? "1" : "0")), r: enc.r.map(String) };
+    const input = { ...base, CA: enc.CA.map((p) => p.map(String)), CB: enc.CB.map((p) => p.map(String)), v: Array.from({ length: k.k }, (_, j) => (j === c ? "1" : "0")), r: enc.r.map(String) };
     const { proof, publicSignals } = await snarkjs.groth16.fullProve(input, { type: "mem", data: f.wasm }, { type: "mem", data: f.zkey });
     if (!(await snarkjs.groth16.verify(f.vkey, publicSignals, proof))) throw new Error("the proof did not verify on this phone");
     ballot = { i, k, c, enc, proof, receipt: { pollId: String(k.pollId), nf: String(k.nf), PK: k.PK.map(String), r: enc.r.map(String) } };
     box.innerHTML = `<span class="ok big">Ready</span><br>Encrypted and proved in ${((performance.now() - t0) / 1000).toFixed(1)} s. Nobody can read it; only the poll's totals are ever unlocked.`;
     $("rs").disabled = false; $("ws").disabled = false;
   } catch (e) { box.innerHTML = `<span class="bad">${esc(e.message)}</span>`; $("mk").disabled = false; }
+}
+// Implementation note N33: a ballot proves that the member is not revoked, against the
+// revocation registry's current root. If someone has been revoked since this kit was made,
+// the phone rebuilds the revocation tree from the public list of revoked handles (the
+// registry's Revoked events: first the explorer's index, then public nodes), checks it against
+// the registry's root, and moves the ballot input to it (web/revocation.js).
+async function currentInput(i, k) {
+  const p = polls[i], a = p.plan.contracts.RevocationRegistry;
+  if (p.plan.tally !== "proof" || !a || !p.plan.abi.RevocationRegistry) return k.input;   // older contracts fix the list when the poll opens
+  const rr = new ethers.Contract(a, p.plan.abi.RevocationRegistry, provider);
+  const [root, count] = await Promise.all([rr.root(), rr.revokedCount()]);
+  if (String(root) === String(k.input.revRoot)) return k.input;
+  $("made").textContent = "Someone has been revoked since this kit was made: reading the public list of revocations…";
+  const handles = await revokedHandles(rr, Number(count));
+  const r = PoORevocation.refresh(k.input, handles, root);
+  if (r.revoked) throw new Error("This person's identity has been revoked, so the network refuses their ballots.");
+  $("made").textContent = "Encrypting and proving…";
+  return r.input;
+}
+async function revokedHandles(rr, count) {
+  const topic = rr.interface.getEvent("Revoked").topicHash, address = await rr.getAddress(), found = new Map(), notes = [];
+  const take = (topics, data) => { const e = rr.interface.parseLog({ topics, data }); found.set(Number(e.args.index), e.args.rn); };
+  try {
+    const q = new URLSearchParams({ module: "logs", action: "getLogs", fromBlock: "0", toBlock: "latest", address, topic0: topic });
+    const j = await (await fetch(`${EXPLORER_API}?${q}`)).json();
+    for (const ev of Array.isArray(j.result) ? j.result : []) take(ev.topics.filter(Boolean), ev.data);
+    notes.push(`explorer: ${found.size} of ${count}`);
+  } catch (e) { notes.push("explorer: " + (e.message || "").slice(0, 60)); }
+  // Public nodes, backwards from now, until every revocation is found (at most 400 windows).
+  let to = await provider.getBlockNumber(), win = 5000, windows = 0;
+  while (found.size < count && to > 0 && windows < 400) {
+    const a = Math.max(0, to - win + 1); let ev = null;
+    for (const n of [provider, ...logNodes()]) { try { ev = await n.getLogs({ address, topics: [topic], fromBlock: a, toBlock: to }); break; } catch (e) {} }
+    if (ev === null) { if (win > 500) { win = Math.floor(win / 2); continue; } throw new Error("The public list of revocations could not be read (" + notes.join("; ") + "). Try again in a minute."); }
+    for (const x of ev) take(x.topics, x.data);
+    to = a - 1; windows++;
+  }
+  if (found.size < count) throw new Error(`Only ${found.size} of ${count} revocations were found in the public record (${notes.join("; ")}). Try again later.`);
+  return [...found.keys()].sort((x, y) => x - y).map((i) => found.get(i));
 }
 function reorder(ct) { const w = ct.map(BigInt), o = []; for (let j = 0; j < 4; j++) o.push(w[2 * j], w[2 * j + 1], w[8 + 2 * j], w[8 + 2 * j + 1]); return o; }
 async function voteArgs(b) {

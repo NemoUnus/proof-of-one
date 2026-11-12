@@ -133,6 +133,20 @@ const { makePublish } = require("../../testnet/publish.js");
   console.log("both refusing:", sent5.slice(0, 260));
   if (!/explorer: .*127\.0\.0\.1: 0 answers/.test(sent5)) throw new Error("no details in the message");
   nodesFail = false;
+  // revoke member 8 and let the 10-minute grace pass: Father's kit was made for the old
+  // revocation root, so the app must rebuild the revocation path from the public list (N33)
+  const rv = plan3.txs.find((t) => t.waitForBallot);
+  await (await signer.sendTransaction({ to: rv.to, data: rv.data })).wait(); await inc(700);
+  await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith("poo-app-r-")).forEach((k) => localStorage.removeItem(k)));
+  await page.click("#bk"); await page.waitForFunction(() => document.querySelectorAll("[data-vote]").length > 0, null, { timeout: 30000 });
+  await page.click('[data-vote="1"]'); await page.check('input[name="o"][value="0"]'); await page.click("#mk");
+  await page.waitForFunction(() => /Ready|could not|did not|identity has been revoked/.test(document.getElementById("made").textContent), null, { timeout: 300000 });
+  console.log("after the revocation:", (await page.textContent("#made")).replace(/\s+/g, " ").slice(0, 80));
+  await page.click("#ws");
+  await page.waitForFunction(() => /Counted|refused|failed|could not be read|did not answer/i.test(document.getElementById("sent").textContent), null, { timeout: 300000 });
+  const sent6 = (await page.textContent("#sent")).replace(/\s+/g, " ");
+  console.log("changed after the revocation:", sent6.slice(0, 60));
+  if (!sent6.includes("Counted: option 1")) throw new Error("re-vote after a revocation failed: " + sent6.slice(0, 300));
 
   // close poll 3 and publish its result with the tally proof, then see it in the app
   await inc(7 * 24 * 3600 + 400);
