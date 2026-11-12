@@ -91,4 +91,12 @@ Known limit: after the revocation, the other members' published kits still carry
 | 17:24 | Member 8 changed its answer to option 3, proven against the previous root: **accepted**, within the 10-minute grace |
 | 17:48 | Member 8 tried again: **refused** by the contract (`InvalidProof`) in the simulation before sending, so nothing was spent |
 
-Expected result when poll 3 closes on 17 November: 1 · 2 · 1 · 0. Since this run, `vote.html` explains the contract's refusals in plain words, instead of "unknown custom error".
+On 12 November (UTC+4):
+
+| Time | Event |
+|---|---|
+| 12:22 | Poll 2 (first deployment) closed |
+| 13:28 | Poll 2's result published: 0 · 0 · 1 · 1, 2 voters; challenge period until 19 November, 13:28 |
+| 13:36 | The relay switched to poll 3 on this deployment. Member 6 changed its answer to option 1 from the app prototype through the relay. Its kit was made for the revocation root before member 8's revocation; the app rebuilt the revocation path from the public list (N33) and the contract **accepted** the ballot |
+
+Expected result when poll 3 closes on 17 November: 2 · 1 · 1 · 0. Since this run, `vote.html` explains the contract's refusals in plain words, instead of "unknown custom error".
