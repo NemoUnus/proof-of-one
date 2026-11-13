@@ -38,7 +38,7 @@ The plan also publishes the receipts of the four synthetic voters. With them, an
 ## Poll 2: vote from your phone
 
 - **`plan2.js`** prepares 7 more transactions for the same wallet and contracts (no deployments): a new synthetic enclave key set (`setKeySetRoot`, by the registry's governance, which is the deployer), 4 more synthetic members whose kits are **published** in `web/plan2.json`, their batch insertion, and poll 2, open for 7 days. The page sends them with `?plan=plan2.json`.
-- Anyone can then vote from a phone with [`../app/web/vote.html`](../app/web/vote.html).
+- Anyone can then vote from a phone with the app prototype, [`../app/web/app.html`](../app/web/app.html) (first with [`../app/web/vote.html`](../app/web/vote.html), which it replaces).
 - After the close, the page shows the encrypted totals and the ballot chain as one line to copy. **`publish.js`** turns them into the "publish" transaction: three of the five synthetic trustees decrypt the totals with DLEQ proofs, which the contract checks. The trustee shares are kept privately by the AI team.
 
 ## Limits

@@ -143,7 +143,7 @@ async function waitReason(t) {
   }
   if (t.waitForBallot) {
     const b = await polls.ballots(plan.pollId, t.waitForBallot);
-    if (BigInt(b.ballotHash) === 0n) return `Step ${t.step} waits until member 8 has voted in this poll (reference/app/web/vote.html). Then press "Connect wallet" again.`;
+    if (BigInt(b.ballotHash) === 0n) return `Step ${t.step} waits until member 8 has voted in this poll (reference/app/web/app.html). Then press "Connect wallet" again.`;
   }
   if (t.note === "waitUntilFinal") {
     const r = await polls.getResult(plan.pollId), now = await chainNow();
@@ -172,7 +172,7 @@ async function sendNext() {
     const rc = await tx.wait();
     if (rc.status !== 1) throw new Error("transaction failed");
     if (t.kind === "deploy" && rc.contractAddress.toLowerCase() !== t.expectedAddress.toLowerCase()) throw new Error(`deployed at ${rc.contractAddress}, expected ${t.expectedAddress}`);
-    if (t.kind === "createPoll") msg(plan.kits ? "Poll created. It opens in about 2 minutes; then anyone can vote from reference/app/web/vote.html." : "Poll created. It opens in about 2 minutes; then send the ballots.");
+    if (t.kind === "createPoll") msg(plan.kits ? "Poll created. It opens in about 2 minutes; then anyone can vote from reference/app/web/app.html." : "Poll created. It opens in about 2 minutes; then send the ballots.");
   } catch (e) { msg("Error: " + (e.shortMessage || e.message), "err"); }
   await refresh();
 }

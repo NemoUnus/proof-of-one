@@ -5,10 +5,13 @@
 When a phone sends a ballot, it keeps a private **receipt**: the poll, the ballot's nullifier, the poll key and the four random numbers used to encrypt the four positions of the ballot. This page uses the receipt to show which answer the public ledger holds for that ballot.
 
 **Open them:**
-- Vote from your phone (test poll 2): `https://nemounus.github.io/proof-of-one/reference/app/web/vote.html`
+- The app prototype, which replaces the voting page: `https://nemounus.github.io/proof-of-one/reference/app/web/app.html` (see below)
+- Vote from your phone (the first voting page, kept for its tests and for the records that link to it): `https://nemounus.github.io/proof-of-one/reference/app/web/vote.html`
 - Show my recorded answer (test poll 1): `https://nemounus.github.io/proof-of-one/reference/app/web/`
 
 ## Vote from your phone (`web/vote.html`)
+
+*Replaced by the app prototype (`web/app.html`), which adds receipts locked with each person's PIN, reading an earlier ballot without a receipt, and rebuilding the revocation path. Kept for its tests and for the records that link to it.*
 
 1. Choose one of four **published synthetic member kits** (members 5–8 of the test registry). A kit is what a phone holds after enrolment, plus the poll's public values: the member secret, attributes, Merkle paths, nullifier and poll key.
 2. Choose an answer. The phone encrypts it (one-hot exponential ElGamal, in `check.js`) and makes the ballot proof π_vote in the browser with snarkjs and the proof files of `../phone-bench/`. It verifies the proof on the phone before anything is sent.
