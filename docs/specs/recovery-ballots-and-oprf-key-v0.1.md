@@ -61,7 +61,9 @@ This is to be implemented after the current contract work, with its own tests. U
 - rn_new looks random. Even when both handles become public, because both identities are revoked, they cannot be linked without ρ, which only the member holds.
 - The recovery proof checks the link and the new identity's non-revocation (statements 2 and 3 of §1.2), and treats the old identity as in π_vote but without its non-revocation.
 
-Reference circuit, builder and tests: `reference/ballot-circuit/circuits/recovery.circom`, `src/recovery.js`, `test/recovery.test.js` (42,170 constraints; TEST-ONLY setup). Next: the contract's `recoveryVote` entry with the per-nullifier flag of §1.3, then the app's recovery screen.
+Reference circuit, builder and tests: `reference/ballot-circuit/circuits/recovery.circom`, `src/recovery.js`, `test/recovery.test.js` (42,170 constraints; TEST-ONLY setup). The enclave links every reissued identity this way, after a lost phone and also when a further document is added (Decision Log #30), since both revoke the identity they replace.
+
+**Contract** (`reference/contracts/src/ProofOfOnePolls.sol`, `recoveryVote`): verifies π_recover with the poll's `pollHash` for the current revocation root (or the previous one within the grace) and the identity registry's current root; replaces the nullifier's last ballot as a re-vote does; sets `recovered[poll][nf]`, after which ordinary ballots under that nullifier are refused; allows recovery ballots up to one beyond the re-vote cap. Measured: 568,963 gas. End-to-end test on a local chain: the re-enrolled member replaces the old identity's ballot in a poll still open, and the proved result reflects it. Next: the app's recovery screen, and the next test-network deployment.
 
 ## 2. A shared fingerprint key (Decision Log #53, points 1 and 2)
 

@@ -94,7 +94,7 @@ An earlier prototype proved the invitation inside the circuit (939 constraints).
 
 A member whose phone was stolen during a poll can, after recovery and with a backup of the old secret, replace whatever the old identity last recorded in that poll, perhaps the thief's ballot ([design](../../docs/specs/recovery-ballots-and-oprf-key-v0.1.md) §1 and §1.5, Decision Log #52, point 2).
 
-**The link.** At recovery the enclave sets the new identity's revocation handle to `rn_new = Poseidon(14, rn_old, ρ)` and gives ρ to the member. The handle is chosen by the enclave and signed in the credential, so nobody can point a new identity at someone else's old one. The identity leaf, the registration proof and the ballot proof `ballot.circom` are **unchanged**.
+**The link.** When it reissues an identity (after a lost phone, or with a further document), the enclave sets the new revocation handle to `rn_new = Poseidon(14, rn_old, ρ)` and gives ρ to the member (`credential.link` in `../enrolment-circuit/src/enrolment.js`; the circuit input `link`). The handle is chosen by the enclave and signed in the credential, so nobody can point a new identity at someone else's old one. The identity leaf, the registration proof and the ballot proof `ballot.circom` are **unchanged**.
 
 `circuits/recovery.circom` proves, without revealing either identity:
 
@@ -116,4 +116,4 @@ node --test --test-force-exit test/recovery.test.js
 
 Tests: Alice's recovery ballot proves and verifies under her old nullifier, and fails for another poll or a stale identity root. It cannot be made by the thief, who holds the old secret but no linked new identity (an unlinked identity, a wrong ρ or a wrong new secret all fail), nor by another member using their own recovered identity, nor with a revoked new identity, nor with an old identity outside the poll's snapshot, nor by an old identity that was not eligible.
 
-The proving key (about 25 MB) is not in the repository yet; `setup:recovery` makes one. The contract entry (`recoveryVote`) and the app's recovery screen come next. Not audited.
+The proving key (about 25 MB) is not in the repository yet; `setup:recovery` makes one, together with `../contracts/src/RecoveryVerifier.sol`. The contract entry `recoveryVote` is in [`../contracts`](../contracts/) (568,963 gas); the app's recovery screen comes next. Not audited.

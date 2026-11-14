@@ -38,6 +38,16 @@ interface ITallyVerifier {
     ) external view returns (bool);
 }
 
+/// @notice Groth16 verifier for the recovery-ballot proof π_recover (ballot-circuit/circuits/recovery.circom).
+interface IRecoveryVerifier {
+    function verifyProof(
+        uint256[2] calldata a,
+        uint256[2][2] calldata b,
+        uint256[2] calldata c,
+        uint256[19] calldata pub
+    ) external view returns (bool);
+}
+
 /// @notice Batched verifier for many ballot proofs of one poll (BallotBatchVerifier.sol).
 interface IBallotBatchVerifier {
     struct Proof { uint256[2] a; uint256[2][2] b; uint256[2] c; }
@@ -118,6 +128,7 @@ contract ProofOfOnePolls {
     IRevocationRegistry public immutable revocation;
     IPoseidon3 public immutable poseidon3;
     IPoseidon5 public immutable poseidon5;
+    IRecoveryVerifier public immutable recoveryVerifier;
 
     /// @notice What a poll creator chooses. Snapshot roots and the eligible count are NOT
     ///         chosen by the creator; they are read from the registries.
@@ -157,6 +168,9 @@ contract ProofOfOnePolls {
     struct Slot { bytes28 ballotHash; uint32 count; }         // one storage slot per nullifier
     struct Counters { uint128 distinctVoters; uint128 totalSubmissions; } // one slot per poll
     mapping(uint256 => mapping(uint256 => Slot)) public ballots; // pollId => nf => latest ballot
+    /// @notice pollId => nf => a recovery ballot has replaced this nullifier's ballots
+    ///         (Decision Log #52, point 2). From then on only recovery ballots count for it.
+    mapping(uint256 => mapping(uint256 => bool)) public recovered;
     mapping(uint256 => bytes32) public ballotChain;
     mapping(uint256 => Counters) private _counters;
     /// @dev Running homomorphic sum of the counted ballots: affine (x, y) of A_0..A_3 then
@@ -169,6 +183,7 @@ contract ProofOfOnePolls {
     event PollRevocationRoot(uint256 indexed pollId, uint256 revRoot, uint256 pollHash);
     event PollCreated(uint256 indexed pollId, address creator, uint256 idRoot, uint256 revRoot, uint64 openTime, uint64 closeTime, bytes32 metadataHash);
     event Ballot(uint256 indexed pollId, uint256 indexed nf, uint256[16] ciphertexts, uint16 count);
+    event RecoveryBallot(uint256 indexed pollId, uint256 indexed nf);
     event ResultPublished(uint256 indexed pollId, uint256[K] counts, uint256[2][K] D, uint256[] trustees, bytes32 transcriptHash, bytes32 archiveHash);
     event SampledPoll(uint256 indexed pollId, uint64 threshold, uint64 seedBlock);
     event SeedFixed(uint256 indexed pollId, uint256 seed);
@@ -194,6 +209,7 @@ contract ProofOfOnePolls {
     error BadBatch();
     error BadPrevious();
     error BadTrustees();
+    error Recovered();
     error BadPartials();
     error DecryptionMismatch();
     error InvalidTallyProof();
@@ -205,8 +221,10 @@ contract ProofOfOnePolls {
         IRevocationRegistry revocation_,
         IPoseidon3 p3,
         IPoseidon5 p5,
-        ITallyVerifier tallyVerifier_
+        ITallyVerifier tallyVerifier_,
+        IRecoveryVerifier recoveryVerifier_
     ) {
+        recoveryVerifier = recoveryVerifier_;
         verifier = verifier_;
         tallyVerifier = tallyVerifier_;
         batchVerifier = batchVerifier_;
@@ -328,8 +346,48 @@ contract ProofOfOnePolls {
 
         Counters memory cnt = _counters[pollId];
         uint256[24] memory agg = _loadAgg(pollId);
-        (bytes32 chain, bool revote, bytes28 prevHash) = _record(pollId, p.maxRevotes, nf, ct, cnt, ballotChain[pollId], agg);
+        (bytes32 chain, bool revote, bytes28 prevHash) = _record(pollId, p.maxRevotes, nf, ct, cnt, ballotChain[pollId], agg, false);
         if (revote) _subtract(prevHash, prev, agg);
+        ballotChain[pollId] = chain;
+        _counters[pollId] = cnt;
+        _storeAgg(pollId, agg);
+    }
+
+    /// @notice A recovery ballot (Decision Log #52, point 2; design §1 and §1.5): a member
+    ///         whose identity was recovered while this poll was open replaces whatever the old
+    ///         identity last recorded (perhaps a thief's ballot). The proof π_recover shows that
+    ///         the old identity (nullifier `nf`) was in the poll's snapshot and that the caller
+    ///         holds the new identity linked to it, current and not revoked; it reveals neither.
+    /// @param prev the ballot it replaces, if the old identity had voted (as in its Ballot event)
+    function recoveryVote(
+        uint256 pollId,
+        uint256 nf,
+        uint256[16] calldata ct,
+        uint256[16] calldata prev,
+        uint256[2] calldata pa,
+        uint256[2][2] calldata pb,
+        uint256[2] calldata pc
+    ) external {
+        Poll storage p = _openPoll(pollId);
+        // Public inputs: pollHash, nf, ciphertexts, and the identity registry's current root.
+        uint256[19] memory pub;
+        (uint256 cur, uint256 prv) = _pollHashes(pollId, p);
+        pub[0] = cur;
+        pub[1] = nf;
+        for (uint256 i = 0; i < 16; i++) pub[2 + i] = ct[i];
+        pub[18] = identity.root();
+        if (!recoveryVerifier.verifyProof(pa, pb, pc, pub)) {
+            pub[0] = prv;
+            if (prv == 0 || !recoveryVerifier.verifyProof(pa, pb, pc, pub)) revert InvalidProof();
+        }
+        if (!invited(pollId, nf)) revert NotInvited();
+
+        Counters memory cnt = _counters[pollId];
+        uint256[24] memory agg = _loadAgg(pollId);
+        (bytes32 chain, bool revote, bytes28 prevHash) = _record(pollId, p.maxRevotes, nf, ct, cnt, ballotChain[pollId], agg, true);
+        if (revote) _subtract(prevHash, prev, agg);
+        recovered[pollId][nf] = true;
+        emit RecoveryBallot(pollId, nf);
         ballotChain[pollId] = chain;
         _counters[pollId] = cnt;
         _storeAgg(pollId, agg);
@@ -366,7 +424,7 @@ contract ProofOfOnePolls {
         for (uint256 i = 0; i < nfs.length; i++) {
             bool revote;
             bytes28 prevHash;
-            (chain, revote, prevHash) = _record(pollId, cap, nfs[i], cts[i], cnt, chain, agg);
+            (chain, revote, prevHash) = _record(pollId, cap, nfs[i], cts[i], cnt, chain, agg, false);
             if (revote) {
                 if (r >= prevs.length) revert BadPrevious();
                 _subtract(prevHash, prevs[r++], agg);
@@ -434,11 +492,20 @@ contract ProofOfOnePolls {
     /// @dev Records one verified ballot and adds it to the running sum; returns the
     ///      extended ballot chain, whether it replaces an earlier ballot, and the hash of
     ///      the replaced ballot, which the caller checks and subtracts (_subtract).
-    function _record(uint256 pollId, uint16 cap, uint256 nf, uint256[16] calldata ct, Counters memory cnt, bytes32 chain, uint256[24] memory agg)
+    function _record(uint256 pollId, uint16 cap, uint256 nf, uint256[16] calldata ct, Counters memory cnt, bytes32 chain, uint256[24] memory agg, bool recovery)
         internal returns (bytes32, bool revote, bytes28 prevHash)
     {
         Slot memory slot = ballots[pollId][nf];
-        if (slot.count >= cap) revert RevoteCapReached();
+        // Once a recovery ballot has replaced this nullifier's ballots, ordinary ballots under
+        // it are refused, so a thief cannot answer again within the revocation grace. Recovery
+        // ballots get one ballot beyond the re-vote cap, so a thief who used up the cap before
+        // the revocation cannot block the member (design §1.3).
+        if (recovery) {
+            if (slot.count >= uint32(cap) + 1) revert RevoteCapReached();
+        } else {
+            if (recovered[pollId][nf]) revert Recovered();
+            if (slot.count >= cap) revert RevoteCapReached();
+        }
         revote = slot.count != 0;
         prevHash = slot.ballotHash;
         if (!revote) cnt.distinctVoters++;

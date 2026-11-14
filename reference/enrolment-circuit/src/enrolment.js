@@ -20,7 +20,7 @@ const { buildEddsa } = require("circomlibjs");
 const { IncrementalTree, RevocationTree } = require("../../ballot-circuit/src/trees");
 const A = require("../../ballot-circuit/src/attrs");
 
-const TAG = Object.freeze({ CREDENTIAL: 3n, COMMITMENT: 4n, CREDENTIAL_MSG: 5n, REVOCATION: 6n });
+const TAG = Object.freeze({ CREDENTIAL: 3n, COMMITMENT: 4n, CREDENTIAL_MSG: 5n, REVOCATION: 6n, REPLACES: 14n });
 const KEY_DEPTH = 8;
 const WASM = path.join(__dirname, "..", "build", "registration_js", "registration.wasm");
 const RN_LIMIT = 1n << 252n;
@@ -78,7 +78,7 @@ function createEnclave(P, { epochs = 4 } = {}) {
   const usedDocs = new Set();                   // document fingerprints already used
   const issuedLog = [];                         // what the enclave sees: for unlinkability tests
 
-  // rn = Poseidon(TAG, kR, fingerprint, generation), truncated below 2^252.
+  // First identity: rn = Poseidon(TAG, kR, fingerprint, generation), truncated below 2^252.
   const handle = (fp, g) => H([TAG.REVOCATION, kR, fp, g]) % RN_LIMIT;
 
   // Called only after the uniqueness checks pass. `reenrol` marks a lost-phone case:
@@ -108,16 +108,21 @@ function createEnclave(P, { epochs = 4 } = {}) {
     return { ...sign(fingerprint, prev, attrs, cm, epoch), attrs };
   }
 
+  // A reissued identity (after a lost phone, or with a further document) is linked to the
+  // one it replaces through its handle: rn = Poseidon(14, rn_old, link), retried below 2^252.
+  // `link` (ρ in the design) goes only to the member, who needs it for recovery ballots in
+  // polls still open (docs/specs/recovery-ballots-and-oprf-key-v0.1.md §1.5).
   function sign(fingerprint, prev, attrs, cm, epoch) {
     const generation = prev ? prev.generation + 1n : 0n;
-    const rn = handle(fingerprint, generation);
+    let rn = handle(fingerprint, generation), link = null;
+    if (prev) do { link = P.curve.randScalar(); rn = H([TAG.REPLACES, prev.rn, link]); } while (rn >= RN_LIMIT);
     const k = keys[epoch];
     const msg = H([TAG.CREDENTIAL_MSG, ...A.attrFields(attrs), cm, rn, k.epoch]);
     const sig = eddsa.signPoseidon(k.prv, F.e(msg));
     enrolled.set(fingerprint, { generation, rn, attrs });
     issuedLog.push({ cm, rn, attrs });
     return {
-      credential: { rn, epoch: k.epoch, A: k.A, R8: [F.toObject(sig.R8[0]), F.toObject(sig.R8[1])], S: sig.S, keyIndex: k.index },
+      credential: { rn, link, epoch: k.epoch, A: k.A, R8: [F.toObject(sig.R8[0]), F.toObject(sig.R8[1])], S: sig.S, keyIndex: k.index },
       revokeOld: prev ? prev.rn : null,
     };
   }

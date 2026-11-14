@@ -14,12 +14,12 @@ const WASM = path.join(BUILD, "recovery_js", "recovery.wasm");
 
 // At recovery the enclave links the new identity to the old one through the new
 // revocation handle: rn_new = Poseidon(14, rn_old, ρ), retrying ρ until rn_new < 2^252.
-// ρ goes to the member; rn_new goes into the signed credential as usual.
+// ρ (`link`) goes to the member; rn_new goes into the signed credential as usual.
 function recoveredHandle(P, rnOld, randScalar = P.curve.randScalar) {
   for (;;) {
-    const rho = randScalar();
-    const rn = P.hash.H([TAG_REPLACES, BigInt(rnOld), rho]);
-    if (rn < LIMIT) return { rn, rho };
+    const link = randScalar();
+    const rn = P.hash.H([TAG_REPLACES, BigInt(rnOld), link]);
+    if (rn < LIMIT) return { rn, link };
   }
 }
 
@@ -27,7 +27,7 @@ function attrOf(P, m) { return A.attrHash(P.hash.H, m, m.salt); }
 
 // Everything the phone needs for one recovery ballot in poll X.
 //   oldMember, oldIndex, snapTree: the old identity (from the backup) and X's membership snapshot
-//   newMember, newIndex, curTree: the new identity (with rho) and the current identity tree
+//   newMember, newIndex, curTree: the new identity (with `link`, ρ of the design) and the current identity tree
 //   revTree: the current revocation tree (the old identity is in it; the new one must not be)
 function buildRecovery(P, { pollId, PK, policy, ctxHash, oldMember, oldIndex, snapTree, newMember, newIndex, curTree, revTree, choice, k = B.K, docIndex }) {
   const C = P.curve;
@@ -51,7 +51,7 @@ function buildRecovery(P, { pollId, PK, policy, ctxHash, oldMember, oldIndex, sn
     nat: sl.map((d) => d.nat.toString()), exp: sl.map((d) => d.expiry.toString()), docSel: sl.map((_, i) => (i === di ? "1" : "0")),
     salt: oldMember.salt.toString(), rnOld: oldMember.rn.toString(),
     idSiblings: op.siblings.map(String), idPathIndex: op.pathIndex.map(String),
-    sNew: newMember.s.toString(), attrNew: attrOf(P, newMember).toString(), rho: newMember.rho.toString(),
+    sNew: newMember.s.toString(), attrNew: attrOf(P, newMember).toString(), link: newMember.link.toString(),
     newSiblings: np.siblings.map(String), newPathIndex: np.pathIndex.map(String),
     lowValue: rev.lowValue.toString(), nextValue: rev.nextValue.toString(),
     revSiblings: rev.siblings.map(String), revPathIndex: rev.pathIndex.map(String),

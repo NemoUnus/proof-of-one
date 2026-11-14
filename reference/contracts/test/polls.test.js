@@ -18,11 +18,13 @@ const B = require("../../ballot-circuit/src/ballot");
 const { IncrementalTree, RevocationTree } = require("../../ballot-circuit/src/trees");
 const E = require("../../enrolment-circuit/src/enrolment");
 const SM = require("../../ballot-circuit/src/sampling");
+const RB = require("../../ballot-circuit/src/recovery");
 
 const BALLOT_ZKEY = path.join(__dirname, "..", "..", "ballot-circuit", "setup", "ballot_test.zkey");
 const REG_ZKEY = path.join(__dirname, "..", "..", "enrolment-circuit", "setup", "registration_test.zkey");
 const BATCH_ZKEY = path.join(__dirname, "..", "..", "enrolment-circuit", "setup", "batch_test.zkey");
 const REVOKE_ZKEY = path.join(__dirname, "..", "..", "enrolment-circuit", "setup", "revoke_test.zkey");
+const RECOVERY_ZKEY = path.join(__dirname, "..", "..", "ballot-circuit", "setup", "recovery_test.zkey");
 const Z2 = [0n, 0n], Z22 = [[0n, 0n], [0n, 0n]];
 const art = (n) => JSON.parse(fs.readFileSync(path.join(__dirname, "..", "build", n + ".json"), "utf8"));
 const A = require("../../ballot-circuit/src/attrs");
@@ -67,7 +69,7 @@ async function enrol({ fingerprint = fp(), reenrol = false } = {}) {
   const p = sp(proof);
   const g = await used(identity.register(leaf, member.cn, p.a, p.b, p.c));
   gas.register = gas.register || g;
-  return { member, leaf, fingerprint, revokeOld, proof: p };
+  return { member, leaf, fingerprint, revokeOld, link: credential.link, proof: p };
 }
 
 // --- the phone's local view of both registries, rebuilt from events only
@@ -132,7 +134,7 @@ test.before(async () => {
   const deploy = async (abi, bytecode, ...args) => { const c = await new ethers.ContractFactory(abi, bytecode, signer).deploy(...args); await c.waitForDeployment(); return c; };
   poseidon = await deploy(poseidonContract.generateABI(2), poseidonContract.createCode(2));
   enclave = E.createEnclave(P, { epochs: 4 });
-  const BBV = art("BallotBatchVerifier"), RV = art("RegistrationVerifier"), BIV = art("BatchInsertVerifier"), RKV = art("RevokeVerifier"), BV = art("Groth16Verifier"), TV = art("TallyVerifier"), IR = art("IdentityRegistry"), RR = art("RevocationRegistry"), PP = art("ProofOfOnePolls");
+  const BBV = art("BallotBatchVerifier"), RV = art("RegistrationVerifier"), BIV = art("BatchInsertVerifier"), RKV = art("RevokeVerifier"), BV = art("Groth16Verifier"), TV = art("TallyVerifier"), RCV = art("RecoveryVerifier"), IR = art("IdentityRegistry"), RR = art("RevocationRegistry"), PP = art("ProofOfOnePolls");
   const regVerifier = await deploy(RV.abi, RV.bytecode);
   const batchVerifier = await deploy(BIV.abi, BIV.bytecode);
   identity = await deploy(IR.abi, IR.bytecode, await poseidon.getAddress(), await regVerifier.getAddress(), await batchVerifier.getAddress(), 4, enclave.keySetRoot, await signer.getAddress());
@@ -144,7 +146,7 @@ test.before(async () => {
   const p3 = await deploy(poseidonContract.generateABI(3), poseidonContract.createCode(3));
   const p5 = await deploy(poseidonContract.generateABI(5), poseidonContract.createCode(5));
   polls = await deploy(PP.abi, PP.bytecode, await ballotVerifier.getAddress(), await ballotBatchVerifier.getAddress(), await identity.getAddress(), await revocation.getAddress(),
-    await p3.getAddress(), await p5.getAddress(), await (await deploy(TV.abi, TV.bytecode)).getAddress());
+    await p3.getAddress(), await p5.getAddress(), await (await deploy(TV.abi, TV.bytecode)).getAddress(), await (await deploy(RCV.abi, RCV.bytecode)).getAddress());
   keys = P.dkg(5, 3);
 });
 test.after(async () => { if (globalThis.curve_bn128) await globalThis.curve_bn128.terminate(); });
@@ -247,6 +249,47 @@ test("re-enrolment: the old identity is revoked on-chain; it cannot vote in late
   await used(send(await makeBallot(alice2, 0, later, v), later));
   await used(send(await makeBallot(people[1], 1, later, v), later));
   assert.equal(await polls.distinctVoters(later), 2n);
+});
+
+test("recovery ballot: the recovered member replaces the old identity's ballot in the poll still open", async () => {
+  // Decision Log #52, point 2. Alice (people[0]) re-enrolled in the test above: her old identity
+  // is revoked and her new one, people[4], is linked to it through its revocation handle. Whoever
+  // holds her old phone voted 0 in the first poll. With a backup of her old secret, Alice
+  // replaces that ballot with her own answer, 3.
+  const alice = people[0], alice2 = people[4];
+  assert.ok(alice2.link, "the enclave gave the member the link of the new handle");
+  const v = await syncTrees();
+  const poll = await polls.getPoll(pollId);
+  const snap = new IncrementalTree(P.hash.H, B.DEPTH);
+  for (let i = 0; i < Number(poll.eligible); i++) snap.insert(v.ids.leaves[i]);
+  assert.equal(snap.root, poll.idRoot, "the poll's snapshot rebuilt from events");
+  const args = { pollId: BigInt(pollId), PK: keys.PK, policy: POLICY, ctxHash: await polls.contextHash(pollId),
+    oldMember: alice.member, oldIndex: v.index.get(alice.leaf.toString()), snapTree: snap,
+    newMember: { ...alice2.member, link: alice2.link }, newIndex: v.index.get(alice2.leaf.toString()), curTree: v.ids, revTree: v.rev, choice: 3 };
+  const rb = RB.buildRecovery(P, args);
+  assert.equal(rb.nf, P.nullifier(BigInt(pollId), alice.member.s), "the recovery ballot carries the OLD nullifier");
+  const { proof } = await RB.prove(rb.input, RECOVERY_ZKEY);
+  const pr = sp(proof), ct = ctArray(rb.C);
+
+  // a recovery ballot against another poll, or with a proof for other ciphertexts, is refused
+  const other = await makeBallot(people[1], 0, pollId, v);
+  await reverts(polls.recoveryVote.staticCall(pollId, rb.nf, ctArray(other.C), prevOf(pollId, rb.nf), pr.a, pr.b, pr.c), polls, "InvalidProof");
+  await reverts(polls.recoveryVote.staticCall(pollId, other.nf, ct, prevOf(pollId, other.nf), pr.a, pr.b, pr.c), polls, "InvalidProof");
+  // the replaced ballot must be the one recorded
+  await reverts(polls.recoveryVote.staticCall(pollId, rb.nf, ct, ctArray(other.C), pr.a, pr.b, pr.c), polls, "BadPrevious");
+
+  const before = await polls.distinctVoters(pollId);
+  const rc = await (await polls.recoveryVote(pollId, rb.nf, ct, prevOf(pollId, rb.nf), pr.a, pr.b, pr.c)).wait();
+  gas.recoveryVote = rc.gasUsed;
+  lastCt.set(key(pollId, rb.nf), ct);
+  assert.deepEqual(rc.logs.map((l) => polls.interface.parseLog(l).name), ["Ballot", "RecoveryBallot"]);
+  assert.equal(await polls.recovered(pollId, rb.nf), true);
+  assert.equal(await polls.distinctVoters(pollId), before, "a replacement, not a new voter");
+
+  // Alice's new identity cannot be used as the old one by a thief: the old secret alone does
+  // not give a linked identity (tested in ballot-circuit/test/recovery.test.js). And no one can
+  // vote in this poll with the new identity directly: it is not in the poll's snapshot.
+  await assert.rejects(makeBallot(alice2, 1, pollId, { ...v, ids: snap }), /./);
 });
 
 // --- batched submission (voteBatch): one transaction, n + 3 pairings for n proofs
@@ -383,7 +426,7 @@ test("close, tally; a result is final only with a valid tally proof; unpublished
   const all = keys.shares.map((sh) => ({ index: sh.index, parts: P.partialDecrypt(sh, keys.publicShares[sh.index - 1].PK, agg, BigInt(pollId)) }));
   const partials = all.slice(0, 3); // trustees 1, 2, 3
   const counts = P.combine(agg, partials, 3, distinct);
-  assert.deepEqual(counts, [1n, 2n, 1n, 0n]); // final choices: 0, 1, 1, 2 (member 4 re-voted)
+  assert.deepEqual(counts, [0n, 2n, 1n, 1n]); // final choices: 3, 1, 1, 2 (member 4 re-voted; member 1 replaced by a recovery ballot)
   const D = P.combinedD(partials, 3, 4);
 
   const { mul, sub, G } = P.curve;

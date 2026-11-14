@@ -12,7 +12,7 @@
 // THE LINK BETWEEN THE TWO IDENTITIES (§1.5)
 // At recovery the enclave chooses the new identity's revocation handle as
 //     rn_new = Poseidon(14, rn_old, ρ)        (retrying ρ until rn_new < 2^252)
-// and gives ρ to the member. rn is set by the enclave and signed in the credential, so no
+// and gives ρ (the input `link`) to the member. rn is set by the enclave and signed in the credential, so no
 // one can choose an rn_new that points to someone else's old identity. The identity leaf
 // format, the registration proof and the ballot proof are unchanged; members who never
 // recovered have a random rn as before. Without ρ, rn_new reveals nothing about rn_old,
@@ -79,7 +79,7 @@ template Recovery(depth, revDepth, k) {
     // ----------------------------------------------------------------- new identity
     signal input sNew;
     signal input attrNew;            // the new leaf's attribute hash (its fields stay closed)
-    signal input rho;
+    signal input link;          // ρ of the design: the secret that links the two handles
     signal input newSiblings[depth];
     signal input newPathIndex[depth];
     signal input lowValue;
@@ -158,11 +158,11 @@ template Recovery(depth, revDepth, k) {
     requiredNat * (natSel - requiredNat) === 0;
 
     // 8. the link: rn_new = Poseidon(14, rn_old, ρ)
-    component link = Poseidon(3);
-    link.inputs[0] <== 14;           // TAG.REPLACES
-    link.inputs[1] <== rnOld;
-    link.inputs[2] <== rho;
-    signal rnNew <== link.out;
+    component linkH = Poseidon(3);
+    linkH.inputs[0] <== 14;          // TAG.REPLACES
+    linkH.inputs[1] <== rnOld;
+    linkH.inputs[2] <== link;
+    signal rnNew <== linkH.out;
 
     // 5–6. new identity in the current identity tree
     component PN = MulG();

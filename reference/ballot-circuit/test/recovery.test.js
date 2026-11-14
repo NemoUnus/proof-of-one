@@ -42,10 +42,10 @@ test.before(async () => {
   // Alice recovers: old identity revoked, new identity linked through its revocation handle
   revTree.revoke(alice.rn);
   const link = R.recoveredHandle(P, alice.rn);
-  aliceNew = { ...member({ birthDay: alice.birthDay }), rn: link.rn, rho: link.rho };
+  aliceNew = { ...member({ birthDay: alice.birthDay }), rn: link.rn, link: link.link };
   aliceNew.index = ids.insert(B.memberLeaf(P, aliceNew));
   // Bob enrols a new identity of his own (random handle, no link) to try to replace Alice's ballot
-  bobNew = { ...member(), rho: C.randScalar() };
+  bobNew = { ...member(), link: C.randScalar() };
   bobNew.index = ids.insert(B.memberLeaf(P, bobNew));
   args = { pollId: POLL, PK: keys.PK, policy: POLICY, ctxHash: CTX, oldMember: alice, oldIndex: alice.index, snapTree, newMember: aliceNew, newIndex: aliceNew.index, curTree: ids, revTree, choice: 2 };
 });
@@ -53,7 +53,7 @@ test.before(async () => {
 test("the link: the new handle is below 2^252 and does not equal the old one", () => {
   assert.ok(aliceNew.rn < (1n << 252n));
   assert.notEqual(aliceNew.rn, alice.rn);
-  assert.equal(P.hash.H([14n, alice.rn, aliceNew.rho]), aliceNew.rn);
+  assert.equal(P.hash.H([14n, alice.rn, aliceNew.link]), aliceNew.rn);
 });
 
 test("Alice's recovery ballot proves and verifies, under her OLD nullifier", async () => {
@@ -73,8 +73,8 @@ test("Alice's recovery ballot proves and verifies, under her OLD nullifier", asy
 test("the thief cannot: it holds the old secret but no linked new identity", async () => {
   // with Bob's unlinked new identity (and any ρ), the link fails
   await witnessFails(R.buildRecovery(P, { ...args, newMember: bobNew, newIndex: bobNew.index }).input);
-  // with Alice's new leaf but a wrong ρ
-  await witnessFails({ ...R.buildRecovery(P, args).input, rho: "12345" });
+  // with Alice's new leaf but a wrong link (ρ)
+  await witnessFails({ ...R.buildRecovery(P, args).input, link: "12345" });
   // with Alice's new leaf but not her new secret
   await witnessFails({ ...R.buildRecovery(P, args).input, sNew: bob.s.toString() });
 });
@@ -83,7 +83,7 @@ test("Bob cannot replace Alice's ballot with his own linked identity", async () 
   // Bob's own recovery would link to Bob's old handle, not Alice's: using Alice's old
   // identity requires her old secret, and her rn_old must hash to his rn_new
   const bobLink = R.recoveredHandle(P, bob.rn);
-  const bobRec = { ...bobNew, rn: bobLink.rn, rho: bobLink.rho };
+  const bobRec = { ...bobNew, rn: bobLink.rn, link: bobLink.link };
   const t = new IncrementalTree(P.hash.H, B.DEPTH); for (const l of ids.leaves) t.insert(l);
   bobRec.index = t.insert(B.memberLeaf(P, bobRec));
   await witnessFails(R.buildRecovery(P, { ...args, newMember: bobRec, newIndex: bobRec.index, curTree: t }).input);
