@@ -89,3 +89,31 @@ The ticket uses the poll's nullifier nf. Before a member votes, only the member 
 An earlier prototype proved the invitation inside the circuit (939 constraints). Added to the ballot proof, it would have pushed it past 2^15 constraints, which needs a larger setup, and it would have hidden nothing more. It was removed (implementation note N26).
 
 `test/sampling.test.js` checks three things: the invitation rate, that an open poll admits everyone, and that a new seed draws a new sample.
+
+## Recovery ballots (π_recover)
+
+A member whose phone was stolen during a poll can, after recovery and with a backup of the old secret, replace whatever the old identity last recorded in that poll, perhaps the thief's ballot ([design](../../docs/specs/recovery-ballots-and-oprf-key-v0.1.md) §1 and §1.5, Decision Log #52, point 2).
+
+**The link.** At recovery the enclave sets the new identity's revocation handle to `rn_new = Poseidon(14, rn_old, ρ)` and gives ρ to the member. The handle is chosen by the enclave and signed in the credential, so nobody can point a new identity at someone else's old one. The identity leaf, the registration proof and the ballot proof `ballot.circom` are **unchanged**.
+
+`circuits/recovery.circom` proves, without revealing either identity:
+
+| # | Statement |
+|---|---|
+| 1–3 | The old identity (secret `s_old`) is in the poll's membership snapshot, and the ballot's nullifier is the old identity's: `nf = Poseidon(1, pollId, s_old)` |
+| 4 | The old identity was eligible, as in π_vote |
+| 5–7 | The new identity (secret `s_new`) is in the **current** identity tree and is not revoked |
+| 8 | `rn_new = Poseidon(14, rn_old, ρ)` |
+| 9–10 | A well-formed encrypted one-hot ballot, bound to the poll by the same `pollHash` as π_vote |
+
+Public inputs (19): `pollHash`, `nf`, the 16 ciphertext coordinates, and `idRootNow`, the identity registry's current root. **42,170 constraints**, about 1.3 times π_vote. The shared templates are in `circuits/lib.circom`; `ballot.circom` was left untouched, so the deployed ballot verifier stays valid.
+
+```bash
+npm run build:recovery
+npm run setup:recovery     # TEST-ONLY; needs powers of tau of size 2^16 (made if PTAU is not given)
+node --test --test-force-exit test/recovery.test.js
+```
+
+Tests: Alice's recovery ballot proves and verifies under her old nullifier, and fails for another poll or a stale identity root. It cannot be made by the thief, who holds the old secret but no linked new identity (an unlinked identity, a wrong ρ or a wrong new secret all fail), nor by another member using their own recovered identity, nor with a revoked new identity, nor with an old identity outside the poll's snapshot, nor by an old identity that was not eligible.
+
+The proving key (about 25 MB) is not in the repository yet; `setup:recovery` makes one. The contract entry (`recoveryVote`) and the app's recovery screen come next. Not audited.

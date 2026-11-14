@@ -20,6 +20,8 @@ const TAG = Object.freeze({
   DKG_PAD: 10n, // trustee key generation: share encryption pad
   DKG_DLEQ: 11n, // trustee key generation: complaint key proof
   DKG_GEN: 12n, // trustee key generation: second generator H
+  TICKET: 13n, // invitation ticket of sampled polls: H(TAG, nf, seed)
+  REPLACES: 14n, // recovery link: rn_new = H(TAG, rn_old, rho)
 });
 
 let poseidon = null;

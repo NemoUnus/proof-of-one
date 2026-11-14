@@ -50,6 +50,19 @@ The contract treats it as a re-vote under nf_old. It subtracts whatever nf_old l
 
 This is to be implemented after the current contract work, with its own tests. Until then the whitepaper describes it as designed, not implemented.
 
+### 1.5 Implementation choice: the link in the revocation handle (14 November 2026)
+
+§1.2 put the link in a new hidden field of the identity leaf. That would change the leaf, the registration proof π_reg and the ballot proof π_vote for every member, and need new setups for all three. The link is placed instead in the **revocation handle** of the new identity:
+
+    rn_new = Poseidon(14, rn_old, ρ)     with ρ random, retried until rn_new < 2^252
+
+- The enclave already chooses rn and signs it in the credential message (red-team change C1), so a member cannot choose an rn_new that points to someone else's old identity. Members who never recovered keep a random rn.
+- The leaf format, π_reg and π_vote are unchanged. Only the enclave's recovery step and the new recovery proof are new.
+- rn_new looks random. Even when both handles become public, because both identities are revoked, they cannot be linked without ρ, which only the member holds.
+- The recovery proof checks the link and the new identity's non-revocation (statements 2 and 3 of §1.2), and treats the old identity as in π_vote but without its non-revocation.
+
+Reference circuit, builder and tests: `reference/ballot-circuit/circuits/recovery.circom`, `src/recovery.js`, `test/recovery.test.js` (42,170 constraints; TEST-ONLY setup). Next: the contract's `recoveryVote` entry with the per-nullifier flag of §1.3, then the app's recovery screen.
+
 ## 2. A shared fingerprint key (Decision Log #53, points 1 and 2)
 
 ### 2.1 The problem
