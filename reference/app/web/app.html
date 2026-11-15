@@ -53,10 +53,13 @@ const Q = new URLSearchParams(location.search);
 const RPC = Q.get("rpc") || "https://sepolia.base.org";
 const EXPLORER = "https://sepolia.basescan.org";
 const FILES = { wasm: "../../phone-bench/ballot.wasm", zkey: "../../ballot-circuit/setup/ballot_test.zkey", vkey: "../../ballot-circuit/setup/vkey_test.json" };
+// Recovery ballots (Decision Log #52, point 2): π_recover, made with the new identity and a backup of the old secret.
+const RFILES = { wasm: "../../phone-bench/recovery.wasm", zkey: "../../ballot-circuit/setup/recovery_test.zkey", vkey: "../../ballot-circuit/setup/vkey_recovery_test.json" };
 // The polls this prototype knows about. A real app reads them from the ledger.
 const POLLS = [
   { plan: "../../testnet/web/plan2.json", title: "Test poll 2" },
   { plan: "../../testnet/web/plan3.json", title: "Test poll 3 (tally proof; revocation in an open poll)" },
+  { plan: "../../testnet/web/plan4.json", title: "Test poll 4 (a recovery ballot after a stolen phone)" },
 ];
 const MEMBERS = [5, 6, 7, 8];
 // Public nodes tried in turn for log queries (the first one is also used for everything else).
@@ -67,9 +70,10 @@ const logNodes = () => (_logNodes ||= LOG_RPCS.map((u) => new ethers.JsonRpcProv
 const DOCS = { 5: "Synthetic passport · issuer TEST · born 1990", 6: "Synthetic passport · issuer TEST · born 1985", 7: "Synthetic ID card · issuer TEST · born 1979", 8: "Synthetic passport · issuer TEST · born 2001" };
 const MAX_PROFILES = 4;
 const POLL_ABI_EXTRA = ["event Ballot(uint256 indexed pollId, uint256 indexed nf, uint256[16] ciphertexts, uint16 count)",
-  "error InvalidProof()", "error PollNotOpen()", "error RevoteCapReached()", "error BadPrevious()", "error NotInvited()"];
+  "error InvalidProof()", "error PollNotOpen()", "error RevoteCapReached()", "error BadPrevious()", "error NotInvited()", "error Recovered()"];
 const WHY = { InvalidProof: "The network refused this ballot: this person's identity has been revoked, or the poll's revocation list changed since this test kit was made.",
-  PollNotOpen: "This poll is not open.", RevoteCapReached: "This person has changed their answer too many times.", BadPrevious: "A newer ballot exists. Try again." };
+  PollNotOpen: "This poll is not open.", RevoteCapReached: "This person has changed their answer too many times.", BadPrevious: "A newer ballot exists. Try again.",
+  Recovered: "A recovery ballot has replaced this identity's ballots in this poll; only recovery ballots count for it now." };
 const why = (e) => (e && e.revert && WHY[e.revert.name]) || (e && (e.shortMessage || e.message)) || String(e);
 const store = {
   get(k) { try { return JSON.parse(localStorage.getItem(k) || "null"); } catch (e) { return null; } },
@@ -100,7 +104,8 @@ async function unseal(s, pin) {
 async function load() {
   provider = new ethers.JsonRpcProvider(RPC, 84532, { staticNetwork: true });
   for (const p of POLLS) {
-    const plan = await (await fetch(p.plan, { cache: "no-store" })).json();
+    let plan;
+    try { const r = await fetch(p.plan, { cache: "no-store" }); if (!r.ok) continue; plan = await r.json(); } catch (e) { continue; }   // a poll not yet planned
     const c = new ethers.Contract(plan.contracts.ProofOfOnePolls, [...plan.abi.ProofOfOnePolls, ...POLL_ABI_EXTRA.filter((x) => !plan.abi.ProofOfOnePolls.some((a) => x.includes(" " + a.name + "(")))], provider);
     polls.push({ ...p, plan, c });
   }
@@ -212,7 +217,15 @@ let tries = 0, lockedUntil = 0;
 async function openProfile(i) {
   const p = profiles()[i], pin = $("pin" + i).value;
   if (Date.now() < lockedUntil) return ($("m" + i).textContent = `Too many wrong PINs. Wait ${Math.ceil((lockedUntil - Date.now()) / 1000)} s.`);
-  try { open = { idx: i, name: p.name, member: p.member, kits: await unseal(p.sealed, pin), key: await pinKey(pin, unb64(p.sealed.salt)) }; tries = 0; person(); }
+  try {
+    open = { idx: i, name: p.name, member: p.member, kits: await unseal(p.sealed, pin), key: await pinKey(pin, unb64(p.sealed.salt)), rkits: {} };
+    // Polls planned after this profile was made: their test kits are public, so add them now.
+    polls.forEach((q, j) => {
+      if (!open.kits[j]) { const k = q.plan.kits.find((x) => x.member === p.member); if (k) open.kits[j] = k; }
+      const rk = (q.plan.recoveryKits || []).find((x) => x.member === p.member); if (rk) open.rkits[j] = rk;
+    });
+    tries = 0; person();
+  }
   catch (e) { tries++; if (tries >= 5) { lockedUntil = Date.now() + 60000; tries = 0; } $("m" + i).textContent = "Wrong PIN."; }
 }
 async function person() {
@@ -256,28 +269,41 @@ function answer(i) {
   document.querySelectorAll('input[name="o"]').forEach((e) => (e.onchange = () => ($("mk").disabled = false)));
   $("mk").onclick = () => make(i); $("rs").onclick = () => sendRelay(i); $("ws").onclick = () => sendWallet(i);
 }
-async function loadFiles() {
-  if (files) return files;
+const fileCache = {};
+async function loadFiles(F = FILES) {
+  if (fileCache[F.zkey]) return fileCache[F.zkey];
   const get = async (u) => { const r = await fetch(u); if (!r.ok) throw new Error("could not load " + u); return new Uint8Array(await r.arrayBuffer()); };
-  const [wasm, zkey, vkey] = await Promise.all([get(FILES.wasm), get(FILES.zkey), fetch(FILES.vkey).then((r) => r.json())]);
-  return (files = { wasm, zkey, vkey });
+  const [wasm, zkey, vkey] = await Promise.all([get(F.wasm), get(F.zkey), fetch(F.vkey).then((r) => r.json())]);
+  return (fileCache[F.zkey] = { wasm, zkey, vkey });
 }
 async function make(i) {
   const box = $("made"), k = open.kits[i], c = Number(document.querySelector('input[name="o"]:checked').value);
   box.style.display = "block"; $("mk").disabled = true;
   try {
     box.textContent = "Downloading the proof files (about 24 MB, once)…";
-    const f = await loadFiles();
+    let f = await loadFiles(), recovery = false;
     box.textContent = "Encrypting and proving…";
     const t0 = performance.now();
-    const base = await currentInput(i, k);
+    let base;
+    try { base = await currentInput(i, k); }
+    catch (e) {
+      // The old identity has been revoked. If this person recovered (a new identity linked to the
+      // old one) and kept a backup of the old secret, a recovery ballot replaces whatever the old
+      // identity recorded, perhaps a thief's ballot (Decision Log #52, point 2).
+      const rk = open.rkits[i];
+      if (!rk || !/revoked/.test(e.message)) throw e;
+      box.textContent = "This person's old identity was revoked after a lost phone. Making a recovery ballot with the new identity and the backup of the old secret (about 30 MB to download, once)…";
+      f = await loadFiles(RFILES); base = rk.input; recovery = true;
+      box.textContent = "Encrypting and proving the recovery ballot…";
+    }
     const enc = PoOCheck.encrypt(k.PK, k.k, c);
     const input = { ...base, CA: enc.CA.map((p) => p.map(String)), CB: enc.CB.map((p) => p.map(String)), v: Array.from({ length: k.k }, (_, j) => (j === c ? "1" : "0")), r: enc.r.map(String) };
     const { proof, publicSignals } = await snarkjs.groth16.fullProve(input, { type: "mem", data: f.wasm }, { type: "mem", data: f.zkey });
     if (!(await snarkjs.groth16.verify(f.vkey, publicSignals, proof))) throw new Error("the proof did not verify on this phone");
-    ballot = { i, k, c, enc, proof, receipt: { pollId: String(k.pollId), nf: String(k.nf), PK: k.PK.map(String), r: enc.r.map(String) } };
-    box.innerHTML = `<span class="ok big">Ready</span><br>Encrypted and proved in ${((performance.now() - t0) / 1000).toFixed(1)} s. Nobody can read it; only the poll's totals are ever unlocked.`;
-    $("rs").disabled = false; $("ws").disabled = false;
+    ballot = { i, k, c, enc, proof, recovery, receipt: { pollId: String(k.pollId), nf: String(k.nf), PK: k.PK.map(String), r: enc.r.map(String) } };
+    box.innerHTML = `<span class="ok big">Ready${recovery ? ": a recovery ballot" : ""}</span><br>Encrypted and proved in ${((performance.now() - t0) / 1000).toFixed(1)} s. Nobody can read it; only the poll's totals are ever unlocked.` +
+      (recovery ? `<p class="mut">It replaces whatever ${esc(open.name)}'s old identity last recorded in this poll. The relay does not send recovery ballots yet: use a test wallet.</p>` : "");
+    $("rs").disabled = recovery; $("ws").disabled = false;
   } catch (e) { box.innerHTML = `<span class="bad">${esc(e.message)}</span>`; $("mk").disabled = false; }
 }
 // Implementation note N33: a ballot proves that the member is not revoked, against the
@@ -421,9 +447,10 @@ async function sendWallet() {
     const bp = new ethers.BrowserProvider(window.ethereum); await bp.send("eth_requestAccounts", []);
     if (Number((await bp.getNetwork()).chainId) !== 84532) await bp.send("wallet_switchEthereumChain", [{ chainId: "0x14a34" }]);
     const p = polls[ballot.i], c = p.c.connect(await bp.getSigner()), args = await voteArgs(ballot);
-    await c.vote.staticCall(...args);
+    const fn = ballot.recovery ? "recoveryVote" : "vote";
+    await c[fn].staticCall(...args);
     box.textContent = "Approve the transaction in your wallet…";
-    const tx = await c.vote(...args); box.textContent = "Sent. Waiting for it to be included…";
+    const tx = await c[fn](...args); box.textContent = "Sent. Waiting for it to be included…";
     const rc = await tx.wait(); if (rc.status !== 1) throw new Error("The transaction failed.");
     await done(tx.hash);
   } catch (e) { box.innerHTML = `<span class="bad">${esc(why(e))}</span>`; }

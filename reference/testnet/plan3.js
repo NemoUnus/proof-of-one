@@ -56,7 +56,11 @@ async function main() {
   };
 
   // ---- 1–3. new contracts
-  const RR = art("RevocationRegistry"), TV = art("TallyVerifier"), PP = art("ProofOfOnePolls");
+  // The polls contract exactly as deployed in deployment 2, taken from the published plan: the
+  // reference contract has since gained recovery ballots and a constructor argument (plan4.js).
+  const pub3 = JSON.parse(fs.readFileSync(path.join(__dirname, "web", "plan3.json"), "utf8"));
+  const pp3 = pub3.txs.find((t) => t.name.startsWith("ProofOfOnePolls"));
+  const RR = art("RevocationRegistry"), TV = art("TallyVerifier"), PP = { abi: pub3.abi.ProofOfOnePolls, bytecode: ethers.dataSlice(pp3.data, 0, ethers.dataLength(pp3.data) - 7 * 32) };
   const rev = new RevocationTree(H, B.REV_DEPTH);
   const revocation = deploy("RevocationRegistry (records the previous root)", RR, ["address", "address", "uint256"], [old.RevokeVerifier, deployer, rev.root]);
   const tallyV = deploy("TallyVerifier (tally proof π_tally)", TV);
@@ -98,7 +102,7 @@ async function main() {
   txs.push({ step: txs.length + 1, kind: "call", name: "Revoke member 8 (send only after member 8 has voted)", to: revocation,
     data: RRi.encodeFunctionData("revoke", [rn8, 1, newRoot, rp.a, rp.b, rp.c]),
     waitForBallot: String(kits[3].nf),
-    info: "From this moment member 8's ballots are refused in poll 3, after a 10-minute grace. The other members' kits were made for the old revocation root, so re-votes from them also stop after the grace: the voting page does not rebuild the revocation path; the app prototype does (N33).",
+    info: "From this moment member 8's ballots are refused in poll 3, after a 10-minute grace. The other members' kits were made for the old revocation root, so re-votes from them also stop after the grace: the app does not yet rebuild the revocation path (N33).",
     check: { type: "revokedCount", min: 1 } });
 
   fs.mkdirSync(path.dirname(SECRETS), { recursive: true });

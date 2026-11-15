@@ -84,9 +84,12 @@ function createEnclave(P, { epochs = 4 } = {}) {
   // Called only after the uniqueness checks pass. `reenrol` marks a lost-phone case:
   // the old handle is returned for publication in the revocation registry.
   // `docId` stands for the fingerprint of the document itself (defaults to the person's).
-  function issue({ fingerprint, attrs, cm, epoch = 0, reenrol = false, docId = fingerprint }) {
-    const prev = enrolled.get(fingerprint);
-    if (prev && !reenrol) throw new Error("already enrolled");
+  // `replaces` (a revocation handle) is for a test enclave that did not issue the identity
+  // being replaced, such as a new synthetic key set on the test network: the new handle is
+  // linked to it as for a re-enrolment.
+  function issue({ fingerprint, attrs, cm, epoch = 0, reenrol = false, docId = fingerprint, replaces }) {
+    const prev = enrolled.get(fingerprint) || (replaces !== undefined ? { generation: 0n, rn: BigInt(replaces), attrs } : undefined);
+    if (prev && !reenrol && replaces === undefined) throw new Error("already enrolled");
     if (!prev && usedDocs.has(docId)) throw new Error("document already used");
     A.docsOf(attrs);
     usedDocs.add(docId);

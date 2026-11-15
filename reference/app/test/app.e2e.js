@@ -39,10 +39,11 @@ const { makePublish } = require("../../testnet/publish.js");
   console.log("chain ready: polls 2 and 3 open");
 
   const root = path.join(__dirname, "..", "..");
+  let p4 = null;   // plan 4, made below once poll 3 is done
   const extra = process.env.EXTRA_ROOT;
   const srv = http.createServer((q, s) => {
     const rel = q.url.split("?")[0].replace(/^\/reference\//, "");
-    const f = [rel === "testnet/web/plan3.json" ? p3 : null, path.join(root, rel), extra && path.join(extra, rel)].find((x) => x && fs.existsSync(x) && fs.statSync(x).isFile());
+    const f = [rel === "testnet/web/plan3.json" ? p3 : null, rel === "testnet/web/plan4.json" ? p4 : null, path.join(root, rel), extra && path.join(extra, rel)].find((x) => x && fs.existsSync(x) && fs.statSync(x).isFile());
     if (!f) { s.writeHead(404); return s.end(); }
     s.writeHead(200, { "content-type": f.endsWith(".js") ? "text/javascript" : f.endsWith(".json") ? "application/json" : f.endsWith(".wasm") ? "application/wasm" : f.endsWith(".html") ? "text/html" : "application/octet-stream" });
     fs.createReadStream(f).pipe(s);
@@ -160,6 +161,45 @@ const { makePublish } = require("../../testnet/publish.js");
   const res = (await page.textContent("#view")).replace(/\s+/g, " ");
   console.log("result:", res.slice(0, 200));
   if (!res.includes("1 participants") || !res.includes("Final")) throw new Error("result not shown");
+
+  // ---- deployment 3, poll 4: a stolen phone and a recovery ballot (Decision Log #52, point 2)
+  const os = require("os"), cp = require("child_process");
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "app-plan4-"));
+  const nonce4 = await provider.getTransactionCount(plan1.deployer);
+  const out4 = cp.execFileSync("node", [path.join(root, "testnet", "plan4.js"), p1, p2, p3, String(nonce4)], { maxBuffer: 1 << 28, env: { ...process.env, POLL4_SECRETS: path.join(tmp, "poll4.json") } });
+  p4 = path.join(tmp, "plan4.json"); fs.writeFileSync(p4, out4);
+  const plan4 = JSON.parse(out4);
+  await run(plan4, false, true); await inc(200);
+  console.log("deployment 3 ready: poll 4 open, member 7 re-enrolled with a linked handle");
+  await page.goto("http://127.0.0.1:8092/reference/app/web/app.html?rpc=http://127.0.0.1:8546&explorer=http://explorer.test/api");
+  await addPerson(7, "Uncle", "333333");
+  const openUncle = async () => {
+    await page.waitForFunction(() => document.getElementById("pin2"), null, { timeout: 30000 });
+    await page.fill("#pin2", "333333"); await page.click('[data-open="2"]');
+    await page.waitForFunction(() => document.querySelectorAll('[data-vote="2"]').length > 0, null, { timeout: 30000 });
+  };
+  const answer4 = async (opt) => {
+    await page.click('[data-vote="2"]'); await page.check(`input[name="o"][value="${opt}"]`); await page.click("#mk");
+    await page.waitForFunction(() => /Ready|could not|did not|revoked|refuses/.test(document.getElementById("made").textContent) && !/Making a recovery|reading the public list/.test(document.getElementById("made").textContent), null, { timeout: 300000 });
+    const made = (await page.textContent("#made")).replace(/\s+/g, " ");
+    await page.click("#ws");
+    await page.waitForFunction(() => /Counted|refused|failed|could not be read|did not answer|replaced/i.test(document.getElementById("sent").textContent), null, { timeout: 300000 });
+    return { made, sent: (await page.textContent("#sent")).replace(/\s+/g, " ") };
+  };
+  await openUncle();
+  const thief = await answer4(3);   // whoever holds member 7's phone answers option 4
+  console.log("poll 4, the thief with member 7's phone:", thief.sent.slice(0, 40));
+  if (!thief.sent.includes("Counted: option 4")) throw new Error("thief ballot not counted");
+  const rv4 = plan4.txs.find((t) => t.waitForBallot);
+  await (await signer.sendTransaction({ to: rv4.to, data: rv4.data })).wait(); await inc(700);
+  await page.click("#bk"); await page.waitForFunction(() => document.querySelectorAll('[data-vote="2"]').length > 0, null, { timeout: 30000 });
+  const rec = await answer4(2);     // member 7, recovered, answers option 3
+  console.log("member 7's recovery ballot:", rec.made.slice(0, 50), "|", rec.sent.slice(0, 40));
+  if (!/recovery ballot/.test(rec.made) || !rec.sent.includes("Counted: option 3")) throw new Error("recovery ballot failed: " + rec.made.slice(0, 200) + " | " + rec.sent.slice(0, 200));
+  const polls4 = new ethers.Contract(plan4.contracts.ProofOfOnePolls, plan4.abi.ProofOfOnePolls, provider);
+  if (!(await polls4.recovered(plan4.pollId, plan4.kits[2].nf))) throw new Error("not marked recovered");
+  console.log("recovered flag set; voters in poll 4:", String(await polls4.distinctVoters(plan4.pollId)));
+
   await browser.close(); srv.close(); await chain.close();
   console.log("APP E2E OK"); process.exit(0);
 })().catch((e) => { console.error(e); process.exit(1); });
