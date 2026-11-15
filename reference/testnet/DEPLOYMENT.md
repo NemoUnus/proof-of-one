@@ -44,7 +44,7 @@ Every contract was created at the address the plan computed in advance from the 
 | Step | When | Expected |
 |---|---|---|
 | 19. Publish the result | **done** (after the poll closed on 7 November 2026) | totals **1 · 2 · 0 · 1**, as expected from the synthetic choices; accepted by the contract after checking them against its own encrypted totals; 4 distinct voters |
-| 20. Finalize | 7 days after step 19 | state Final |
+| 20. Finalize | **done** (15 November 2026, after the 7-day challenge period, which nobody used) | state **Final**: totals 1 · 2 · 0 · 1, 4 distinct voters. Poll 1 is complete |
 
 ## Poll 2: vote from your phone
 
