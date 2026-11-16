@@ -10,6 +10,7 @@ import org.jmrtd.lds.CardAccessFile
 import org.jmrtd.lds.PACEInfo
 import org.jmrtd.lds.SODFile
 import org.jmrtd.lds.icao.DG1File
+import org.jmrtd.lds.icao.DG2File
 import java.io.ByteArrayInputStream
 import java.security.MessageDigest
 import java.security.cert.X509Certificate
@@ -27,7 +28,8 @@ import java.util.Base64
  */
 class ChipReader(private val isoDep: IsoDep, private val key: BACKey) {
 
-    class Result(val report: String, val dscPem: String?, val ok: Boolean)
+    /** faceImage: the chip photo from DG2 (JPEG or JPEG 2000), kept in memory for the face check only. */
+    class Result(val report: String, val dscPem: String?, val ok: Boolean, val faceImage: ByteArray? = null, val faceMime: String? = null)
 
     fun read(): Result {
         val r = StringBuilder()
@@ -121,7 +123,16 @@ class ChipReader(private val isoDep: IsoDep, private val key: BACKey) {
         r.appendLine("not checked on the phone: DSC issued by a trusted CSCA (checked by the public trust-list tool)")
         val ok = dg1Ok && dg2Ok && sigOk
         r.appendLine("RESULT: " + if (ok) "chip data genuine under its DSC" else "CHECK FAILED")
-        return Result(r.toString(), pem, ok)
+        // The chip photo, for the on-phone face check only (never stored or sent).
+        var face: ByteArray? = null; var mime: String? = null
+        try {
+            val img = DG2File(ByteArrayInputStream(dg2Bytes)).faceInfos.firstOrNull()?.faceImageInfos?.firstOrNull()
+            if (img != null) {
+                face = img.imageInputStream.readBytes(); mime = img.mimeType
+                r.appendLine("chip photo: ${img.mimeType}, ${img.width}×${img.height}, ${face.size} B")
+            }
+        } catch (e: Exception) { r.appendLine("chip photo: could not be read (${e.javaClass.simpleName})") }
+        return Result(r.toString(), pem, ok, face, mime)
     }
 
     private fun yes(b: Boolean) = if (b) "yes" else "NO"

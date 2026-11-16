@@ -38,6 +38,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
     private lateinit var status: TextView
     private lateinit var report: TextView
     private lateinit var share: Button
+    private lateinit var faceBtn: Button
     private var key: BACKey? = null
     private var shareText = ""
 
@@ -75,6 +76,11 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             }
         }
         col.addView(share)
+        faceBtn = Button(this).apply {
+            text = "Face check test (chip photo vs. a selfie)"; visibility = View.GONE
+            setOnClickListener { startActivity(Intent(this@MainActivity, FaceActivity::class.java)) }
+        }
+        col.addView(faceBtn)
         col.addView(Button(this).apply {
             text = "Ballot proof benchmark (native prover)"
             setOnClickListener { startActivity(Intent(this@MainActivity, ProverActivity::class.java)) }
@@ -143,6 +149,8 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             status.text = if (result.ok) "Done: the chip data is genuine under its signer certificate." else "Done, with problems (see below)."
             report.text = result.report
             share.visibility = View.VISIBLE
+            FaceStore.chipPhoto = result.faceImage; FaceStore.chipMime = result.faceMime
+            faceBtn.visibility = if (result.faceImage != null) View.VISIBLE else View.GONE
         }
     }
 }
