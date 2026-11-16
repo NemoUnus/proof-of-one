@@ -4,6 +4,9 @@
 # only: debug-signed, not for distribution.
 # Since v0.2 the app includes the native prover (reference/native-prover, Rust), built here
 # for 64-bit ARM, and the ballot proof's TEST-ONLY key and witness graph as assets.
+# Since v0.5 it also makes the enrolment proof π_doc (suite 2) from a real passport's chip
+# data: the circuit's witness graph, a random TEST-ONLY key and the one-signer test tree are
+# made here from the repository's sources.
 name: Android chip reader (test build)
 
 on:
@@ -12,6 +15,7 @@ on:
       - "reference/android-prototype/**"
       - "reference/native-prover/**"
       - "reference/prove-bench/**"
+      - "reference/document-circuit/**"
       - ".github/workflows/android-prototype.yml"
   workflow_dispatch:
 
@@ -57,22 +61,42 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      # Enrolment proof benchmark (N31): everything is made here from the repository's sources:
-      # the circuit, a synthetic document's witness, and a random TEST-ONLY key (prove-mem).
-      - name: Enrolment proof test files (π_doc, TEST-ONLY random key)
+      # Enrolment proof π_doc, suite 2 (challenge 2 of Decision Log #57): everything is made here
+      # from the repository's sources: the circuit, its witness graph (circom-witnesscalc's
+      # build-circuit, v0.3.0, dependencies pinned by its Cargo.lock), the one-signer test tree's
+      # graph, a synthetic passport's input and witness, and a random TEST-ONLY key (prove-mem).
+      - name: Enrolment proof files (π_doc suite 2, TEST-ONLY random key)
         run: |
           mkdir -p $HOME/bin && curl -sSL -o $HOME/bin/circom https://github.com/iden3/circom/releases/download/v2.1.9/circom-linux-amd64 && chmod +x $HOME/bin/circom
           export PATH=$HOME/bin:$PATH
+          git clone -q --depth 1 --branch v0.3.0 https://github.com/iden3/circom-witnesscalc $RUNNER_TEMP/cw
+          (cd $RUNNER_TEMP/cw && cargo build --release --locked -p build-circuit --bin build-circuit && cargo build --release --locked --bin calc-witness)
+          CW=$RUNNER_TEMP/cw/target/release
           (cd reference/ballot-circuit && npm ci --no-audit --no-fund)
           cd reference/document-circuit && npm ci --no-audit --no-fund
-          mkdir -p build && circom circuits/document.circom --r1cs --wasm --O2 -l node_modules -o build
-          node scripts/make-witness.js
+          mkdir -p build && circom circuits/document_s2.circom --r1cs --wasm --O2 -l node_modules -o build
+          $CW/build-circuit circuits/document_s2.circom build/document_s2.graph -l node_modules -l node_modules/circomlib/circuits -l circuits
+          $CW/build-circuit circuits/test/dsc_test_tree_s2.circom build/dsc_test_tree_s2.graph -l node_modules -l node_modules/circomlib/circuits -l circuits
+          node scripts/make-witness.js 2
+          # The witness graph must give exactly the witness of circom's own generator.
+          $CW/calc-witness build/document_s2.graph build/bench_s2.input.json build/graph_s2.wtns
+          cmp build/graph_s2.wtns build/bench_s2.wtns && echo "witness graph matches the WebAssembly witness"
           cd ../prove-bench && cargo build --release --locked --bin prove-mem
           D=$RUNNER_TEMP/doc && mkdir -p $D
-          ./target/release/prove-mem setup ../document-circuit/build/document.r1cs ../document-circuit/build/bench.wtns $D
+          ./target/release/prove-mem setup ../document-circuit/build/document_s2.r1cs ../document-circuit/build/bench_s2.wtns $D
           ./target/release/prove-mem compress - - $D
           gzip -6 -c $D/matrices.bin > $D/doc_matrices.gz
-          ls -la $D
+          ls -la $D ../document-circuit/build
+      # The phone's input builder (DocInput.kt) must build exactly the reference input
+      # (document-circuit/src/document.js) on synthetic passports of both suites.
+      - name: Check the phone's enrolment input builder
+        run: |
+          curl -sSL -o $RUNNER_TEMP/kc.zip https://github.com/JetBrains/kotlin/releases/download/v2.0.21/kotlin-compiler-2.0.21.zip
+          unzip -q $RUNNER_TEMP/kc.zip -d $RUNNER_TEMP
+          (cd reference/document-circuit && node scripts/doc-input-vectors.js $RUNNER_TEMP/vectors)
+          cd reference/android-prototype
+          $RUNNER_TEMP/kotlinc/bin/kotlinc test/DocInputCheck.kt app/src/main/java/io/github/nemounus/proofofone/reader/DocInput.kt -include-runtime -d $RUNNER_TEMP/check.jar
+          java -cp $RUNNER_TEMP/check.jar DocInputCheckKt $RUNNER_TEMP/vectors
       - name: Proof files as app assets
         run: |
           A=reference/android-prototype/app/src/main/assets
@@ -80,10 +104,11 @@ jobs:
           cp reference/native-prover/graphs/ballot.graph $A/
           cp reference/ballot-circuit/setup/ballot_test.zkey $A/
           cp reference/phone-bench/input.json $A/
-          cp $RUNNER_TEMP/doc/pk_c.bin $A/doc_pk_c.bin
+          cp $RUNNER_TEMP/doc/pk_c.bin $A/doc_s2_pk_c.bin
           # not .gz: Android's packager strips a .gz suffix from asset names
-          cp $RUNNER_TEMP/doc/doc_matrices.gz $A/doc_matrices.gzdata
-          cp reference/document-circuit/build/bench.wtns $A/doc.wtns
+          cp $RUNNER_TEMP/doc/doc_matrices.gz $A/doc_s2_matrices.gzdata
+          cp reference/document-circuit/build/document_s2.graph reference/document-circuit/build/dsc_test_tree_s2.graph $A/
+          cp reference/document-circuit/build/bench_s2.input.json $A/doc_s2_input.json
           sha256sum $A/* reference/android-prototype/app/src/main/jniLibs/arm64-v8a/*.so
       # Face check test (v0.4, Decision Log #57): InsightFace "buffalo_sc" models, SCRFD-500M
       # detector and ArcFace MobileFaceNet (pretrained models for non-commercial research use
