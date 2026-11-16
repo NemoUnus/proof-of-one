@@ -46,7 +46,7 @@ dependencies {
     // (BSD-2-Clause, OpenJPEG) decodes JPEG 2000 chip photos; AndroidX core and exifinterface
     // (Apache-2.0) for the selfie file and its orientation.
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.19.2")
-    implementation("com.gemalto.jp2:jp2-android:1.0.3")
+    implementation("io.github.michaldvorak-gemalto:jp2-android:1.0.5")
     implementation("androidx.core:core:1.13.1")
     implementation("androidx.exifinterface:exifinterface:1.3.7")
 }

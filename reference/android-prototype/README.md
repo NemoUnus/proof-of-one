@@ -52,7 +52,7 @@ The APK is debug-signed. On Android, allow installing apps from the file manager
 The native prover: circom-witnesscalc 0.3.0 and arkworks 0.6 (both MIT or Apache-2.0); see [`../native-prover/Cargo.lock`](../native-prover/Cargo.lock).
 
 
-Face check test: ONNX Runtime 1.19.2 (MIT), JP2ForAndroid 1.0.3 (BSD-2-Clause), AndroidX core and exifinterface (Apache-2.0); models as above.
+Face check test: ONNX Runtime 1.19.2 (MIT), JP2ForAndroid 1.0.5 (BSD-2-Clause; OpenJPEG), AndroidX core and exifinterface (Apache-2.0); models as above.
 
 [JMRTD](https://jmrtd.org) 0.8.0 (LGPL-2.1 or later) and SCUBA smartcards 0.0.20 (LGPL) for chip access; [Bouncy Castle](https://www.bouncycastle.org) 1.80 (MIT) for the CMS signature check. LGPL libraries are used unmodified as separate libraries.
 
