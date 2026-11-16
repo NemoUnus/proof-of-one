@@ -31,6 +31,17 @@ After a successful read, the button **Face check test** compares the chip photo 
 - The models come from InsightFace's "buffalo_sc" release, downloaded by the workflow and checked against [`face/models.sha256`](face/models.sha256). InsightFace's code is MIT; its **pretrained models are for non-commercial research use only**. That fits the non-commercial pilot; any real release needs a model whose licence allows it, or one trained by the project.
 - The selfie is taken by the phone's camera app (no camera permission in this app).
 
+**First measurements (16 November 2026, Samsung Galaxy S24 Ultra, one field-test passport, chip photo JPEG 241×320):**
+
+| Selfie | Similarity |
+|---|---|
+| the holder, facing the camera | 0.714 |
+| the holder, facing the camera | 0.697 |
+| the holder, head lowered and turned | 0.563 |
+| another person | 0.058 |
+
+Face found in the chip photo and in every selfie (detector score 0.82–0.83); detection and comparison 56–114 ms per picture. **Provisional threshold: 0.40**, well above the other person and below the holder's worst picture. Before the pilot it needs more measurements, above all from people who resemble the holder (relatives of the same sex and age), and from other passports and phones.
+
 ## Enrolment proof test with a real passport (v0.5, Decision Log #57, challenge 2)
 
 After a successful read, the button **Enrolment proof test (from this passport)** makes the enrolment proof π_doc from the chip data just read, **on the phone**:
@@ -40,6 +51,8 @@ After a successful read, the button **Enrolment proof test (from this passport)*
 3. The screen compares the proof's outputs (birth date, sex, nationality, expiry month) with the same values read directly from the machine-readable zone, and shows timings and memory. **Share the result** shares numbers and yes/no only.
 
 TEST ONLY: the key is a random TEST-ONLY key, and the tree of checked signers holds only this passport's signer, so the proof does not show that the signer is trusted. The chip report also says whether the document fits the circuits (suite, and sizes against the circuit's limits).
+
+**First measurement (16 November 2026, Samsung Galaxy S24 Ultra, Android 14, one field-test passport of suite 2):** eContent 192 of 448 bytes and signed attributes 128 of 192 bytes after padding; witness on the phone 0.3 s; proof 3.3 s, then 3.0 s; reading the key 53.8 s the first time, 2.7 s afterwards; **verified on the phone, and the proof's outputs equal the values read from the machine-readable zone**; peak memory of the app 1.4 GB. From chip data to a verified proof: about 6 seconds after the first run.
 
 The benchmark screen's enrolment button now proves suite 2 from a synthetic passport in the same way (witness on the phone), instead of suite 1 from a precomputed witness. The APK is about 280 MB.
 
