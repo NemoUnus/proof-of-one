@@ -205,6 +205,8 @@ template DocumentProof(maxE, maxSA, depth, LDS_HB, SIG_HB, K, EBITS, ALG) {
     signal input dscSiblings[depth];
     signal input dscPathIndex[depth];
     signal input rFace;          // blinding of the face-image commitment
+    signal input rsaQ[rsaMuls(EBITS)][K]; // hints for the RSA check (see rsa_pkcs1.circom):
+    signal input rsaR[rsaMuls(EBITS)][K]; // quotient and remainder of each multiplication
 
     // ---------------- outputs
     signal output birthDay;
@@ -289,6 +291,8 @@ template DocumentProof(maxE, maxSA, depth, LDS_HB, SIG_HB, K, EBITS, ALG) {
         rsa.modulus[l] <== modulus[l];
     }
     rsa.exponent <== exponent;
+    rsa.hq <== rsaQ;
+    rsa.hr <== rsaR;
 
     // ---- 5. the DSC key is in the tree of checked signers
     //   K = 17, e = 65537:  leaf = Poseidon(ALG, Poseidon(n_0..n_15), n_16)

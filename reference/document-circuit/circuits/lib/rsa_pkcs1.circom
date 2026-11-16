@@ -7,13 +7,96 @@
 // but with the DigestInfo prefix and digest length as parameters and the exponent as
 // a private input. The exponent must be bound elsewhere (π_doc binds it in the leaf of
 // the tree of checked signers), otherwise a prover could choose it.
+//
+// Hints (since v0.2, N31): the quotient and remainder of every modular multiplication are
+// private inputs instead of values computed inside the witness generator. The constraints
+// are those of zk-email's FpMul; q and r are range-checked and r < p, so for given a and b
+// they are unique, and whoever computes them (the phone's own code) cannot change the
+// result. This lets a witness graph (circom-witnesscalc) evaluate the whole circuit: its
+// compiler cannot run long_div, whose loops depend on signal values.
 
 pragma circom 2.1.6;
 
 include "circomlib/circuits/bitify.circom";
 include "circomlib/circuits/comparators.circom";
-include "@zk-email/circuits/lib/fp.circom";
-include "@zk-email/circuits/lib/rsa.circom"; // FpPow65537Mod
+include "@zk-email/circuits/lib/fp.circom"; // poly_eval, poly_interp, BigLessThan, CheckCarryToZero
+
+// The number of modular multiplications, and so of hints, for EBITS (0: e = 65537).
+function rsaMuls(EBITS) {
+    if (EBITS == 0) return 17;
+    return 2 * EBITS;
+}
+
+// a·b mod p as zk-email's FpMul, with the quotient q and remainder r given as inputs.
+// Checks a·b = p·q + r as polynomials (carry to zero), q and r in proper n-bit limbs,
+// r < p. The caller must give a, b < p in proper form (true for the chains below).
+template FpMulHinted(n, k) {
+    assert(n + n + log_ceil(k) + 2 <= 252);
+    signal input a[k];
+    signal input b[k];
+    signal input p[k];
+    signal input q[k];
+    signal input r[k];
+    signal output out[k];
+
+    signal v_ab[2 * k - 1];
+    for (var x = 0; x < 2 * k - 1; x++) {
+        var v_a = poly_eval(k, a, x);
+        var v_b = poly_eval(k, b, x);
+        v_ab[x] <== v_a * v_b;
+    }
+    component qRange[k];
+    component rRange[k];
+    component rLt = BigLessThan(n, k);
+    for (var i = 0; i < k; i++) {
+        qRange[i] = Num2Bits(n);
+        qRange[i].in <== q[i];
+        rRange[i] = Num2Bits(n);
+        rRange[i].in <== r[i];
+        rLt.a[i] <== r[i];
+        rLt.b[i] <== p[i];
+    }
+    rLt.out === 1;
+    signal v_pq_r[2 * k - 1];
+    for (var x = 0; x < 2 * k - 1; x++) {
+        var v_p = poly_eval(k, p, x);
+        var v_q = poly_eval(k, q, x);
+        var v_r = poly_eval(k, r, x);
+        v_pq_r[x] <== v_p * v_q + v_r;
+    }
+    signal v_t[2 * k - 1];
+    for (var x = 0; x < 2 * k - 1; x++) v_t[x] <== v_ab[x] - v_pq_r[x];
+    var t[200] = poly_interp(2 * k - 1, v_t);
+    component tCheck = CheckCarryToZero(n, n + n + log_ceil(k) + 2, 2 * k - 1);
+    for (var i = 0; i < 2 * k - 1; i++) tCheck.in[i] <== t[i];
+    for (var i = 0; i < k; i++) out[i] <== r[i];
+}
+
+// base^65537 mod modulus: 16 squarings, then one multiplication by base (as zk-email's
+// FpPow65537Mod). Hints 0–15: the squarings; hint 16: the final multiplication.
+template FpPow65537Hinted(n, k) {
+    signal input base[k];
+    signal input modulus[k];
+    signal input hq[17][k];
+    signal input hr[17][k];
+    signal output out[k];
+    component m[17];
+    for (var i = 0; i < 17; i++) {
+        m[i] = FpMulHinted(n, k);
+        m[i].p <== modulus;
+        m[i].q <== hq[i];
+        m[i].r <== hr[i];
+    }
+    m[0].a <== base;
+    m[0].b <== base;
+    for (var i = 1; i < 16; i++) {
+        m[i].a <== m[i - 1].out;
+        m[i].b <== m[i - 1].out;
+    }
+    m[16].a <== base;
+    m[16].b <== m[15].out;
+    out <== m[16].out;
+}
 
 // EM = 00 01 FF..FF 00 || DigestInfo prefix || H, as a number in k limbs of n bits.
 // HB: digest bits; PREFIX: DigestInfo prefix bytes as one number; PREFIX_BITS: its bits.
@@ -76,11 +159,14 @@ template Pkcs1Pad(n, k, HB, PREFIX, PREFIX_BITS) {
 }
 
 // base^e mod modulus by square-and-multiply over EBITS exponent bits (most significant
-// first). Cost: 2·EBITS modular multiplications.
+// first). Cost: 2·EBITS modular multiplications. Hint 2s: the squaring of step s; hint
+// 2s + 1: its multiplication by base (computed at every step, used when the bit is 1).
 template FpPowVarMod(n, k, EBITS) {
     signal input base[k];
     signal input modulus[k];
     signal input ebits[EBITS]; // least significant first, each 0 or 1 (checked by the caller)
+    signal input hq[2 * EBITS][k];
+    signal input hr[2 * EBITS][k];
     signal output out[k];
 
     signal acc[EBITS + 1][k];
@@ -90,8 +176,12 @@ template FpPowVarMod(n, k, EBITS) {
     for (var j = 0; j < k; j++) acc[0][j] <== (j == 0) ? 1 : 0;
     for (var s = 0; s < EBITS; s++) {
         var bit = EBITS - 1 - s;
-        sq[s] = FpMul(n, k);
-        mul[s] = FpMul(n, k);
+        sq[s] = FpMulHinted(n, k);
+        mul[s] = FpMulHinted(n, k);
+        sq[s].q <== hq[2 * s];
+        sq[s].r <== hr[2 * s];
+        mul[s].q <== hq[2 * s + 1];
+        mul[s].r <== hr[2 * s + 1];
         for (var j = 0; j < k; j++) {
             sq[s].a[j] <== acc[s][j];
             sq[s].b[j] <== acc[s][j];
@@ -117,6 +207,8 @@ template RsaPkcs1Verify(n, k, HB, PREFIX, PREFIX_BITS, EBITS) {
     signal input signature[k];
     signal input modulus[k];
     signal input exponent;
+    signal input hq[rsaMuls(EBITS)][k]; // hints: quotient and remainder of each multiplication
+    signal input hr[rsaMuls(EBITS)][k];
 
     component pad = Pkcs1Pad(n, k, HB, PREFIX, PREFIX_BITS);
     pad.modulus <== modulus;
@@ -136,9 +228,11 @@ template RsaPkcs1Verify(n, k, HB, PREFIX, PREFIX_BITS, EBITS) {
     signal powOut[k];
     if (EBITS == 0) {
         exponent === 65537;
-        component p65537 = FpPow65537Mod(n, k);
+        component p65537 = FpPow65537Hinted(n, k);
         p65537.base <== signature;
         p65537.modulus <== modulus;
+        p65537.hq <== hq;
+        p65537.hr <== hr;
         powOut <== p65537.out;
     } else {
         // An odd exponent of at least 3, below 2^EBITS.
@@ -153,6 +247,8 @@ template RsaPkcs1Verify(n, k, HB, PREFIX, PREFIX_BITS, EBITS) {
         pv.base <== signature;
         pv.modulus <== modulus;
         pv.ebits <== eb.out;
+        pv.hq <== hq;
+        pv.hr <== hr;
         powOut <== pv.out;
     }
     // EM < modulus by construction, and FpMul reduces fully, so compare limb by limb.

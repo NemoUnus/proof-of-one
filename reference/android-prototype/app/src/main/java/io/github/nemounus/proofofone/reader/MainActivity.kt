@@ -39,6 +39,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
     private lateinit var report: TextView
     private lateinit var share: Button
     private lateinit var faceBtn: Button
+    private lateinit var docBtn: Button
     private var key: BACKey? = null
     private var shareText = ""
 
@@ -81,6 +82,11 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             setOnClickListener { startActivity(Intent(this@MainActivity, FaceActivity::class.java)) }
         }
         col.addView(faceBtn)
+        docBtn = Button(this).apply {
+            text = "Enrolment proof test (from this passport)"; visibility = View.GONE
+            setOnClickListener { startActivity(Intent(this@MainActivity, DocProofActivity::class.java)) }
+        }
+        col.addView(docBtn)
         col.addView(Button(this).apply {
             text = "Ballot proof benchmark (native prover)"
             setOnClickListener { startActivity(Intent(this@MainActivity, ProverActivity::class.java)) }
@@ -151,6 +157,8 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             share.visibility = View.VISIBLE
             FaceStore.chipPhoto = result.faceImage; FaceStore.chipMime = result.faceMime
             faceBtn.visibility = if (result.faceImage != null) View.VISIBLE else View.GONE
+            DocStore.chip = result.chip
+            docBtn.visibility = if (result.chip != null) View.VISIBLE else View.GONE
         }
     }
 }

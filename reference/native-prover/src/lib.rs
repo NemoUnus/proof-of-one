@@ -133,6 +133,63 @@ impl ArkCircuit {
     }
 }
 
+impl ArkCircuit {
+    /// π_doc from circuit inputs on the phone (N31, step 2): the witness from the circuit's
+    /// witness graph, then the proof, then the check. Returns the public signals (snarkjs
+    /// order: outputs, then public inputs) as decimal strings, whether the proof verified,
+    /// and the witness and proving times in ms.
+    pub fn prove_inputs(&self, graph: &[u8], inputs_json: &str) -> Result<(Vec<String>, bool, u128, u128), Error> {
+        let t = std::time::Instant::now();
+        let wtns = circom_witnesscalc::calc_witness(inputs_json, graph).map_err(|e| e.to_string())?;
+        let w = parse_wtns(&wtns)?;
+        drop(wtns);
+        let witness_ms = t.elapsed().as_millis();
+        // A witness graph computes values but checks no constraint: check them all here
+        // (well under a second), so that a document the circuit rejects is reported at once.
+        if let Some(i) = self.first_unsatisfied(&w) {
+            return Err(format!("the circuit rejects this input (constraint {i} of {})", self.num_constraints).into());
+        }
+        let t = std::time::Instant::now();
+        let mut rng = rand::rngs::OsRng;
+        let (r, s) = (Fr::rand(&mut rng), Fr::rand(&mut rng));
+        let proof = Groth16::<Bn254, ark_groth16::r1cs_to_qap::LibsnarkReduction>::create_proof_with_reduction_and_matrices(
+            &self.pk, r, s, &self.matrices, self.num_instance, self.num_constraints, &w)?;
+        let pvk = Groth16::<Bn254>::process_vk(&self.pk.vk)?;
+        let ok = Groth16::<Bn254>::verify_with_processed_vk(&pvk, &w[1..self.num_instance], &proof)?;
+        Ok((w[1..self.num_instance].iter().map(dec).collect(), ok, witness_ms, t.elapsed().as_millis()))
+    }
+}
+
+impl ArkCircuit {
+    /// The first constraint (A·w)·(B·w) = C·w that the witness does not satisfy, if any.
+    pub fn first_unsatisfied(&self, w: &[Fr]) -> Option<usize> {
+        let row = |m: &ark_relations::utils::matrix::Matrix<Fr>, i: usize| -> Fr {
+            m[i].iter().fold(Fr::from(0u64), |acc, (c, j)| acc + *c * w[*j])
+        };
+        (0..self.num_constraints).find(|&i| row(&self.matrices[0], i) * row(&self.matrices[1], i) != row(&self.matrices[2], i))
+    }
+}
+
+/// TEST ONLY (Decision Log #57, challenge 2): when the inputs carry no `dscRoot`, fills in
+/// `dscRoot`, `dscSiblings` and `dscPathIndex` for a DSC tree whose only leaf is the
+/// document's own signer, computed by the witness graph of
+/// ../document-circuit/circuits/test/dsc_test_tree_s2.circom. Such a proof says nothing
+/// about whether the signer is trusted; in the pilot the root and path come from the
+/// public list. Returns the inputs JSON and whether the test tree was used.
+pub fn with_test_tree(tree_graph: &[u8], inputs_json: &str) -> Result<(String, bool), Error> {
+    let mut v: serde_json::Value = serde_json::from_str(inputs_json)?;
+    if v.get("dscRoot").is_some() { return Ok((inputs_json.to_string(), false)); }
+    let key = serde_json::json!({ "modulus": v["modulus"], "exponent": v["exponent"] }).to_string();
+    let wtns = circom_witnesscalc::calc_witness(&key, tree_graph).map_err(|e| e.to_string())?;
+    let w = parse_wtns(&wtns)?;
+    let depth = 16;
+    if w.len() < 2 + depth { return Err("unexpected test-tree witness".into()); }
+    v["dscRoot"] = serde_json::Value::String(dec(&w[1]));
+    v["dscSiblings"] = serde_json::Value::Array(w[2..2 + depth].iter().map(|x| serde_json::Value::String(dec(x))).collect());
+    v["dscPathIndex"] = serde_json::Value::Array(vec![serde_json::Value::String("0".into()); depth]);
+    Ok((v.to_string(), true))
+}
+
 /// The matrices format of prove-mem: for A, B, C: rows (u64), then per row: entries (u32) and
 /// (column u32, coefficient 32 bytes little-endian); then instance variables and constraints (u64).
 fn read_matrices(b: &[u8]) -> Result<(Vec<ark_relations::utils::matrix::Matrix<Fr>>, usize, usize), Error> {
@@ -251,6 +308,35 @@ mod android {
         let t = Instant::now();
         let ok = c.prove_wtns(&w)?;
         Ok(format!(r#"{{"verified":{},"loadMs":{},"cached":{},"proveMs":{},"peakMb":{}}}"#, ok, load_ms, cached, t.elapsed().as_millis(), super::peak_mb()))
+    }
+
+    // π_doc from a real passport's inputs (challenge 2): witness graph, proof, check.
+    // {"verified":bool,"public":[…],"testTree":bool,"loadMs":n,"witnessMs":n,"proveMs":n,"peakMb":n} or {"error":…}.
+    fn run_doc_inputs(env: &mut JNIEnv, pk: &JString, mats: &JString, graph: &JString, tree: &JString, inputs: &JString) -> Result<String, super::Error> {
+        let pk: String = env.get_string(pk)?.into();
+        let mats: String = env.get_string(mats)?.into();
+        let graph: String = env.get_string(graph)?.into();
+        let tree: String = env.get_string(tree)?.into();
+        let inputs: String = env.get_string(inputs)?.into();
+        let (inputs, test_tree) = super::with_test_tree(&std::fs::read(&tree)?, &inputs)?;
+        let t = Instant::now();
+        let c = super::ArkCircuit::load_cached(&pk, &mats, &format!("{pk}.raw"))?;
+        let load_ms = t.elapsed().as_millis();
+        let g = std::fs::read(&graph)?;
+        let (public, ok, witness_ms, prove_ms) = c.prove_inputs(&g, &inputs)?;
+        Ok(serde_json::json!({ "verified": ok, "public": public, "testTree": test_tree, "loadMs": load_ms as u64,
+            "witnessMs": witness_ms as u64, "proveMs": prove_ms as u64, "peakMb": super::peak_mb() }).to_string())
+    }
+
+    #[no_mangle]
+    pub extern "system" fn Java_io_github_nemounus_proofofone_reader_NativeProver_proveDocInputs<'l>(
+        mut env: JNIEnv<'l>, _class: JClass<'l>, pk: JString<'l>, mats: JString<'l>, graph: JString<'l>, tree: JString<'l>, inputs: JString<'l>,
+    ) -> jstring {
+        let out = match run_doc_inputs(&mut env, &pk, &mats, &graph, &tree, &inputs) {
+            Ok(s) => s,
+            Err(e) => serde_json::json!({ "error": e.to_string() }).to_string(),
+        };
+        env.new_string(out).map(|s| s.into_raw()).unwrap_or(std::ptr::null_mut())
     }
 
     #[no_mangle]

@@ -36,6 +36,28 @@ function limbs(x, n = 121, k = 17) {
   const out = []; for (let i = 0; i < k; i++) { out.push(x & ((1n << BigInt(n)) - 1n)); x >>= BigInt(n); } return out;
 }
 
+// Hints for the RSA check (circuits/lib/rsa_pkcs1.circom): quotient and remainder of each
+// modular multiplication of signature^e mod n, in the circuit's order, as limbs. Suite 1
+// (e = 65537): 16 squarings of the signature, then a multiplication by it. Other suites:
+// for each of the EBITS exponent bits from the top, a squaring and a multiplication by the
+// signature (both always computed; the multiplication is kept when the bit is 1).
+function rsaHints(sig, n, e, k, ebits) {
+  const q = [], r = [];
+  const mul = (a, b) => { const p = a * b; q.push(limbs(p / n, 121, k)); r.push(limbs(p % n, 121, k)); return p % n; };
+  if (!ebits) {
+    let acc = sig;
+    for (let i = 0; i < 16; i++) acc = mul(acc, acc);
+    mul(sig, acc);
+  } else {
+    let acc = 1n;
+    for (let s = 0; s < ebits; s++) {
+      const sq = mul(acc, acc), m = mul(sq, sig);
+      acc = (e >> BigInt(ebits - 1 - s)) & 1n ? m : sq;
+    }
+  }
+  return { rsaQ: q, rsaR: r };
+}
+
 // What the circuit outputs, computed directly from the MRZ (for checking).
 function expected(mrz, currentYear) {
   const l2 = mrz.slice(44);
@@ -64,13 +86,16 @@ function buildInput(doc, { tree, leafIndex, today, currentYear, cm = 1n, challen
   const mdOff = doc.signedAttrs.indexOf(PM.messageDigest);
   if (dg1Off < 0 || dg2Off < 0 || mdOff < 0) throw new Error("unexpected document structure");
   const { siblings, pathIndex } = tree.path(leafIndex);
+  const sigInt = BigInt("0x" + doc.signature.toString("hex"));
+  const nInt = BigInt("0x" + doc.dscCert.publicKey.n.toString(16));
   return {
     dscRoot: tree.root, today: BigInt(today), currentYear: BigInt(currentYear), cm, challenge,
     dg1: dg1.bytes, eContent: e.bytes, eLen: BigInt(e.len), dg1Off: BigInt(dg1Off), dg2Off: BigInt(dg2Off),
     sa: sa.bytes, saLen: BigInt(sa.len), mdOff: BigInt(mdOff),
-    signature: limbs(BigInt("0x" + doc.signature.toString("hex")), 121, S.k), modulus: I.modulusChunks(doc.dscCert, S.id),
+    signature: limbs(sigInt, 121, S.k), modulus: I.modulusChunks(doc.dscCert, S.id),
     exponent: I.exponentOf(doc.dscCert),
     dscSiblings: siblings, dscPathIndex: pathIndex.map(BigInt), rFace,
+    ...rsaHints(sigInt % nInt, nInt, I.exponentOf(doc.dscCert), S.k, S.fixedE === null ? S.ebits : 0),
   };
 }
 
@@ -85,4 +110,4 @@ async function witness(input, suite = 1) {
 async function prove(input, zkey, suite = 1) { return snarkjs.groth16.fullProve(input, wasmOf(suite), zkey); }
 async function verify(vkey, publicSignals, proof) { return snarkjs.groth16.verify(vkey, publicSignals, proof); }
 
-module.exports = { MAX_E, MAX_SA, DEPTH, WASM, wasmOf, init, shaPad, limbs, expected, natCodeOf, buildInput, witness, prove, verify, IncrementalTree };
+module.exports = { MAX_E, MAX_SA, DEPTH, WASM, wasmOf, init, shaPad, limbs, rsaHints, expected, natCodeOf, buildInput, witness, prove, verify, IncrementalTree };

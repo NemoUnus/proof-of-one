@@ -39,10 +39,23 @@ On this phone the native prover is about **6 times faster** than the browser.
 
 The app's second button proves π_doc (577,678 constraints) with `ArkCircuit`: a proving key made by arkworks itself (random TEST-ONLY setup with `../prove-bench`'s `prove-mem`, compressed points, 125 MB), the constraint matrices (gzip, 14 MB) and a precomputed witness of a synthetic document. All three are made by the build workflow from the repository's sources. On the server: proving 5.6 s, peak memory 0.9 GB (`doc-bench`). Decompressing the key's points takes about 30 s, so after the first use the app keeps an uncompressed copy (250 MB) and later reads it in about 1.3 s (`ArkCircuit::load_cached`). The witness on a phone, and a smaller download, are the next steps (N31).
 
+## Enrolment proof from a real passport's data (v0.5 of the app; Decision Log #57, challenge 2)
+
+`ArkCircuit::prove_inputs(graph, inputs)` makes π_doc (suite 2, 749,147 constraints) from circuit inputs, as the phone needs it:
+
+1. the witness from the circuit's witness graph (`document_s2.graph`, 31 MB, made by the workflow; see [document-circuit](../document-circuit/README.md#on-the-phone-challenge-2-of-decision-log-57)), no WebAssembly;
+2. a check of every constraint against that witness (`first_unsatisfied`): a witness graph only computes values, so a document the circuit rejects is reported here, before any proving, with the number of the first failing constraint;
+3. the Groth16 proof and its verification.
+
+`with_test_tree(tree_graph, inputs)` fills in the root and path of the TEST-ONLY one-signer tree when the inputs carry no `dscRoot` (graph of `../document-circuit/circuits/test/dsc_test_tree_s2.circom`). The app calls both through `NativeProver.proveDocInputs`.
+
+Measured with `doc-prove` on a server (2 cores, TEST-ONLY random key), synthetic passports with exponents 3, 37817 and 65537 built by the app's own Kotlin input builder: **witness 0.3 s, proof 5.5–5.9 s, verified**; peak memory 1.1 GB; reading the compressed key the first time 43 s, then 2.2 s from the uncompressed copy. One altered DG1 byte is rejected by the constraint check.
+
 ## Files
 
 - `src/lib.rs` — `Circuit::load(zkey, graph)`, `prove`, `prove_checked`, and the JNI entry point `NativeProver.prove` for the Android app.
-- `src/bin/doc-bench.rs` — `doc-bench <pk_c.bin> <matrices.gz> <witness.wtns>`, the π_doc benchmark on a computer.
+- `src/bin/doc-bench.rs` — `doc-bench <pk_c.bin> <matrices.gz> <witness.wtns>`, the π_doc benchmark on a computer (precomputed witness, v0.3 of the app).
+- `src/bin/doc-prove.rs` — `doc-prove <pk_c.bin> <matrices.gz> <document_s2.graph> <dsc_test_tree_s2.graph> <inputs.json>`: π_doc from inputs, as the app does it.
 - `src/main.rs` — `poo-prove`, a command-line timer: `poo-prove <graph> <zkey> <inputs.json> <proof.json> <public.json> [runs]`.
 - `graphs/ballot.graph` — witness graph of `../ballot-circuit/circuits/ballot.circom` (sha256 `cdd5d77ba663d956b17e90e2d586392a2b0c0a12d70ba2736792c876d1b01064`). The build is reproducible; rebuild it with `build-circuit` from circom-witnesscalc v0.3.0:
 
@@ -77,7 +90,8 @@ GitHub Actions builds static libraries for iPhones and the iPhone simulator, pac
 
 ## Open points
 
-- **Enrolment proof π_doc** (577,678 constraints): measured on the server with a random setup at about 11 s and 1.9 GB of memory (`../prove-bench/`). The memory is the problem for 2 GB phones. The next step is a phone measurement, and then a lower-memory prover (rapidsnark, or a streaming key format).
+- **Enrolment proof π_doc**: proving now needs about 1.1 GB (suite 2) and the files about 220 MB (compressed key 153 MB, matrices 34 MB, witness graph 31 MB). Still too much for 2 GB phones; options in implementation note N31.
+- **Test tree**: the one-signer tree is for tests only; the pilot needs the published tree of checked signers and a way for the phone to get its path.
 - **Key loading** (3.9 s on the server) can be cut by storing the key in arkworks' own format at installation.
 - Dependencies pinned in `Cargo.lock`; not yet reviewed (`cargo audit`).
 

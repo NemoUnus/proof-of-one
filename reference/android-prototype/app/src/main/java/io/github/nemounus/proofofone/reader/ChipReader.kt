@@ -28,8 +28,10 @@ import java.util.Base64
  */
 class ChipReader(private val isoDep: IsoDep, private val key: BACKey) {
 
-    /** faceImage: the chip photo from DG2 (JPEG or JPEG 2000), kept in memory for the face check only. */
-    class Result(val report: String, val dscPem: String?, val ok: Boolean, val faceImage: ByteArray? = null, val faceMime: String? = null)
+    /** faceImage: the chip photo from DG2 (JPEG or JPEG 2000), kept in memory for the face check only.
+     *  chip: the data the enrolment proof π_doc needs, kept in memory for the proof test only. */
+    class Result(val report: String, val dscPem: String?, val ok: Boolean, val faceImage: ByteArray? = null, val faceMime: String? = null,
+                 val chip: DocInput.Chip? = null)
 
     fun read(): Result {
         val r = StringBuilder()
@@ -95,18 +97,32 @@ class ChipReader(private val isoDep: IsoDep, private val key: BACKey) {
         var sigOk = false
         var signedAttrLen = -1
         var sigAlg = "?"
+        var chip: DocInput.Chip? = null
         try {
             val cms = CMSSignedData(stripTag(sodBytes))
             val signer = cms.signerInfos.signers.first()
             signedAttrLen = signer.encodedSignedAttributes?.size ?: -1
             sigAlg = signer.encryptionAlgOID
             sigOk = dsc != null && signer.verify(JcaSimpleSignerInfoVerifierBuilder().setProvider("BC").build(dsc))
+            // The data the enrolment proof needs, exactly as signed (challenge 2).
+            val pub = dsc?.publicKey
+            val content = cms.signedContent?.content as? ByteArray
+            val attrs = signer.encodedSignedAttributes
+            if (sigOk && pub is RSAPublicKey && content != null && attrs != null) {
+                chip = DocInput.Chip(dg1Bytes, content, attrs, signer.signature, pub.modulus, pub.publicExponent,
+                    sod.digestAlgorithm, sod.signerInfoDigestAlgorithm, sigAlg)
+            }
         } catch (e: Exception) {
             r.appendLine("signature check error: ${e.message ?: e.javaClass.simpleName}")
         }
         r.appendLine("SOD signature valid under the DSC: ${yes(sigOk)}")
         r.appendLine("signature algorithm OID: $sigAlg; signer digest: ${sod.signerInfoDigestAlgorithm}")
         r.appendLine("eContent ${sod.eContent.size} B, signed attributes $signedAttrLen B")
+        // Whether the enrolment proof's circuits cover this document (challenge 2).
+        r.appendLine("enrolment proof input: " + if (chip == null) "none (signature not valid, or not RSA)" else try {
+            val b = DocInput.build(chip, java.time.LocalDate.now(java.time.ZoneOffset.UTC))
+            "suite ${b.suite.id}; eContent ${b.eLen}/${DocInput.MAX_E} B and signed attributes ${b.saLen}/${DocInput.MAX_SA} B after padding: fits"
+        } catch (e: IllegalArgumentException) { "does not fit: ${e.message}" })
 
         var pem: String? = null
         if (dsc != null) {
@@ -132,7 +148,7 @@ class ChipReader(private val isoDep: IsoDep, private val key: BACKey) {
                 r.appendLine("chip photo: ${img.mimeType}, ${img.width}×${img.height}, ${face.size} B")
             }
         } catch (e: Exception) { r.appendLine("chip photo: could not be read (${e.javaClass.simpleName})") }
-        return Result(r.toString(), pem, ok, face, mime)
+        return Result(r.toString(), pem, ok, face, mime, if (ok) chip else null)
     }
 
     private fun yes(b: Boolean) = if (b) "yes" else "NO"

@@ -20,7 +20,7 @@ The report also measures what the zero-knowledge proof π_doc must handle on rea
 
 The button **Ballot proof benchmark (native prover)** opens a second screen. It makes the ballot proof π_vote three times with the native prover ([`../native-prover/`](../native-prover/)), from the same synthetic input and TEST-ONLY key as the browser benchmark, checks it on the phone and shows a result to share. It needs no passport and sends nothing. The app is built for 64-bit ARM phones only.
 
-Since v0.3 a second button runs the **enrolment proof π_doc** benchmark (577,678 constraints, TEST-ONLY random key, precomputed synthetic witness). It needs about 1 GB of memory and 150 MB of storage. The APK is therefore about 180 MB.
+Since v0.3 a second button runs the **enrolment proof π_doc** benchmark with a TEST-ONLY random key; since v0.5 it proves suite 2 (749,147 constraints) from a synthetic passport, with the witness computed on the phone (see below).
 
 ## Face check test (v0.4, Decision Log #57)
 
@@ -30,6 +30,18 @@ After a successful read, the button **Face check test** compares the chip photo 
 - Faces are found with SCRFD-500M (five landmarks), aligned onto the standard 112×112 template, and compared by the cosine of two ArcFace MobileFaceNet embeddings. The pipeline was checked against a Python reference ([`face/ref.py`](face/ref.py)).
 - The models come from InsightFace's "buffalo_sc" release, downloaded by the workflow and checked against [`face/models.sha256`](face/models.sha256). InsightFace's code is MIT; its **pretrained models are for non-commercial research use only**. That fits the non-commercial pilot; any real release needs a model whose licence allows it, or one trained by the project.
 - The selfie is taken by the phone's camera app (no camera permission in this app).
+
+## Enrolment proof test with a real passport (v0.5, Decision Log #57, challenge 2)
+
+After a successful read, the button **Enrolment proof test (from this passport)** makes the enrolment proof π_doc from the chip data just read, **on the phone**:
+
+1. `DocInput.kt` builds the circuit input from DG1, the security object's signed content and signed attributes, the signature and the signer's RSA key, including the RSA hints. It is a port of `document-circuit/src/document.js`, and the workflow checks on synthetic passports that both build the same input byte for byte ([`test/DocInputCheck.kt`](test/DocInputCheck.kt)).
+2. The native prover computes the witness from the circuit's witness graph, checks every constraint, proves and verifies (suite 2: SHA-1 and RSA up to 3,146 bits with any odd exponent below 2^17).
+3. The screen compares the proof's outputs (birth date, sex, nationality, expiry month) with the same values read directly from the machine-readable zone, and shows timings and memory. **Share the result** shares numbers and yes/no only.
+
+TEST ONLY: the key is a random TEST-ONLY key, and the tree of checked signers holds only this passport's signer, so the proof does not show that the signer is trusted. The chip report also says whether the document fits the circuits (suite, and sizes against the circuit's limits).
+
+The benchmark screen's enrolment button now proves suite 2 from a synthetic passport in the same way (witness on the phone), instead of suite 1 from a precomputed witness. The APK is about 280 MB.
 
 ## Build
 

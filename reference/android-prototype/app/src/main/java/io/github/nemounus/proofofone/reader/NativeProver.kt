@@ -12,4 +12,13 @@ object NativeProver {
 
     /** Enrolment proof π_doc benchmark (N31), from files: compressed key, gzip matrices, witness. */
     external fun proveDoc(pkPath: String, matricesPath: String, wtnsPath: String): String
+
+    /**
+     * Enrolment proof π_doc from circuit inputs (challenge 2): the witness from the circuit's
+     * witness graph, a check of every constraint, the proof, and its verification. Inputs
+     * without `dscRoot` get the TEST-ONLY tree holding the document's own signer alone
+     * (treeGraphPath). Returns {"verified", "public", "testTree", "loadMs", "witnessMs",
+     * "proveMs", "peakMb"} or {"error"}.
+     */
+    external fun proveDocInputs(pkPath: String, matricesPath: String, graphPath: String, treeGraphPath: String, inputs: String): String
 }

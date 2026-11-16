@@ -34,9 +34,12 @@ The setup script can take an existing 2^20 powers-of-tau file as its argument: `
 | `circuits/lib/document_core.circom` | The circuit, shared by all suites: DG1 and DG2 hashes, `eContent` digest, RSA signature, DSC tree membership, expiry, attribute outputs |
 | `circuits/document.circom`, `circuits/document_s2.circom` | One main file per suite, with the suite's parameters |
 | `circuits/lib/sha1.circom` | SHA-1 over padded bytes of variable length |
-| `circuits/lib/rsa_pkcs1.circom` | RSA PKCS#1 v1.5 check for any digest and any exponent below 2^EBITS |
+| `circuits/lib/rsa_pkcs1.circom` | RSA PKCS#1 v1.5 check for any digest and any exponent below 2^EBITS; modular multiplications with hints (`FpMulHinted`) |
 | `src/icao.js` | Synthetic ICAO 9303 documents (MRZ, DG1, DG2, LDS security object, signed attributes, RSA signature) with test CSCA and DSC certificates; the public tool that checks each DSC against the trusted CSCAs and builds the DSC tree |
-| `src/document.js` | Builds the circuit input on the phone; expected outputs; witness, prove, verify |
+| `src/document.js` | Builds the circuit input on the phone, including the RSA hints; expected outputs; witness, prove, verify |
+| `scripts/make-witness.js` | A synthetic passport's input and witness (`build/bench*.input.json`, `build/bench*.wtns`) for the native prover's tests |
+| `scripts/doc-input-vectors.js` | Test vectors for the phone's input builder (`DocInput.kt`) |
+| `circuits/test/dsc_test_tree_s2.circom` | TEST ONLY: root and path of a tree holding a single suite-2 signer |
 | `test/document.test.js`, `test/document_s2.test.js` | Tests of the proof, suite 1 and suite 2 |
 | `src/trustlist.js` | The trust list ([spec](../../docs/specs/trust-list-v0.1.md)): reads and checks CSCA master lists against pinned anchors, merges sources into a list of references, checks document signers |
 | `bin/trust-list.js` | Builds the published trust list from master lists you downloaded yourself and prints its `listHash` |
@@ -48,11 +51,22 @@ The setup script can take an existing 2^20 powers-of-tau file as its argument: `
 |---|---|
 | Constraints, suite 1 | **577,678** (SHA-256 about 366,000; RSA-2048 185,903; the rest about 26,000) |
 | Constraints, suite 2 | **749,147** (SHA-1 about 14,200 per block; RSA-3072 with a 17-bit exponent takes most of the rest) |
-| Witness generation | about 3 s (suite 1) and 6 s (suite 2) on a server core |
+| Witness generation | about 3 s (suite 1) and 6 s (suite 2) on a server core with WebAssembly; **0.24 s** (suite 2) with the native witness graph (see below) |
 | Groth16 proving, suite 2 | **11.5–12.3 s on 2 server cores** (three runs; arkworks; peak memory 2.5 GB), TEST-ONLY random setup |
 | Groth16 proving, suite 1 | **about 11–12 s on 2 server cores** (arkworks; peak memory 1.9 GB; verification 3–4 ms), with a TEST-ONLY random setup: see [`../prove-bench`](../prove-bench/). The snarkjs setup (`npm run setup:test`) needs a 2^20 powers-of-tau file. Phone times: schedule 0.8 |
 
 This proof runs once per enrolment, not per vote. It is too heavy for a phone's web browser; the phone app needs a native prover.
+
+## On the phone (challenge 2 of Decision Log #57)
+
+The phone builds this circuit's input from the chip data itself and computes the witness natively, without WebAssembly:
+
+1. **RSA hints.** The quotient and remainder of every modular multiplication of the RSA check are private inputs (`rsaQ`, `rsaR`), computed by the input builder (`rsaHints` in `src/document.js`). Before, the witness generator computed them with zk-email's `long_div`, whose loops depend on signal values; circom-witnesscalc's graph compiler cannot run such code. The constraints are those of zk-email's `FpMul`: the hints are range-checked, the remainder is below the modulus, and `a·b = p·q + r` is checked, so for each multiplication only one pair of values satisfies the circuit and the prover gains no freedom. The constraint counts are unchanged (577,678 and 749,147), and the tests above pass as before.
+2. **Witness graph.** Both suites now compile to circom-witnesscalc witness graphs (`build-circuit`, v0.3.0). On synthetic passports the graph gives a witness **identical byte for byte** to circom's own WebAssembly generator, in **0.24 s instead of 4.5 s** for suite 2 (one server core). The graph of suite 2 is 31 MB; its build is reproducible (SHA-256 `290573a7e1098d36c4d0ee40aafe25732b3f861b69f36301c72e67e768a9ee65` from this commit's sources). The Android workflow builds it and checks it against the WebAssembly witness at every run.
+3. **Input builder on the phone.** `reference/android-prototype/.../DocInput.kt` is a port of `buildInput`. The Android workflow checks, on synthetic passports of both suites (`scripts/doc-input-vectors.js`, exponents 3, 37817 and 65537 for suite 2, and an expiry date of 29 February in a common year, which rolls over to 1 March as in the circuit), that it builds exactly the same input, byte for byte.
+4. **Test tree.** Until the public tree of checked signers is in place, `circuits/test/dsc_test_tree_s2.circom` gives the root and path of a TEST-ONLY tree holding one signer, computed by the phone with the same Poseidon code as the proof. Its root equals the JavaScript tree's for the same signer. A proof with this tree shows nothing about whether the signer is trusted.
+
+Measured on a server (2 cores; TEST-ONLY random key; native prover `doc-prove`): witness 0.3 s, check of all constraints well under a second, proof 5.5–5.9 s, verified; peak memory 1.1 GB. A document that the circuit rejects (an altered DG1 byte) is reported by the constraint check before any proving.
 
 ## Tests
 

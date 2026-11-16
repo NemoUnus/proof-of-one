@@ -43,8 +43,9 @@ class ProverActivity : Activity() {
         start = Button(this).apply { text = "Start benchmark"; setOnClickListener { run() } }
         col.addView(start)
         col.addView(TextView(this).apply {
-            text = "Enrolment proof π_doc (577,678 constraints) with a TEST-ONLY random key: needs about 1 GB of memory " +
-                "and 150 MB of storage, and takes one to several minutes. The witness is precomputed."
+            text = "Enrolment proof π_doc, suite 2 (749,147 constraints), from a synthetic passport, with a TEST-ONLY random key: " +
+                "the witness is computed on the phone. Needs about 1.2 GB of memory and 550 MB of storage; the first run " +
+                "takes one to two minutes."
             setPadding(0, pad, 0, 0)
         })
         doc = Button(this).apply { text = "Start enrolment proof benchmark"; setOnClickListener { runDoc() } }
@@ -122,17 +123,20 @@ class ProverActivity : Activity() {
         status.text = "Preparing the files (first time only)…"
         thread {
             try {
-                val pk = file("doc_pk_c.bin"); val m = file("doc_matrices.gzdata"); val w = file("doc.wtns")
-                runOnUiThread { status.text = "Reading the key and proving… keep the screen on." }
-                val r = JSONObject(NativeProver.proveDoc(pk, m, w))
+                val pk = file("doc_s2_pk_c.bin"); val m = file("doc_s2_matrices.gzdata")
+                val g = file("document_s2.graph"); val t = file("dsc_test_tree_s2.graph")
+                val input = assets.open("doc_s2_input.json").use { it.readBytes().toString(Charsets.UTF_8) }
+                runOnUiThread { status.text = "Reading the key, computing the witness and proving… keep the screen on." }
+                val r = JSONObject(NativeProver.proveDocInputs(pk, m, g, t, input))
                 if (r.has("error")) throw IllegalStateException(r.getString("error"))
                 val mem = ActivityManager.MemoryInfo().also { (getSystemService(ACTIVITY_SERVICE) as ActivityManager).getMemoryInfo(it) }
                 fun s(ms: Long) = String.format("%.1f s", ms / 1000.0)
                 val ok = r.getBoolean("verified")
                 shareText = listOf(
-                    "Proof of One phone benchmark v0.1 (native, enrolment)",
-                    "proof: pi_doc, 577,678 constraints, Groth16, arkworks (native), TEST-ONLY random key",
-                    "key and matrices loading: ${s(r.getLong("loadMs"))}${if (r.optBoolean("cached")) " (uncompressed copy kept from an earlier run)" else " (first run: decompressing the key; later runs are faster)"}",
+                    "Proof of One phone benchmark v0.2 (native, enrolment)",
+                    "proof: pi_doc suite 2, 749,147 constraints, synthetic passport, Groth16, arkworks (native), TEST-ONLY random key",
+                    "key and matrices loading: ${s(r.getLong("loadMs"))} (the first run decompresses the key; later runs are faster)",
+                    "witness on the phone: ${s(r.getLong("witnessMs"))}",
                     "proof: ${s(r.getLong("proveMs"))}",
                     "verified: ${if (ok) "yes" else "NO"}",
                     "peak memory of the app: ${r.getLong("peakMb")} MB",
