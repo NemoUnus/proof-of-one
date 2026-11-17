@@ -101,20 +101,26 @@ On 12 November (UTC+4):
 
 Expected result when poll 3 closes on 17 November: 2 · 1 · 1 · 0. Since this run, `vote.html` explains the contract's refusals in plain words, instead of "unknown custom error".
 
+### Poll 3's result cannot be recorded by its contract (17 November 2026)
+
+Deployment 2 accepts a result only with a tally proof checked by its TallyVerifier. That verifier belongs to a TEST-ONLY proving key made with random entropy on 8 November and kept only in one working environment of the project's agents; the environment was replaced on 16 November and the key was lost with it. The contract cannot be changed, so **no result of poll 3 can be recorded on chain**. The ballots, the encrypted totals and the trustee shares are intact. The result is therefore published off chain with [`offchain-result.js`](offchain-result.js): the totals decrypted by three of the five synthetic trustees, each partial decryption with its DLEQ proof, and a tally proof made with the new, reproducible TEST-ONLY key (`tally-circuit/setup/vkey_tally_test.json`), checkable by anyone against the contract's `aggregate(1)`. Implementation note N37 records the lesson: since 17 November the test setup of π_tally is reproducible from the repository, and deployment 3 gets a TallyVerifier of that key.
+
+**Result of poll 3 (closed 17 November 2026; computed off chain the same day): 2 · 1 · 1 · 0, 4 voters**, as expected (members 5 and 6 option 1, member 7 option 2, member 8 option 3). The file [`web/result3-offchain.json`](web/result3-offchain.json) holds the encrypted totals and ballot chain read from the contract, the three trustees' partial decryptions with their DLEQ proofs, and the tally proof, which verifies under `tally-circuit/setup/vkey_tally_test.json`. On chain, poll 3 stays closed without a recorded result.
+
 ## Deployment 3 and test poll 4: a recovery ballot (planned after 17 November 2026)
 
-Puts on the test network the polls contract with recovery ballots (Decision Log #52, point 2) and plays the stolen-phone story. Prepared by `plan4.js`; the plan file `web/plan4.json` is made with the wallet's real nonce once poll 3 is published. The registries, verifiers, Poseidon contracts and TallyVerifier of deployment 2 are reused.
+Puts on the test network the polls contract with recovery ballots (Decision Log #52, point 2) and plays the stolen-phone story. Prepared by `plan4.js`; the plan file `web/plan4.json` is made with the wallet's real nonce after poll 3. The registries, ballot verifiers and Poseidon contracts of deployment 2 are reused; the TallyVerifier is new, for the reproducible TEST-ONLY key (see poll 3 above).
 
 | Step | What | When |
 |---|---|---|
-| 1–2 | Deploy RecoveryVerifier and ProofOfOnePolls (deployment 3) | After poll 3 is published |
-| 3 | Create test poll 4 (poll id 1 of the new contract; 4 options; 7 days), with kits for members 5–7 | Then |
+| 1–3 | Deploy TallyVerifier, RecoveryVerifier and ProofOfOnePolls (deployment 3) | After poll 3 |
+| 4 | Create test poll 4 (poll id 1 of the new contract; 4 options; 7 days), with kits for members 5–7 | Then |
 | — | Members 5 and 6 vote; someone holding **member 7's phone** votes with member 7's kit | While the poll is open |
-| 4 | A new synthetic enclave key set | Any time before step 5 |
-| 5–8 | Member 7 re-enrols: the new identity's revocation handle is linked to the old one; three filler members complete the batch | Then |
-| 9 | Insert the four as one batch | Then |
-| 10 | Revoke member 7's old identity. The page waits until member 7 has voted in poll 4 | After the "thief" has voted |
-| — | Member 7 opens the app: it makes a **recovery ballot** with the new identity and the backup of the old secret, and sends it with a test wallet | After step 10 |
+| 5 | A new synthetic enclave key set | Any time before step 6 |
+| 6–9 | Member 7 re-enrols: the new identity's revocation handle is linked to the old one; three filler members complete the batch | Then |
+| 10 | Insert the four as one batch | Then |
+| 11 | Revoke member 7's old identity. The page waits until member 7 has voted in poll 4 | After the "thief" has voted |
+| — | Member 7 opens the app: it makes a **recovery ballot** with the new identity and the backup of the old secret, and sends it with a test wallet | After step 11 |
 | — | Publish the result with the tally proof | After the close |
 
-Rehearsed on a local chain with deployments 1 and 2 replayed first (`node test/plan4.e2e.js web/plan.json web/plan2.json`): deployment 945,888 + 4,013,440 gas; poll creation 3,704,894; registrations about 300,000–320,000 each; batch 276,448; revocation 287,685; the recovery proof made in 5.2 s on a server; the recovery ballot accepted for 753,273 gas (the first ballot after a revocation also computes the new `pollHash`); the "thief's" ballot within the revocation grace, after the recovery, refused (`Recovered`); result 1 · 1 · 1 · 0 published with the tally proof, final at once, counting member 7's own answer and not the thief's. The same story also runs in the app prototype in a headless browser (`reference/app/test/app.e2e.js`).
+Rehearsed on a local chain with deployments 1 and 2 replayed first (`node test/plan4.e2e.js web/plan.json web/plan2.json`), again on 17 November with the new TallyVerifier: deployment 1,627,528 + 945,888 + 4,013,440 gas; poll creation 3,704,894; registrations about 300,000–320,000 each; batch 276,448; revocation 287,685; the recovery proof made in 5.2 s on a server; the recovery ballot accepted for 753,273 gas (the first ballot after a revocation also computes the new `pollHash`); the "thief's" ballot within the revocation grace, after the recovery, refused (`Recovered`); result 1 · 1 · 1 · 0 published with the tally proof, final at once, counting member 7's own answer and not the thief's. The same story also runs in the app prototype in a headless browser (`reference/app/test/app.e2e.js`).

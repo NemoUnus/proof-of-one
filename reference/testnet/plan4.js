@@ -4,17 +4,19 @@
 //
 // Puts on the test network the polls contract with recovery ballots (Decision Log #52, point 2;
 // docs/specs/recovery-ballots-and-oprf-key-v0.1.md §1.5) and plays the stolen-phone story:
-//   1–2. deploy the RecoveryVerifier and ProofOfOnePolls (deployment 3); the identity and
-//        revocation registries, the ballot verifiers, Poseidon contracts and the TallyVerifier
-//        of deployment 2 are reused;
-//   3.   create poll 4 (on-chain poll id 1 of the new contract; 4 options, 7 days), with kits
+//   1–3. deploy a new TallyVerifier, the RecoveryVerifier and ProofOfOnePolls (deployment 3);
+//        the identity and revocation registries, the ballot verifiers and the Poseidon
+//        contracts of deployment 2 are reused. The TallyVerifier is new because the key of
+//        deployment 2's was lost (implementation note N37); the new one's TEST-ONLY key is
+//        reproducible from the sources (tally-circuit/scripts/setup-test.sh);
+//   4.   create poll 4 (on-chain poll id 1 of the new contract; 4 options, 7 days), with kits
 //        for members 5–7 (member 8 was revoked in poll 3);
 //        → someone "who took member 7's phone" answers with member 7's kit;
-//   4.   a new synthetic enclave key set;
-//   5–8. member 7 re-enrols: the new identity's revocation handle is linked to the old one,
+//   5.   a new synthetic enclave key set;
+//   6–9. member 7 re-enrols: the new identity's revocation handle is linked to the old one,
 //        Poseidon(14, rn_old, link); three more synthetic members fill the batch;
-//   9.   insert the four as one batch;
-//   10.  revoke member 7's old identity (send only after member 7 has voted in poll 4);
+//   10.  insert the four as one batch;
+//   11.  revoke member 7's old identity (send only after member 7 has voted in poll 4);
 //        → member 7, with the new identity and a backup of the old secret, sends a RECOVERY
 //          ballot from the app: it replaces the thief's ballot.
 // The trustee shares of poll 4 go to a PRIVATE file (never published). The recovery kit
@@ -58,15 +60,16 @@ async function main() {
     txs.push({ step: txs.length + 1, kind: "deploy", name, expectedAddress: address, data: ethers.concat([a.bytecode, coder.encode(types, args)]), check: { type: "code" } });
     return address;
   };
-  const IR = art("IdentityRegistry"), RR = art("RevocationRegistry"), PP = art("ProofOfOnePolls"), RCV = art("RecoveryVerifier");
+  const IR = art("IdentityRegistry"), RR = art("RevocationRegistry"), PP = art("ProofOfOnePolls"), RCV = art("RecoveryVerifier"), TV = art("TallyVerifier");
   const ir = new ethers.Interface(IR.abi), rr = new ethers.Interface(RR.abi);
   const call = (name, to, iface, fn, args, extra = {}) => { txs.push({ step: txs.length + 1, kind: "call", name, to, data: iface.encodeFunctionData(fn, args), ...extra }); nonce++; };
 
-  // ---- 1–2. contracts
+  // ---- 1–3. contracts
+  const tallyV = deploy("TallyVerifier (tally proof π_tally; reproducible TEST-ONLY key)", TV);
   const recoveryV = deploy("RecoveryVerifier (recovery-ballot proof π_recover)", RCV);
   const polls = deploy("ProofOfOnePolls (recovery ballots)", PP,
     ["address", "address", "address", "address", "address", "address", "address", "address"],
-    [old.Groth16Verifier, old.BallotBatchVerifier, old.IdentityRegistry, old.RevocationRegistry, old["Poseidon(3)"], old["Poseidon(5)"], old.TallyVerifier, recoveryV]);
+    [old.Groth16Verifier, old.BallotBatchVerifier, old.IdentityRegistry, old.RevocationRegistry, old["Poseidon(3)"], old["Poseidon(5)"], tallyV, recoveryV]);
 
   // ---- the registries as they are on chain: 8 identities; member 8 revoked in poll 3
   const ids = new IncrementalTree(H, B.DEPTH);
@@ -79,7 +82,7 @@ async function main() {
   rev.revoke(memberOf(plan2.kits[3]).rn);   // member 8
   const snap = new IncrementalTree(H, B.DEPTH); for (const l of ids.leaves) snap.insert(l);
 
-  // ---- 3. poll 4 = poll id 1 of the new contract
+  // ---- 4. poll 4 = poll id 1 of the new contract
   const pollId = 1n;
   const keys = P.dkg(5, 3);
   const POLICY = { ...A.ageRange([2026, 11, 17], { minAge: 18 }), minExpiryMonth: 24330, requiredNat: 0 };
@@ -98,11 +101,11 @@ async function main() {
     return { member: i + 5, pollId, nf: b.nf, PK: pt(keys.PK), k: B.K, input };
   });
 
-  // ---- 4. new synthetic enclave key set
+  // ---- 5. new synthetic enclave key set
   const enclave = E.createEnclave(P, { epochs: 4 });
   call("Set a new synthetic enclave key set", old.IdentityRegistry, ir, "setKeySetRoot", [enclave.keySetRoot], { check: { type: "keySetRoot", value: enclave.keySetRoot.toString() } });
 
-  // ---- 5–8. member 7 re-enrols (linked handle), with three filler members
+  // ---- 6–9. member 7 re-enrols (linked handle), with three filler members
   const old7 = memberOf(plan2.kits[2]);
   const ATTRS = { birthDay: Number(old7.birthDay), natCode: Number(old7.docs[0].nat), sexCode: Number(old7.sexCode), expiryMonth: Number(old7.docs[0].expiry) };
   const fillerAttrs = { birthDay: A.dayNumber(1990, 1, 1), natCode: 999, sexCode: 1, expiryMonth: 24400 };
@@ -121,19 +124,19 @@ async function main() {
     if (i === 0) new7 = { ...member, link: credential.link, index: 8 };
   }
   if (P.hash.H([14n, old7.rn, new7.link]) !== new7.rn) throw new Error("link check failed");
-  // ---- 9. insert them as one batch
+  // ---- 10. insert them as one batch
   const { input: bi, newRoot } = E.buildBatchInsert(P, ids, newLeaves);
   const bp = sp((await E.proveBatch(bi, ZK.batch)).proof);
   call("Insert the 4 new identities as one batch", old.IdentityRegistry, ir, "insertBatch", [newRoot, bp.a, bp.b, bp.c], { check: { type: "leafCount", min: 12 } });
   newLeaves.forEach((l) => ids.insert(l));
   if (ids.root !== newRoot) throw new Error("tree mismatch");
 
-  // ---- 10. revoke member 7's old identity (after the "thief" has voted with it)
+  // ---- 11. revoke member 7's old identity (after the "thief" has voted with it)
   const { input: ri, newRoot: revRoot } = E.buildRevoke(P, rev, old7.rn);
   const rp = sp((await E.proveRevoke(ri, ZK.revoke)).proof);
   call("Revoke member 7's old identity (send only after member 7 has voted in poll 4)", old.RevocationRegistry, rr, "revoke", [old7.rn, 2, revRoot, rp.a, rp.b, rp.c],
     { waitForBallot: String(kits[2].nf), info: "From now on member 7's old identity is refused (after the 10-minute grace). Member 7 then sends a recovery ballot from the app, with the new identity.", check: { type: "revokedCount", min: 2 } });
-  const revNow = new RevocationTree(H, B.REV_DEPTH);           // after step 10: members 8 and 7
+  const revNow = new RevocationTree(H, B.REV_DEPTH);           // after step 11: members 8 and 7
   revNow.revoke(memberOf(plan2.kits[3]).rn); revNow.revoke(old7.rn);
   if (revNow.root !== revRoot) throw new Error("revocation tree mismatch");
 
@@ -141,13 +144,13 @@ async function main() {
   const rb = R.buildRecovery(P, { pollId, PK: keys.PK, policy: POLICY, ctxHash, oldMember: old7, oldIndex: 6, snapTree: snap, newMember: new7, newIndex: 8, curTree: ids, revTree: revNow, choice: 0 });
   const { CA, CB, v, r, ...rinput } = rb.input;
   const recoveryKits = [{ member: 7, pollId, nf: rb.nf, PK: pt(keys.PK), k: B.K, input: rinput,
-    note: "SYNTHETIC: member 7's old and new secrets and the link, published for the test. Valid while the identity root and revocation root stay as after steps 9 and 10." }];
+    note: "SYNTHETIC: member 7's old and new secrets and the link, published for the test. Valid while the identity root and revocation root stay as after steps 10 and 11." }];
 
   fs.mkdirSync(path.dirname(SECRETS), { recursive: true });
   fs.writeFileSync(SECRETS, json({ note: "PRIVATE. Synthetic trustee shares of poll 4, kept to decrypt and publish its result.", pollId, chainId, polls, dleq: "poseidon",
     PK: pt(keys.PK), shares: keys.shares, publicShares: keys.publicShares.map((s) => ({ index: s.index, PK: pt(s.PK) })) }));
 
-  const contracts = { ...old, RecoveryVerifier: recoveryV, ProofOfOnePolls: polls, ProofOfOnePollsV2: old.ProofOfOnePolls };
+  const contracts = { ...old, TallyVerifier: tallyV, TallyVerifierV2: old.TallyVerifier, RecoveryVerifier: recoveryV, ProofOfOnePolls: polls, ProofOfOnePollsV2: old.ProofOfOnePolls };
   process.stdout.write(json({
     title: "Proof of One — Phase 1a deployment 3 and synthetic test poll 4 (a recovery ballot after a stolen phone)",
     warning: "SYNTHETIC IDENTITIES ONLY. TEST-ONLY trusted setups. Not audited. Never use with real people or real funds.",

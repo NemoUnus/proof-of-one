@@ -54,7 +54,17 @@ npm run setup:test     # TEST-ONLY setup: setup/tally_test.zkey, ../contracts/sr
 npm test               # witness tests; proves and verifies if the test key exists
 ```
 
-The setup needs a powers-of-tau file of size 2^18. The script makes a TEST-ONLY one, which takes more than an hour on two cores. The test key (85 MB) is not in the repository, being above GitHub's upload limit; `setup/vkey_tally_test.json` and `contracts/src/TallyVerifier.sol` belong to the key made on 8 November 2026. Running the script makes a new key and replaces both, and the tests then use it.
+The setup needs a powers-of-tau file of size 2^18. The script makes a TEST-ONLY one, which takes more than an hour on two cores. The test key (85 MB) is not in the repository, being above GitHub's upload limit.
+
+**Since 17 November 2026 the test setup is reproducible.** Every step is deterministic: the powers of tau start from fixed values, and each phase gets only a "beacon" contribution derived from a public string in the script. Running the script on this circuit therefore rebuilds exactly the key that `setup/vkey_tally_test.json` and `contracts/src/TallyVerifier.sol` belong to (checked by rebuilding phase 2 twice):
+
+| File | SHA-256 |
+|---|---|
+| `setup/pot18_beacon_final.ptau` | `0c443bfed94bf0f39d02f2a1fdcdb4bb981197370e847c33db075ee310755d0e` |
+| `setup/tally_test.zkey` | `8df3b2d852d9a8986fdd1ed3af03b617821fbfa04ffe145773664d0f8259f6f8` |
+| `setup/vkey_tally_test.json` | `72ab1c064c2dd4a62735a76bba66d65ce331bf7dd48143bae2474fdd9a06dd46` |
+
+A reproducible key is exactly as insecure as the random test key it replaces (anyone who reads the script knows its secrets), and it cannot be lost. The previous key, made with random entropy on 8 November 2026 and kept only in one working environment, was lost with it on 16 November; deployment 2's TallyVerifier, which belongs to that key, can therefore no longer accept a result (implementation note N37).
 
 ## Tests
 
