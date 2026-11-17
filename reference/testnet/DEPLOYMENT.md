@@ -124,3 +124,15 @@ Puts on the test network the polls contract with recovery ballots (Decision Log 
 | — | Publish the result with the tally proof | After the close |
 
 Rehearsed on a local chain with deployments 1 and 2 replayed first (`node test/plan4.e2e.js web/plan.json web/plan2.json`), again on 17 November with the new TallyVerifier: deployment 1,627,528 + 945,888 + 4,013,440 gas; poll creation 3,704,894; registrations about 300,000–320,000 each; batch 276,448; revocation 287,685; the recovery proof made in 5.2 s on a server; the recovery ballot accepted for 753,273 gas (the first ballot after a revocation also computes the new `pollHash`); the "thief's" ballot within the revocation grace, after the recovery, refused (`Recovered`); result 1 · 1 · 1 · 0 published with the tally proof, final at once, counting member 7's own answer and not the thief's. The same story also runs in the app prototype in a headless browser (`reference/app/test/app.e2e.js`).
+
+### What happened on the test network (17 November 2026, times in UTC+4)
+
+| Time | Event |
+|---|---|
+| 21:53–21:56 | Steps 1–4 sent from `web/plan4.json` (deployer nonce 15): new TallyVerifier, RecoveryVerifier and ProofOfOnePolls deployed at the planned addresses; poll 4 created (7 days) |
+| 21:56–22:12 | Members 5 and 6 answered from the app prototype with the wallet (options 1 and 2); "the thief" answered with member 7's kit (option 4). Steps 5–11 sent: new enclave key set, member 7 re-enrolled with a linked handle, three filler members, one batch, and member 7's old identity revoked |
+| 22:13–22:16 | Member 7's **recovery ballot** (option 3), made on the phone and sent with the wallet: **accepted**. Member 7 then changed its answer with a second recovery ballot (option 1, made in 6.9 s): **accepted** as a re-vote; the app read the public record back and confirmed "Counted: option 1". A recovery ballot needs the new identity's secret, so the owner can keep changing its answer, while ordinary ballots with the old identity are refused (`Recovered`, rehearsed locally) |
+
+Expected result when poll 4 closes on 24 November: 2 · 1 · 0 · 0 (the thief's ballot replaced).
+
+Note on the deployer's nonce: the test wallet was upgraded to MetaMask's EIP-7702 smart account (MetaMask's EIP7702StatelessDeleGator), and the explorer's list of the account's own transactions shows only the contract creations and the funding transfer. The nonce matched the count of those creations plus one (the upgrade); the plans were made for it and the page's nonce check passed. Our reading, not confirmed by MetaMask: the calls were sent through the smart account without raising the account's own nonce.
