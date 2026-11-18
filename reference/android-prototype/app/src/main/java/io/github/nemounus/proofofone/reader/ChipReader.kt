@@ -109,6 +109,12 @@ class ChipReader(private val isoDep: IsoDep, private val key: BACKey) {
                 "runs of exactly 10 digits: ${runs.size}" + (if (runs.isNotEmpty()) " (at byte ${runs.joinToString(", ") { it.range.first.toString() }})" else "") +
                 (if (wide > 0) "; as UTF-16: $wide" else "") + "; tags: ${tags(b)}")
             runs.forEach { screen.appendLine("DG$n, byte ${it.range.first}: a 10-digit number ending in …${it.value.takeLast(3)}") }
+            // Digits in other encodings, per field: only the field, the encoding and the count go
+            // into the report; for a field holding exactly ten digits, the last three on screen only.
+            for ((tag, v) in fields(b)) for ((enc, d) in digitsIn(v)) {
+                r.appendLine("DG$n field %X: %d digits as %s (of %d bytes)".format(tag, d.length, enc, v.size))
+                if (d.length == 10) screen.appendLine("DG$n field %X (%s): ten digits ending in …%s".format(tag, enc, d.takeLast(3)))
+            }
         }
         if (extra.isEmpty()) r.appendLine("DG11, DG12, DG13: none on this chip")
 
@@ -173,6 +179,48 @@ class ChipReader(private val isoDep: IsoDep, private val key: BACKey) {
     }
 
     private fun yes(b: Boolean) = if (b) "yes" else "NO"
+
+    /** The inner fields (tag, value) of a data group's outer template. */
+    private fun fields(b: ByteArray): List<Pair<Int, ByteArray>> = try {
+        val out = mutableListOf<Pair<Int, ByteArray>>()
+        fun tagAt(i: Int): Pair<Int, Int> { var j = i; var t = b[j++].toInt() and 0xff
+            if (t and 0x1f == 0x1f) { do { t = (t shl 8) or (b[j].toInt() and 0xff) } while (b[j++].toInt() and 0x80 != 0) }
+            return t to (j - i) }
+        fun lenAt(i: Int): Pair<Int, Int> { val f = b[i].toInt() and 0xff; if (f < 0x80) return f to 1
+            var n = 0; for (k in 1..(f and 0x7f)) n = (n shl 8) or (b[i + k].toInt() and 0xff); return n to 1 + (f and 0x7f) }
+        val (_, ot) = tagAt(0); val (olen, ol) = lenAt(ot)
+        var i = ot + ol; val end = minOf(b.size, i + olen)
+        while (i < end && out.size < 40) {
+            val (t, tl) = tagAt(i); val (l, ll) = lenAt(i + tl)
+            val s0 = i + tl + ll; out += t to b.copyOfRange(s0, minOf(end, s0 + l)); i = s0 + l
+        }
+        out
+    } catch (e: Exception) { emptyList() }
+
+    /**
+     * Decimal digits in a field, by encoding: ASCII; raw bytes 0–9; packed BCD; Arabic-Indic or
+     * Extended Arabic-Indic (Persian) digits in UTF-8 or UTF-16. Only encodings that give digits
+     * are listed, each with the digits in order.
+     */
+    private fun digitsIn(v: ByteArray): List<Pair<String, String>> {
+        val u = v.map { it.toInt() and 0xff }
+        val out = mutableListOf<Pair<String, String>>()
+        u.filter { it in 0x30..0x39 }.joinToString("") { (it - 0x30).toString() }.takeIf { it.isNotEmpty() }?.let { out += "ASCII" to it }
+        if (u.isNotEmpty() && u.all { it in 0..9 }) out += "raw bytes 0-9" to u.joinToString("")
+        if (u.isNotEmpty() && u.all { (it shr 4) <= 9 && (it and 15) <= 9 }) out += "packed BCD" to u.joinToString("") { "${it shr 4}${it and 15}" }
+        val sb = StringBuilder(); var i = 0
+        while (i + 1 < u.size) { val (a, b2) = u[i] to u[i + 1]
+            when { a == 0xD9 && b2 in 0xA0..0xA9 -> { sb.append(b2 - 0xA0); i += 2 }
+                   a == 0xDB && b2 in 0xB0..0xB9 -> { sb.append(b2 - 0xB0); i += 2 }
+                   else -> i++ } }
+        if (sb.isNotEmpty()) out += "Arabic/Persian digits, UTF-8" to sb.toString()
+        val sw = StringBuilder(); i = 0
+        while (i + 1 < u.size) { val (a, b2) = u[i] to u[i + 1]
+            if (a == 0x06 && (b2 in 0x60..0x69 || b2 in 0xF0..0xF9)) sw.append(b2 and 15)
+            i += 2 }
+        if (sw.isNotEmpty()) out += "Arabic/Persian digits, UTF-16" to sw.toString()
+        return out
+    }
 
     /** The tags and lengths inside a data group's outer template (structure only, no values). */
     private fun tags(b: ByteArray): String = try {

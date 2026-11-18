@@ -44,7 +44,7 @@ Face found in the chip photo and in every selfie (detector score 0.82–0.83); d
 
 ## Personal number outside the MRZ (v0.6.1, a diagnostic)
 
-Decision #43 builds the person key from a personal number where the signed data carries one. Its standard place is DG11; DG13 is free for national use and may hold one too. After a read, the report now lists for DG11, DG12 and DG13 (where the chip has them) the size, whether the hash matches the security object, how many runs of exactly ten digits they contain and where, and the tags of their structure; never the contents. If such a number is found, its last three digits are shown **on the phone's screen only**, not in the shared report, so that the holder can tell whether it is their personal number.
+Decision #43 builds the person key from a personal number where the signed data carries one. Its standard place is DG11; DG13 is free for national use and may hold one too. After a read, the report now lists for DG11, DG12 and DG13 (where the chip has them) the size, whether the hash matches the security object, how many runs of exactly ten digits they contain and where, and the tags of their structure; never the contents. Since v0.6.2 it also counts, per field, the digits in other encodings (raw bytes 0–9, packed BCD, Arabic-Indic and Persian digits in UTF-8 or UTF-16), since national data may not use ASCII. If such a number is found, its last three digits are shown **on the phone's screen only**, not in the shared report, so that the holder can tell whether it is their personal number.
 
 ## Keyed fingerprints in the enrolment proof test (v0.6, Decision Log #58)
 
