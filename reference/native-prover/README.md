@@ -51,10 +51,22 @@ The app's second button proves π_doc (577,678 constraints) with `ArkCircuit`: a
 
 Measured with `doc-prove` on a server (2 cores, TEST-ONLY random key), synthetic passports with exponents 3, 37817 and 65537 built by the app's own Kotlin input builder: **witness 0.3 s, proof 5.5–5.9 s, verified**; peak memory 1.1 GB; reading the compressed key the first time 43 s, then 2.2 s from the uncompressed copy. One altered DG1 byte is rejected by the constraint check.
 
+## Keyed fingerprints on the phone (app v0.6; Decision Log #58)
+
+`src/fingerprint.rs` is the phone's side of the uniqueness service's OPRF ([spec](../../docs/specs/document-fingerprint-oprf-v0.1.md)), shared by Android and iPhone:
+
+- `prepare` (round 1): reads the fields from the signed DG1, hashes them to two points of Baby Jubjub (Elligator 2, cofactor cleared), blinds them with random odd scalars; returns the two blinded points for the service and the session's secrets;
+- `complete` (round 2): checks the service's two DLEQ proofs against its published key, then returns π_doc's fingerprint inputs (the map hints, `r`, `V = 8⁻¹·r⁻¹·Z`, `B`, `Z`).
+
+Curve arithmetic is done here; the Poseidon hashes come from the witness graph of `document-circuit/circuits/phone/fp_helper.circom`, so they are computed by the same code as in π_doc. `fp-check` compares the results with the JavaScript reference on test vectors (number path, name path, a filler-only personal number, a 29 February expiry): **identical**, and a wrong DLEQ proof and an answer under another key are refused. The Android workflow runs this check at every build. From the app: `NativeProver.fpPrepare`, `fpComplete`, and `fpTestService` (TEST ONLY, a synthetic service on the phone until the real one exists).
+
+End to end on a server (2 cores): a synthetic suite-2 passport's input built by the app's Kotlin code, plus the fingerprint inputs, gives a π_doc (763,666 constraints) that verifies, with the reference fingerprints as outputs; witness 0.29 s, proof 5.3 s.
+
 ## Files
 
 - `src/lib.rs` — `Circuit::load(zkey, graph)`, `prove`, `prove_checked`, and the JNI entry point `NativeProver.prove` for the Android app.
 - `src/bin/doc-bench.rs` — `doc-bench <pk_c.bin> <matrices.gz> <witness.wtns>`, the π_doc benchmark on a computer (precomputed witness, v0.3 of the app).
+- `src/fingerprint.rs` — the phone's side of the fingerprint OPRF (above); `src/bin/fp-check.rs` — `fp-check <fp_helper.graph> <vectors.json>`.
 - `src/bin/doc-prove.rs` — `doc-prove <pk_c.bin> <matrices.gz> <document_s2.graph> <dsc_test_tree_s2.graph> <inputs.json>`: π_doc from inputs, as the app does it.
 - `src/main.rs` — `poo-prove`, a command-line timer: `poo-prove <graph> <zkey> <inputs.json> <proof.json> <public.json> [runs]`.
 - `graphs/ballot.graph` — witness graph of `../ballot-circuit/circuits/ballot.circom` (sha256 `cdd5d77ba663d956b17e90e2d586392a2b0c0a12d70ba2736792c876d1b01064`). The build is reproducible; rebuild it with `build-circuit` from circom-witnesscalc v0.3.0:

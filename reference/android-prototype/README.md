@@ -42,6 +42,10 @@ After a successful read, the button **Face check test** compares the chip photo 
 
 Face found in the chip photo and in every selfie (detector score 0.82–0.83); detection and comparison 56–114 ms per picture. **Provisional threshold: 0.40**, well above the other person and below the holder's worst picture. Before the pilot it needs more measurements, above all from people who resemble the holder (relatives of the same sex and age), and from other passports and phones.
 
+## Keyed fingerprints in the enrolment proof test (v0.6, Decision Log #58)
+
+The enrolment proof test now also computes the two keyed fingerprints of the [OPRF specification](../../docs/specs/document-fingerprint-oprf-v0.1.md) (person key and document key) and proves them inside π_doc (suite 2, 763,666 constraints). Until the uniqueness service exists, the service's side runs on the phone with a **TEST-ONLY key** (`fpTestService`). Fingerprints under a published key protect nothing, so the screen never shows or shares them; it shows only which person-key path the passport allows (1 if the MRZ carries a personal number, else 2), the time of the two rounds, and whether the fingerprints are the same as in the previous run.
+
 ## Enrolment proof test with a real passport (v0.5, Decision Log #57, challenge 2)
 
 After a successful read, the button **Enrolment proof test (from this passport)** makes the enrolment proof π_doc from the chip data just read, **on the phone**:

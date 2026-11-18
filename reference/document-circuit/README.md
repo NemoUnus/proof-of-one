@@ -31,7 +31,11 @@ The setup script can take an existing 2^20 powers-of-tau file as its argument: `
 
 | File | Contents |
 |---|---|
-| `circuits/lib/document_core.circom` | The circuit, shared by all suites: DG1 and DG2 hashes, `eContent` digest, RSA signature, DSC tree membership, expiry, attribute outputs |
+| `circuits/lib/document_core.circom` | The circuit, shared by all suites: DG1 and DG2 hashes, `eContent` digest, RSA signature, DSC tree membership, expiry, attribute outputs, keyed fingerprints |
+| `circuits/lib/fingerprint.circom`, `src/fingerprint.js` | Keyed document fingerprints (OPRF over Baby Jubjub, [spec](../../docs/specs/document-fingerprint-oprf-v0.1.md)): hash to curve, blinding, the service's answer, person key and document key; circuit and reference code |
+| `circuits/phone/fp_helper.circom` | The Poseidon hashes the phone needs for the fingerprints, compiled to a witness graph for the native code |
+| `circuits/test/keys_test.circom`, `test/fingerprint.test.js` | The fingerprint part alone, and its tests |
+| `scripts/fp-vectors.js` | Test vectors for the phone's fingerprint code (`native-prover/src/fingerprint.rs`) |
 | `circuits/document.circom`, `circuits/document_s2.circom` | One main file per suite, with the suite's parameters |
 | `circuits/lib/sha1.circom` | SHA-1 over padded bytes of variable length |
 | `circuits/lib/rsa_pkcs1.circom` | RSA PKCS#1 v1.5 check for any digest and any exponent below 2^EBITS; modular multiplications with hints (`FpMulHinted`) |
@@ -49,8 +53,8 @@ The setup script can take an existing 2^20 powers-of-tau file as its argument: `
 
 | Item | Value |
 |---|---|
-| Constraints, suite 1 | **577,678** (SHA-256 about 366,000; RSA-2048 185,903; the rest about 26,000) |
-| Constraints, suite 2 | **749,147** (SHA-1 about 14,200 per block; RSA-3072 with a 17-bit exponent takes most of the rest) |
+| Constraints, suite 1 | **592,197** since 18 November 2026, with the keyed fingerprints (step 8, 14,519); before: 577,678 (SHA-256 about 366,000; RSA-2048 185,903; the rest about 26,000) |
+| Constraints, suite 2 | **763,666** since 18 November 2026, with the keyed fingerprints; before: 749,147 (SHA-1 about 14,200 per block; RSA-3072 with a 17-bit exponent takes most of the rest) |
 | Witness generation | about 3 s (suite 1) and 6 s (suite 2) on a server core with WebAssembly; **0.24 s** (suite 2) with the native witness graph (see below) |
 | Groth16 proving, suite 2 | **11.5–12.3 s on 2 server cores** (three runs; arkworks; peak memory 2.5 GB), TEST-ONLY random setup |
 | Groth16 proving, suite 1 | **about 11–12 s on 2 server cores** (arkworks; peak memory 1.9 GB; verification 3–4 ms), with a TEST-ONLY random setup: see [`../prove-bench`](../prove-bench/). The snarkjs setup (`npm run setup:test`) needs a 2^20 powers-of-tau file. Phone times: schedule 0.8 |

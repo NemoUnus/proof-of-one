@@ -18,7 +18,11 @@
 //   6. the expiry date in DG1 is on or after `today`;
 //   7. outputs: birthDay (days since 1900-01-01), sexCode (M 1, F 2, other 0),
 //      natCode (nationality, the three ICAO letters packed as one number) and
-//      expMonth (year·12 + month), as used by π_reg and π_vote.
+//      expMonth (year·12 + month), as used by π_reg and π_vote;
+//   8. the keyed fingerprints of Decision #47 and #58 (circuits/lib/fingerprint.circom):
+//      personKey and documentKey, computed from the signed MRZ through the service's
+//      blinded OPRF answers (public inputs pB, pZ, dB, dZ), and `issuer`, the issuing
+//      state, against which the service checks `path`.
 //
 // Values are read from fixed positions inside data that is hashed and signed, and
 // every read checks the DER bytes in front of it, so a value cannot be taken from
@@ -43,6 +47,7 @@ include "@zk-email/circuits/lib/sha.circom";
 include "@zk-email/circuits/utils/array.circom";
 include "./sha1.circom";
 include "./rsa_pkcs1.circom";
+include "./fingerprint.circom";
 
 // A digest of HB bits (160: SHA-1, 256: SHA-256) over padded bytes, most significant
 // bit first.
@@ -207,6 +212,14 @@ template DocumentProof(maxE, maxSA, depth, LDS_HB, SIG_HB, K, EBITS, ALG) {
     signal input rFace;          // blinding of the face-image commitment
     signal input rsaQ[rsaMuls(EBITS)][K]; // hints for the RSA check (see rsa_pkcs1.circom):
     signal input rsaR[rsaMuls(EBITS)][K]; // quotient and remainder of each multiplication
+    // Keyed fingerprints (step 8). Public: path, pB, pZ, dB, dZ.
+    signal input path;           // person-key path the service's rules give: 1 personal number, 2 name
+    signal input pB[2];          // blinded person point, as sent to the service
+    signal input pZ[2];          // the service's answer
+    signal input dB[2];          // the same for the document key
+    signal input dZ[2];
+    signal input pV[2]; signal input pE[2]; signal input pR; signal input pVw[2]; // hints and secrets of the phone
+    signal input dV[2]; signal input dE[2]; signal input dR; signal input dVw[2];
 
     // ---------------- outputs
     signal output birthDay;
@@ -214,6 +227,9 @@ template DocumentProof(maxE, maxSA, depth, LDS_HB, SIG_HB, K, EBITS, ALG) {
     signal output natCode;
     signal output expMonth;
     signal output cFace;
+    signal output personKey;
+    signal output documentKey;
+    signal output issuer;
 
     // Bind the commitment and the challenge into the proof.
     signal cmSq;
@@ -384,5 +400,18 @@ template DocumentProof(maxE, maxSA, depth, LDS_HB, SIG_HB, K, EBITS, ALG) {
 
     // nationality: three letters at L2+10
     natCode <== dg1[L2 + 10] * 65536 + dg1[L2 + 11] * 256 + dg1[L2 + 12];
+
+    // ---- 8. keyed fingerprints (person key and document key)
+    component keys = DocumentKeys();
+    keys.dg1 <== dg1;
+    keys.natCode <== natCode;
+    keys.birthDay <== birthDay;
+    keys.sexCode <== sexCode;
+    keys.path <== path;
+    keys.pV <== pV; keys.pE <== pE; keys.pR <== pR; keys.pVw <== pVw; keys.pB <== pB; keys.pZ <== pZ;
+    keys.dV <== dV; keys.dE <== dE; keys.dR <== dR; keys.dVw <== dVw; keys.dB <== dB; keys.dZ <== dZ;
+    personKey <== keys.personKey;
+    documentKey <== keys.documentKey;
+    issuer <== keys.issuer;
 }
 

@@ -27,6 +27,7 @@ rand = "0.8"
 ark-snark = "0.6"
 flate2 = "=1.0.35"
 jni = { version = "=0.21.1", default-features = false }
+ark-ed-on-bn254 = "0.6"
 
 [profile.release]
 opt-level = 3

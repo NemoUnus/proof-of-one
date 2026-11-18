@@ -218,6 +218,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "ark-ed-on-bn254"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a4585ccc828ac1a1c0973a6d859b8cd9ae6055a0ee943139c8e254dfd87d6f38"
+dependencies = [
+ "ark-bn254 0.6.0",
+ "ark-ec 0.6.0",
+ "ark-ff 0.6.0",
+ "ark-std 0.6.0",
+]
+
+[[package]]
 name = "ark-ff"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2427,6 +2439,7 @@ dependencies = [
  "ark-bn254 0.6.0",
  "ark-circom",
  "ark-ec 0.6.0",
+ "ark-ed-on-bn254",
  "ark-ff 0.6.0",
  "ark-groth16",
  "ark-relations 0.6.0",

@@ -245,6 +245,8 @@ fn proof_json(p: &Proof<Bn254>) -> String {
 }
 
 /// Minimal reader of the .wtns format (iden3 binfile: header section 1, values section 2).
+pub mod fingerprint;
+
 pub fn parse_wtns(b: &[u8]) -> Result<Vec<Fr>, Error> {
     let u32_at = |o: usize| u32::from_le_bytes(b[o..o + 4].try_into().unwrap()) as usize;
     let u64_at = |o: usize| u64::from_le_bytes(b[o..o + 8].try_into().unwrap()) as usize;
@@ -326,6 +328,57 @@ mod android {
         let (public, ok, witness_ms, prove_ms) = c.prove_inputs(&g, &inputs)?;
         Ok(serde_json::json!({ "verified": ok, "public": public, "testTree": test_tree, "loadMs": load_ms as u64,
             "witnessMs": witness_ms as u64, "proveMs": prove_ms as u64, "peakMb": super::peak_mb() }).to_string())
+    }
+
+    // Keyed fingerprints (docs/specs/document-fingerprint-oprf-v0.1.md). Each returns JSON or {"error":…}.
+    fn json_or_error(r: Result<serde_json::Value, super::Error>) -> String {
+        match r { Ok(v) => v.to_string(), Err(e) => serde_json::json!({ "error": e.to_string() }).to_string() }
+    }
+    fn s(env: &mut JNIEnv, x: &JString) -> Result<String, super::Error> { Ok(env.get_string(x)?.into()) }
+    fn hex(h: &str) -> Result<Vec<u8>, super::Error> {
+        if h.len() % 2 != 0 { return Err("odd hex".into()); }
+        (0..h.len() / 2).map(|i| u8::from_str_radix(&h[2 * i..2 * i + 2], 16).map_err(|e| e.into())).collect()
+    }
+
+    /// Round 1: {"pB","dB","secret"} from DG1 (hex). Keep "secret" in memory only.
+    #[no_mangle]
+    pub extern "system" fn Java_io_github_nemounus_proofofone_reader_NativeProver_fpPrepare<'l>(
+        mut env: JNIEnv<'l>, _c: JClass<'l>, graph: JString<'l>, dg1: JString<'l>, year: jni::sys::jint, path: jni::sys::jint,
+    ) -> jstring {
+        let r = (|| -> Result<serde_json::Value, super::Error> {
+            let g = std::fs::read(s(&mut env, &graph)?)?;
+            super::fingerprint::prepare(&g, &hex(&s(&mut env, &dg1)?)?, year as u32, path as u8, None)
+        })();
+        env.new_string(json_or_error(r)).map(|x| x.into_raw()).unwrap_or(std::ptr::null_mut())
+    }
+
+    /// Round 2: checks the service's answer and returns π_doc's fingerprint inputs.
+    #[no_mangle]
+    pub extern "system" fn Java_io_github_nemounus_proofofone_reader_NativeProver_fpComplete<'l>(
+        mut env: JNIEnv<'l>, _c: JClass<'l>, graph: JString<'l>, prep: JString<'l>, key: JString<'l>, answer: JString<'l>,
+    ) -> jstring {
+        let r = (|| -> Result<serde_json::Value, super::Error> {
+            let g = std::fs::read(s(&mut env, &graph)?)?;
+            let p: serde_json::Value = serde_json::from_str(&s(&mut env, &prep)?)?;
+            let k: serde_json::Value = serde_json::from_str(&s(&mut env, &key)?)?;
+            let a: serde_json::Value = serde_json::from_str(&s(&mut env, &answer)?)?;
+            super::fingerprint::complete(&g, &p, &k, &a)
+        })();
+        env.new_string(json_or_error(r)).map(|x| x.into_raw()).unwrap_or(std::ptr::null_mut())
+    }
+
+    /// TEST ONLY: a synthetic service's answer, for the test screen before the real service.
+    #[no_mangle]
+    pub extern "system" fn Java_io_github_nemounus_proofofone_reader_NativeProver_fpTestService<'l>(
+        mut env: JNIEnv<'l>, _c: JClass<'l>, graph: JString<'l>, k: JString<'l>, pb: JString<'l>, db: JString<'l>,
+    ) -> jstring {
+        let r = (|| -> Result<serde_json::Value, super::Error> {
+            let g = std::fs::read(s(&mut env, &graph)?)?;
+            let pb: serde_json::Value = serde_json::from_str(&s(&mut env, &pb)?)?;
+            let db: serde_json::Value = serde_json::from_str(&s(&mut env, &db)?)?;
+            super::fingerprint::evaluate_for_tests(&g, &s(&mut env, &k)?, &pb, &db)
+        })();
+        env.new_string(json_or_error(r)).map(|x| x.into_raw()).unwrap_or(std::ptr::null_mut())
     }
 
     #[no_mangle]

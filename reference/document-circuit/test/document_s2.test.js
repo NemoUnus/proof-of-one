@@ -57,6 +57,23 @@ test("honest passport (e = 37817): outputs match the MRZ; the face commitment bi
   assert.equal(w.outputs.cFace, H([hi, lo, 99n]));
 });
 
+test("keyed fingerprints (step 8): the proof outputs the reference person and document keys; keys made for another document fail", opts, async () => {
+  const doc = I.issueDocument(s2a, { personal: "0012345678<<<<", birth: "880101", sex: "F", expiry: "330101" });
+  const keys = D.keysFor(doc.dg1, YEAR, 1);
+  const w = await wit(inputFor(doc, s2a, 0, { keys }));
+  assert.equal(w.outputs.personKey, keys.personKey);
+  assert.equal(w.outputs.documentKey, keys.documentKey);
+  assert.equal(w.outputs.issuer, D.natCodeOf("UTO"));
+  // a renewed passport of the same person: same person key, new document key
+  const renewed = I.issueDocument(s2a, { personal: "0012345678<<<<", birth: "880101", sex: "F", expiry: "360101", number: "R00000001" });
+  const w2 = await wit(inputFor(renewed, s2a));
+  assert.equal(w2.outputs.personKey, keys.personKey);
+  assert.notEqual(w2.outputs.documentKey, keys.documentKey);
+  // the fingerprint inputs of another passport cannot be used with this one
+  const other = I.issueDocument(s2a, { personal: "0099999999<<<<", birth: "880101", sex: "F", expiry: "330101" });
+  await rejects(inputFor(doc, s2a, 0, { keys: D.keysFor(other.dg1, YEAR, 1) }), "keys of another passport");
+});
+
 test("any odd exponent: 40001, 3 and 65537 are accepted with the same circuit", opts, async () => {
   for (const c of [s2b, s2e3, s2e65537]) {
     const doc = I.issueDocument(c, { expiry: "300101" });

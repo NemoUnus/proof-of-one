@@ -16,11 +16,22 @@ const WASM = path.join(__dirname, "..", "build", "document_js", "document.wasm")
 const wasmOf = (suite = 1) => suite === 1 ? WASM
   : path.join(__dirname, "..", "build", `${I.SUITES[suite].circuit}_js`, `${I.SUITES[suite].circuit}.wasm`);
 
-let poseidon = null;
+let poseidon = null, FP = null;
+// TEST ONLY: the key of the synthetic uniqueness service used when an input is built
+// without the service's answers (tests and benchmarks).
+const TEST_SERVICE_KEY = 1234567891011121314151617181920n;
 async function init() {
   if (!poseidon) poseidon = await buildPoseidon();
+  if (!FP) FP = await require("./fingerprint").init();
   const H = (xs) => poseidon.F.toObject(poseidon(xs.map(BigInt)));
-  return { H };
+  return { H, FP };
+}
+// The fingerprint part of the input (step 8): the phone's two rounds with a service.
+// `answer(B)` returns the service's Z for a blinded point; by default the TEST-ONLY service.
+function keysFor(dg1, currentYear, path = 1, answer = (B) => FP.evaluate(TEST_SERVICE_KEY, B).Z) {
+  if (!FP) throw new Error("call init() first");
+  const prep = FP.prepare(dg1, currentYear, path);
+  return FP.complete(prep, answer(prep.person.B), answer(prep.document.B));
 }
 
 // SHA-256 padding (SHA-1 pads the same way), then zeros up to `max` bytes.
@@ -76,7 +87,8 @@ function expected(mrz, currentYear) {
 const natCodeOf = A.natCode;
 
 // Circuit input for one document. `dsc` = { tree, index } from icao.buildDscTree.
-function buildInput(doc, { tree, leafIndex, today, currentYear, cm = 1n, challenge = 1n, rFace = 7n }) {
+function buildInput(doc, { tree, leafIndex, today, currentYear, cm = 1n, challenge = 1n, rFace = 7n, keys = null }) {
+  keys = keys || keysFor(doc.dg1, currentYear);
   const S = I.SUITES[doc.suite ?? 1];
   const P = I.prefixes(I.HASH_LEN[S.lds]), PM = I.prefixes(I.HASH_LEN[S.sig]);
   const dg1 = shaPad(doc.dg1, 128);
@@ -96,6 +108,7 @@ function buildInput(doc, { tree, leafIndex, today, currentYear, cm = 1n, challen
     exponent: I.exponentOf(doc.dscCert),
     dscSiblings: siblings, dscPathIndex: pathIndex.map(BigInt), rFace,
     ...rsaHints(sigInt % nInt, nInt, I.exponentOf(doc.dscCert), S.k, S.fixedE === null ? S.ebits : 0),
+    ...keys.input,
   };
 }
 
@@ -105,9 +118,9 @@ async function witness(input, suite = 1) {
   const wtns = { type: "mem" };
   await snarkjs.wtns.calculate(input, wasmOf(suite), wtns);
   const w = await snarkjs.wtns.exportJson(wtns);
-  return { outputs: { birthDay: w[1], sexCode: w[2], natCode: w[3], expMonth: w[4], cFace: w[5] }, raw: w };
+  return { outputs: { birthDay: w[1], sexCode: w[2], natCode: w[3], expMonth: w[4], cFace: w[5], personKey: w[6], documentKey: w[7], issuer: w[8] }, raw: w };
 }
 async function prove(input, zkey, suite = 1) { return snarkjs.groth16.fullProve(input, wasmOf(suite), zkey); }
 async function verify(vkey, publicSignals, proof) { return snarkjs.groth16.verify(vkey, publicSignals, proof); }
 
-module.exports = { MAX_E, MAX_SA, DEPTH, WASM, wasmOf, init, shaPad, limbs, rsaHints, expected, natCodeOf, buildInput, witness, prove, verify, IncrementalTree };
+module.exports = { TEST_SERVICE_KEY, keysFor, MAX_E, MAX_SA, DEPTH, WASM, wasmOf, init, shaPad, limbs, rsaHints, expected, natCodeOf, buildInput, witness, prove, verify, IncrementalTree };

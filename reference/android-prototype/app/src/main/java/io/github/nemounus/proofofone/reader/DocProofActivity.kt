@@ -36,6 +36,12 @@ object DocStore {
     @Volatile var chip: DocInput.Chip? = null
 }
 
+// TEST ONLY: the key of the synthetic uniqueness service used on this screen. Fingerprints
+// under a published key protect nothing, so they are never shown or shared, only compared.
+private const val TEST_SERVICE_KEY = "1234567891011121314151617181920"
+// The previous run's fingerprints, in memory, to check that they are stable.
+@Volatile private var lastKeys: String? = null
+
 class DocProofActivity : Activity() {
     private lateinit var status: TextView
     private lateinit var report: TextView
@@ -104,15 +110,27 @@ class DocProofActivity : Activity() {
         thread {
             try {
                 val pk = file("doc_s2_pk_c.bin"); val m = file("doc_s2_matrices.gzdata")
-                val g = file("document_s2.graph"); val t = file("dsc_test_tree_s2.graph")
+                val g = file("document_s2.graph"); val t = file("dsc_test_tree_s2.graph"); val h = file("fp_helper.graph")
+                // Keyed fingerprints, with a TEST-ONLY service on the phone until the real one exists.
+                runOnUiThread { status.text = "Computing the document fingerprints…" }
+                val chip = DocStore.chip ?: error("read the passport again")
+                val path = DocInput.pathGuess(chip.dg1)
+                val t0 = System.currentTimeMillis()
+                val prep = JSONObject(NativeProver.fpPrepare(h, chip.dg1.joinToString("") { "%02x".format(it) }, LocalDate.now(ZoneOffset.UTC).year, path))
+                if (prep.has("error")) error("fingerprint, round 1: " + prep.getString("error"))
+                val ans = JSONObject(NativeProver.fpTestService(h, TEST_SERVICE_KEY, prep.getJSONArray("pB").toString(), prep.getJSONArray("dB").toString()))
+                if (ans.has("error")) error("test service: " + ans.getString("error"))
+                val keys = NativeProver.fpComplete(h, prep.toString(), ans.getJSONArray("K").toString(), ans.toString())
+                if (JSONObject(keys).has("error")) error("fingerprint, round 2: " + JSONObject(keys).getString("error"))
+                val fpMs = System.currentTimeMillis() - t0
                 runOnUiThread { status.text = "Reading the key, computing the witness and proving… keep the screen on." }
-                val r = JSONObject(NativeProver.proveDocInputs(pk, m, g, t, b.json))
+                val r = JSONObject(NativeProver.proveDocInputs(pk, m, g, t, DocInput.withKeys(b.json, keys)))
                 runs++
                 fun s(ms: Long) = String.format("%.1f s", ms / 1000.0)
                 val mem = ActivityManager.MemoryInfo().also { (getSystemService(ACTIVITY_SERVICE) as ActivityManager).getMemoryInfo(it) }
                 val lines = mutableListOf(
-                    "Proof of One enrolment proof test v0.1 (real passport, run $runs)",
-                    "proof: pi_doc suite ${b.suite.id}, 749,147 constraints, TEST-ONLY key and one-signer test tree",
+                    "Proof of One enrolment proof test v0.2 (real passport, run $runs)",
+                    "proof: pi_doc suite ${b.suite.id}, 763,666 constraints (with the keyed fingerprints), TEST-ONLY key and one-signer test tree",
                     "input: eContent ${b.eLen}/${DocInput.MAX_E} B, signed attributes ${b.saLen}/${DocInput.MAX_SA} B after padding",
                 )
                 val ok: Boolean
@@ -131,6 +149,10 @@ class DocProofActivity : Activity() {
                     lines += "verified on the phone: ${if (r.getBoolean("verified")) "yes" else "NO"}"
                     lines += "outputs equal the passport's own values (birth date, sex, nationality, expiry month): ${if (match) "yes" else "NO"}"
                     lines += "test tree used: ${if (r.optBoolean("testTree")) "yes" else "no"}"
+                    val pkey = pub.getString(5); val dkey = pub.getString(6)
+                    lines += "fingerprints: person-key path $path (${if (path == 1) "personal number in the MRZ" else "no personal number in the MRZ: name"}); both rounds ${fpMs} ms; TEST-ONLY service key"
+                    lines += "fingerprints equal to the previous run in this session: " + (lastKeys?.let { if (it == pkey + "/" + dkey) "yes" else "NO" } ?: "first run")
+                    lastKeys = pkey + "/" + dkey
                     lines += "peak memory of the app: ${r.getLong("peakMb")} MB"
                 }
                 lines += "cores: ${Runtime.getRuntime().availableProcessors()}, memory: ${String.format("%.1f", mem.totalMem / 1073741824.0)} GB"

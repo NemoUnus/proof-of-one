@@ -43,7 +43,7 @@ class ProverActivity : Activity() {
         start = Button(this).apply { text = "Start benchmark"; setOnClickListener { run() } }
         col.addView(start)
         col.addView(TextView(this).apply {
-            text = "Enrolment proof π_doc, suite 2 (749,147 constraints), from a synthetic passport, with a TEST-ONLY random key: " +
+            text = "Enrolment proof π_doc, suite 2 (763,666 constraints), from a synthetic passport, with a TEST-ONLY random key: " +
                 "the witness is computed on the phone. Needs about 1.2 GB of memory and 550 MB of storage; the first run " +
                 "takes one to two minutes."
             setPadding(0, pad, 0, 0)
@@ -134,7 +134,7 @@ class ProverActivity : Activity() {
                 val ok = r.getBoolean("verified")
                 shareText = listOf(
                     "Proof of One phone benchmark v0.2 (native, enrolment)",
-                    "proof: pi_doc suite 2, 749,147 constraints, synthetic passport, Groth16, arkworks (native), TEST-ONLY random key",
+                    "proof: pi_doc suite 2, 763,666 constraints, synthetic passport, Groth16, arkworks (native), TEST-ONLY random key",
                     "key and matrices loading: ${s(r.getLong("loadMs"))} (the first run decompresses the key; later runs are faster)",
                     "witness on the phone: ${s(r.getLong("witnessMs"))}",
                     "proof: ${s(r.getLong("proveMs"))}",

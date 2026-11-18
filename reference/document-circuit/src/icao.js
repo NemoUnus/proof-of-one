@@ -79,9 +79,9 @@ function checkDigit(s) {
   return String(sum % 10);
 }
 const pad = (s, n) => (s + "<".repeat(n)).slice(0, n);
-function mrzTD3({ issuer = "UTO", nationality = "UTO", surname = "ERIKSSON", given = "ANNA MARIA", number = "L898902C3", birth = "740812", sex = "F", expiry = "120415" }) {
+function mrzTD3({ issuer = "UTO", nationality = "UTO", surname = "ERIKSSON", given = "ANNA MARIA", number = "L898902C3", birth = "740812", sex = "F", expiry = "120415", personal = "" }) {
   const l1 = pad("P<" + issuer + surname.replace(/ /g, "<") + "<<" + given.replace(/ /g, "<"), 44);
-  const num = pad(number, 9), opt = pad("", 14);
+  const num = pad(number, 9), opt = pad(personal, 14); // optional data: the personal number, where the issuer puts one
   const body = num + checkDigit(num) + nationality + birth + checkDigit(birth) + sex + expiry + checkDigit(expiry) + opt + checkDigit(opt);
   const composite = checkDigit(num + checkDigit(num) + birth + checkDigit(birth) + expiry + checkDigit(expiry) + opt + checkDigit(opt));
   const l2 = body + composite;

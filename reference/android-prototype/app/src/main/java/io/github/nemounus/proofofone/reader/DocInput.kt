@@ -178,6 +178,22 @@ object DocInput {
         )
     }
 
+    /** The input with the fingerprint inputs (from NativeProver.fpComplete) added. */
+    fun withKeys(json: String, keys: String): String {
+        require(json.endsWith("}") && keys.startsWith("{") && keys.length > 2) { "bad JSON" }
+        return json.dropLast(1) + "," + keys.drop(1)
+    }
+
+    /**
+     * The person-key path for a TD3 passport (spec §3): 1 if the MRZ optional data (line 2,
+     * characters 29–42) holds a personal number, else 2 (name). In the pilot the service
+     * decides the path per issuing state; this guess is for the test screen.
+     */
+    fun pathGuess(dg1: ByteArray): Int {
+        val opt = String(dg1, 5 + 44 + 28, 14, Charsets.US_ASCII)
+        return if (opt.any { it.isDigit() }) 1 else 2
+    }
+
     private fun bytes(vararg v: Int) = ByteArray(v.size) { v[it].toByte() }
 
     fun indexOf(h: ByteArray, n: ByteArray): Int {

@@ -9,7 +9,8 @@
     "setup:test": "bash scripts/setup-test.sh",
     "bench:witness": "node scripts/make-witness.js",
     "build:s2": "mkdir -p build && circom2 circuits/document_s2.circom --r1cs --wasm --sym --O2 -l node_modules -o build",
-    "build:all": "npm run build && npm run build:s2"
+    "build:keys": "mkdir -p build && circom2 circuits/test/keys_test.circom --r1cs --wasm --O2 -l node_modules -o build",
+    "build:all": "npm run build && npm run build:s2 && npm run build:keys"
   },
   "license": "Apache-2.0",
   "dependencies": {
