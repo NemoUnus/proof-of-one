@@ -77,10 +77,14 @@ jobs:
           mkdir -p build && circom circuits/document_s2.circom --r1cs --wasm --O2 -l node_modules -o build
           $CW/build-circuit circuits/document_s2.circom build/document_s2.graph -l node_modules -l node_modules/circomlib/circuits -l circuits
           $CW/build-circuit circuits/test/dsc_test_tree_s2.circom build/dsc_test_tree_s2.graph -l node_modules -l node_modules/circomlib/circuits -l circuits
+          $CW/build-circuit circuits/phone/fp_helper.circom build/fp_helper.graph -l node_modules -l node_modules/circomlib/circuits -l circuits
           node scripts/make-witness.js 2
           # The witness graph must give exactly the witness of circom's own generator.
           $CW/calc-witness build/document_s2.graph build/bench_s2.input.json build/graph_s2.wtns
           cmp build/graph_s2.wtns build/bench_s2.wtns && echo "witness graph matches the WebAssembly witness"
+          # The phone's fingerprint code (native-prover, Rust) must give exactly the reference's inputs.
+          node scripts/fp-vectors.js > $RUNNER_TEMP/fp-vectors.json
+          (cd ../native-prover && cargo build --release --locked --bin fp-check && ./target/release/fp-check ../document-circuit/build/fp_helper.graph $RUNNER_TEMP/fp-vectors.json)
           cd ../prove-bench && cargo build --release --locked --bin prove-mem
           D=$RUNNER_TEMP/doc && mkdir -p $D
           ./target/release/prove-mem setup ../document-circuit/build/document_s2.r1cs ../document-circuit/build/bench_s2.wtns $D
@@ -107,7 +111,7 @@ jobs:
           cp $RUNNER_TEMP/doc/pk_c.bin $A/doc_s2_pk_c.bin
           # not .gz: Android's packager strips a .gz suffix from asset names
           cp $RUNNER_TEMP/doc/doc_matrices.gz $A/doc_s2_matrices.gzdata
-          cp reference/document-circuit/build/document_s2.graph reference/document-circuit/build/dsc_test_tree_s2.graph $A/
+          cp reference/document-circuit/build/document_s2.graph reference/document-circuit/build/dsc_test_tree_s2.graph reference/document-circuit/build/fp_helper.graph $A/
           cp reference/document-circuit/build/bench_s2.input.json $A/doc_s2_input.json
           sha256sum $A/* reference/android-prototype/app/src/main/jniLibs/arm64-v8a/*.so
       # Face check test (v0.4, Decision Log #57): InsightFace "buffalo_sc" models, SCRFD-500M
