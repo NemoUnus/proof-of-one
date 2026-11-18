@@ -153,7 +153,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         runOnUiThread {
             docNo.text.clear(); birth.text.clear(); expiry.text.clear()
             status.text = if (result.ok) "Done: the chip data is genuine under its signer certificate." else "Done, with problems (see below)."
-            report.text = result.report
+            report.text = result.report + (result.onScreenOnly?.let { "\n$it" } ?: "")
             share.visibility = View.VISIBLE
             FaceStore.chipPhoto = result.faceImage; FaceStore.chipMime = result.faceMime
             faceBtn.visibility = if (result.faceImage != null) View.VISIBLE else View.GONE

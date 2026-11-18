@@ -31,7 +31,7 @@ class ChipReader(private val isoDep: IsoDep, private val key: BACKey) {
     /** faceImage: the chip photo from DG2 (JPEG or JPEG 2000), kept in memory for the face check only.
      *  chip: the data the enrolment proof π_doc needs, kept in memory for the proof test only. */
     class Result(val report: String, val dscPem: String?, val ok: Boolean, val faceImage: ByteArray? = null, val faceMime: String? = null,
-                 val chip: DocInput.Chip? = null)
+                 val chip: DocInput.Chip? = null, val onScreenOnly: String? = null)
 
     fun read(): Result {
         val r = StringBuilder()
@@ -67,6 +67,13 @@ class ChipReader(private val isoDep: IsoDep, private val key: BACKey) {
         val dg1Bytes = readFile(PassportService.EF_DG1)
         val sodBytes = readFile(PassportService.EF_SOD)
         val dg2Bytes = readFile(PassportService.EF_DG2)
+        // Diagnostic (Decision #43): does the chip carry a personal number outside the MRZ?
+        // DG11 is its standard place; DG12 and DG13 are read too, as DG13 is free for national use.
+        val extra = sortedMapOf<Int, ByteArray>()
+        val sodPeek = SODFile(ByteArrayInputStream(sodBytes)).dataGroupHashes.keys
+        for ((n, fid) in listOf(11 to PassportService.EF_DG11, 12 to PassportService.EF_DG12, 13 to PassportService.EF_DG13)) {
+            if (n in sodPeek) try { extra[n] = readFile(fid) } catch (e: Exception) { }
+        }
         val tRead = System.currentTimeMillis()
         service.close()
 
@@ -91,6 +98,19 @@ class ChipReader(private val isoDep: IsoDep, private val key: BACKey) {
             (if (hashes.containsKey(15)) " (DG15: active authentication)" else ""))
         r.appendLine("DG1 hash matches SOD: ${yes(dg1Ok)}")
         r.appendLine("DG2 hash matches SOD: ${yes(dg2Ok)}")
+        // Personal number outside the MRZ: only sizes and counts go into the report; the last
+        // three digits of a number found are shown on this phone's screen only, for the holder
+        // to compare with their own number.
+        val screen = StringBuilder()
+        for ((n, b) in extra) {
+            val runs = Regex("(?<![0-9])[0-9]{10}(?![0-9])").findAll(String(b, Charsets.ISO_8859_1)).toList()
+            val wide = Regex("(?<![0-9])[0-9]{10}(?![0-9])").findAll(String(b, Charsets.UTF_16BE)).count()
+            r.appendLine("DG$n: ${b.size} B, hash matches SOD: ${yes(hashes[n]?.contentEquals(md.digest(b)) == true)}; " +
+                "runs of exactly 10 digits: ${runs.size}" + (if (runs.isNotEmpty()) " (at byte ${runs.joinToString(", ") { it.range.first.toString() }})" else "") +
+                (if (wide > 0) "; as UTF-16: $wide" else "") + "; tags: ${tags(b)}")
+            runs.forEach { screen.appendLine("DG$n, byte ${it.range.first}: a 10-digit number ending in …${it.value.takeLast(3)}") }
+        }
+        if (extra.isEmpty()) r.appendLine("DG11, DG12, DG13: none on this chip")
 
         // 4. SOD signature under the DSC carried in the SOD.
         val dsc: X509Certificate? = sod.docSigningCertificate
@@ -148,10 +168,33 @@ class ChipReader(private val isoDep: IsoDep, private val key: BACKey) {
                 r.appendLine("chip photo: ${img.mimeType}, ${img.width}×${img.height}, ${face.size} B")
             }
         } catch (e: Exception) { r.appendLine("chip photo: could not be read (${e.javaClass.simpleName})") }
-        return Result(r.toString(), pem, ok, face, mime, if (ok) chip else null)
+        return Result(r.toString(), pem, ok, face, mime, if (ok) chip else null,
+            screen.toString().ifEmpty { null }?.let { "On this screen only, not in the shared report:\n$it" })
     }
 
     private fun yes(b: Boolean) = if (b) "yes" else "NO"
+
+    /** The tags and lengths inside a data group's outer template (structure only, no values). */
+    private fun tags(b: ByteArray): String = try {
+        fun tagAt(i: Int): Pair<Int, Int> { // tag, its length in bytes
+            var j = i; var t = b[j++].toInt() and 0xff
+            if (t and 0x1f == 0x1f) { do { t = (t shl 8) or (b[j].toInt() and 0xff) } while (b[j++].toInt() and 0x80 != 0) }
+            return t to (j - i)
+        }
+        fun lenAt(i: Int): Pair<Int, Int> { // value length, length of the length field
+            val f = b[i].toInt() and 0xff
+            if (f < 0x80) return f to 1
+            var n = 0; for (k in 1..(f and 0x7f)) n = (n shl 8) or (b[i + k].toInt() and 0xff)
+            return n to 1 + (f and 0x7f)
+        }
+        val (_, ot) = tagAt(0); val (olen, ol) = lenAt(ot)
+        var i = ot + ol; val end = minOf(b.size, i + olen); val out = mutableListOf<String>()
+        while (i < end && out.size < 30) {
+            val (t, tl) = tagAt(i); val (l, ll) = lenAt(i + tl)
+            out += "%X(%d)".format(t, l); i += tl + ll + l
+        }
+        out.joinToString(" ")
+    } catch (e: Exception) { "unreadable" }
 
     private fun keyDesc(c: X509Certificate): String = when (val k = c.publicKey) {
         is RSAPublicKey -> "RSA-${k.modulus.bitLength()} e=${k.publicExponent}"
