@@ -48,6 +48,7 @@ class DocProofActivity : Activity() {
     private lateinit var start: Button
     private lateinit var share: Button
     private var built: DocInput.Built? = null
+    private var pnTag: Int? = null
     private var shareText = ""
     private var runs = 0
 
@@ -83,7 +84,8 @@ class DocProofActivity : Activity() {
         try {
             val rnd = SecureRandom()
             // Random commitment, challenge and face blinding, as in a real enrolment.
-            built = DocInput.build(chip, LocalDate.now(ZoneOffset.UTC), BigInteger(200, rnd), BigInteger(200, rnd), BigInteger(128, rnd))
+            pnTag = DocInput.pnTagGuess(chip.dg13)
+            built = DocInput.build(chip, LocalDate.now(ZoneOffset.UTC), BigInteger(200, rnd), BigInteger(200, rnd), BigInteger(128, rnd), pnTag)
             status.text = "Input ready (suite ${built!!.suite.id}). Tap the button."
         } catch (e: IllegalArgumentException) {
             status.text = "This passport does not fit the proof yet: ${e.message}"
@@ -114,9 +116,12 @@ class DocProofActivity : Activity() {
                 // Keyed fingerprints, with a TEST-ONLY service on the phone until the real one exists.
                 runOnUiThread { status.text = "Computing the document fingerprints…" }
                 val chip = DocStore.chip ?: error("read the passport again")
-                val path = DocInput.pathGuess(chip.dg1)
+                val tag = pnTag
+                val path = if (tag != null) 1 else DocInput.pathGuess(chip.dg1)
+                val hexOf = { x: ByteArray -> x.joinToString("") { "%02x".format(it) } }
                 val t0 = System.currentTimeMillis()
-                val prep = JSONObject(NativeProver.fpPrepare(h, chip.dg1.joinToString("") { "%02x".format(it) }, LocalDate.now(ZoneOffset.UTC).year, path))
+                val prep = JSONObject(NativeProver.fpPrepare(h, hexOf(chip.dg1), LocalDate.now(ZoneOffset.UTC).year, path,
+                    if (tag != null) hexOf(chip.dg13!!) else "", tag ?: 0))
                 if (prep.has("error")) error("fingerprint, round 1: " + prep.getString("error"))
                 val ans = JSONObject(NativeProver.fpTestService(h, TEST_SERVICE_KEY, prep.getJSONArray("pB").toString(), prep.getJSONArray("dB").toString()))
                 if (ans.has("error")) error("test service: " + ans.getString("error"))
@@ -129,8 +134,8 @@ class DocProofActivity : Activity() {
                 fun s(ms: Long) = String.format("%.1f s", ms / 1000.0)
                 val mem = ActivityManager.MemoryInfo().also { (getSystemService(ACTIVITY_SERVICE) as ActivityManager).getMemoryInfo(it) }
                 val lines = mutableListOf(
-                    "Proof of One enrolment proof test v0.2 (real passport, run $runs)",
-                    "proof: pi_doc suite ${b.suite.id}, 763,666 constraints (with the keyed fingerprints), TEST-ONLY key and one-signer test tree",
+                    "Proof of One enrolment proof test v0.3 (real passport, run $runs)",
+                    "proof: pi_doc suite ${b.suite.id}, 913,581 constraints (keyed fingerprints, DG13), TEST-ONLY key and one-signer test tree",
                     "input: eContent ${b.eLen}/${DocInput.MAX_E} B, signed attributes ${b.saLen}/${DocInput.MAX_SA} B after padding",
                 )
                 val ok: Boolean
@@ -150,7 +155,10 @@ class DocProofActivity : Activity() {
                     lines += "outputs equal the passport's own values (birth date, sex, nationality, expiry month): ${if (match) "yes" else "NO"}"
                     lines += "test tree used: ${if (r.optBoolean("testTree")) "yes" else "no"}"
                     val pkey = pub.getString(5); val dkey = pub.getString(6)
-                    lines += "fingerprints: person-key path $path (${if (path == 1) "personal number in the MRZ" else "no personal number in the MRZ: name"}); both rounds ${fpMs} ms; TEST-ONLY service key"
+                    lines += "fingerprints: person-key path $path (" + when {
+                        tag != null -> "personal number in DG13, field %X".format(tag)
+                        path == 1 -> "personal number in the MRZ"
+                        else -> "no personal number found: name" } + "); both rounds ${fpMs} ms; TEST-ONLY service key"
                     lines += "fingerprints equal to the previous run in this session: " + (lastKeys?.let { if (it == pkey + "/" + dkey) "yes" else "NO" } ?: "first run")
                     lastKeys = pkey + "/" + dkey
                     lines += "peak memory of the app: ${r.getLong("peakMb")} MB"

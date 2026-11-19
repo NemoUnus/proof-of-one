@@ -22,6 +22,7 @@ include "circomlib/circuits/bitify.circom";
 include "circomlib/circuits/comparators.circom";
 include "circomlib/circuits/babyjub.circom";
 include "circomlib/circuits/escalarmulany.circom";
+include "@zk-email/circuits/utils/array.circom"; // SelectSubArray
 
 // Elligator 2 on the Montgomery form of Baby Jubjub, v² = u³ + A·u² + u (A = 168698),
 // with Z = 5 (a non-square), then to twisted Edwards: x = u/v, y = (u−1)/(u+1).
@@ -165,8 +166,106 @@ template KeyedFingerprint() {
     F <== f.out;
 }
 
-// The two keys of a TD3 passport (Decision #47), from the MRZ inside the signed DG1.
-//   person key (tag = path): path 1, personal number: (nationality, personal number, 0, birth day, sex)
+// The value of the field with tag `tag` in DG13 (a BER-TLV template, tag 6D), found by
+// walking the fields from the first: so the value is a whole field of the signed data
+// group, never bytes taken from inside another field. Supports tags of one or two bytes,
+// lengths of one byte or 0x81 xx, and values of 1 to 31 bytes (packed big-endian into one
+// field element). Exactly one field may carry the tag. When `on` is 0 nothing is checked.
+// DG13 is the data group for national use; the trust list's rule for an issuer says
+// whether, and under which tag, it carries the personal number (Decision #43).
+template Dg13Field(MAXL) {
+    signal input dg13[MAXL];     // DG13 bytes, then SHA padding (bytes range-checked by the hash)
+    signal input tag;            // public: the field's tag, e.g. 0x5F07
+    signal input on;             // 1: read the field
+    signal output value;         // the value, big-endian
+    signal output len;           // its length in bytes
+
+    on * (on - 1) === 0;
+    on * (dg13[0] - 0x6D) === 0;
+    // outer length: short form, 81 xx or 82 xx xx
+    component b1short = LessThan(8);
+    b1short.in[0] <== dg13[1]; b1short.in[1] <== 128;
+    component b181 = IsEqual(); b181.in[0] <== dg13[1]; b181.in[1] <== 0x81;
+    component b182 = IsEqual(); b182.in[0] <== dg13[1]; b182.in[1] <== 0x82;
+    on * (b1short.out + b181.out + b182.out - 1) === 0;
+    signal cs;                   // where the content starts
+    cs <== 2 + b181.out + 2 * b182.out;
+    signal l81; l81 <== b181.out * dg13[2];
+    signal l82; l82 <== b182.out * (dg13[2] * 256 + dg13[3]);
+    signal ls; ls <== b1short.out * dg13[1];
+    signal cEnd;                 // where the content ends
+    cEnd <== cs + ls + l81 + l82;
+    component fits = LessEqThan(16);
+    fits.in[0] <== cEnd; fits.in[1] <== MAXL - 4;
+    on * (fits.out - 1) === 0;
+
+    // Walk: next[i] is where the next field starts, as seen at position i.
+    var N = MAXL - 4;
+    signal next[N + 1];
+    next[0] <== cs;
+    component atNext[N]; component inside[N]; component bits[N]; component two[N];
+    component lShort[N]; component l81i[N]; component tagEq[N];
+    signal isStart[N]; signal tagLen[N]; signal lb[N]; signal fl[N]; signal hl[N]; signal tv[N];
+    signal found[N]; signal st[N]; signal sl[N]; signal lbA[N]; signal tvA[N]; signal flA[N]; signal flB[N]; signal lx[N]; signal step[N];
+    var nFound = 0;
+    var vStart = 0;
+    var vLen = 0;
+    for (var i = 0; i < N; i++) {
+        atNext[i] = IsZero(); atNext[i].in <== next[i] - i;
+        inside[i] = LessThan(16); inside[i].in[0] <== i; inside[i].in[1] <== cEnd;
+        isStart[i] <== atNext[i].out * inside[i].out;
+        // tag: two bytes if the low five bits of the first are all 1
+        bits[i] = Num2Bits(8); bits[i].in <== dg13[i];
+        two[i] = IsEqual(); two[i].in[0] <== bits[i].out[0] + bits[i].out[1] + bits[i].out[2] + bits[i].out[3] + bits[i].out[4]; two[i].in[1] <== 5;
+        tagLen[i] <== 1 + two[i].out;
+        tvA[i] <== two[i].out * (dg13[i] * 255 + dg13[i + 1]);
+        tv[i] <== dg13[i] + tvA[i];                       // one byte: b0; two bytes: b0·256 + b1
+        lbA[i] <== two[i].out * (dg13[i + 2] - dg13[i + 1]);
+        lb[i] <== dg13[i + 1] + lbA[i];                   // the length byte
+        lShort[i] = LessThan(8); lShort[i].in[0] <== lb[i]; lShort[i].in[1] <== 128;
+        l81i[i] = IsEqual(); l81i[i].in[0] <== lb[i]; l81i[i].in[1] <== 0x81;
+        isStart[i] * (lShort[i].out + l81i[i].out - 1) === 0; // other length forms are refused
+        flA[i] <== lShort[i].out * lb[i];
+        lx[i] <== dg13[i + 2] + two[i].out * (dg13[i + 3] - dg13[i + 2]); // the byte after 0x81
+        flB[i] <== l81i[i].out * lx[i];
+        fl[i] <== flA[i] + flB[i];                        // the field's length
+        hl[i] <== tagLen[i] + 1 + l81i[i].out;             // tag and length bytes
+        step[i] <== isStart[i] * (i + hl[i] + fl[i] - next[i]);
+        next[i + 1] <== next[i] + step[i];
+        tagEq[i] = IsEqual(); tagEq[i].in[0] <== tv[i]; tagEq[i].in[1] <== tag;
+        found[i] <== isStart[i] * tagEq[i].out;
+        st[i] <== found[i] * (i + hl[i]);
+        sl[i] <== found[i] * fl[i];
+        nFound += found[i];
+        vStart += st[i];
+        vLen += sl[i];
+    }
+    // the walk ends exactly at the end of the content
+    on * (next[N] - cEnd) === 0;
+    on * (nFound - 1) === 0;
+    len <== vLen;
+    component small = LessEqThan(8);
+    small.in[0] <== len; small.in[1] <== 31;
+    on * (small.out - 1) === 0;
+    component pos = LessEqThan(16);
+    pos.in[0] <== vStart + len; pos.in[1] <== cEnd;
+    on * (pos.out - 1) === 0;
+    component sub = SelectSubArray(MAXL, 31);
+    sub.in <== dg13;
+    sub.startIndex <== vStart;
+    sub.length <== len * on;
+    var v = 0;
+    for (var j = 0; j < 31; j++) v = v * 256 + sub.out[j];
+    // sub.out is zero after len, so v = value·256^(31 − len); the length is output beside it
+    value <== v;
+}
+
+// The two keys of a TD3 passport (Decision #47), from the signed DG1 and, where the
+// issuer's rule says so, the signed DG13.
+//   person key (tag = path): path 1, personal number from the MRZ (pnSrc 0):
+//                                    (nationality, personal number, 0, birth day, sex)
+//                            path 1, personal number from DG13 (pnSrc 1):
+//                                    (nationality, field value left-aligned in 31 bytes, its length, birth day, sex)
 //                            path 2, name:            (nationality, name[0..31), name[31..39), birth day, sex)
 //   document key (tag 3):    (issuing state, document number, 0, 0, 0)
 // The path is a public input: the service accepts only the path its rules give for the
@@ -177,6 +276,9 @@ template DocumentKeys() {
     signal input birthDay;
     signal input sexCode;
     signal input path;          // public: 1 or 2
+    signal input pnSrc;         // public: where path 1 takes the number: 0 the MRZ, 1 DG13
+    signal input pnValue;       // the DG13 field (from Dg13Field)
+    signal input pnLen;
     signal input pV[2]; signal input pE[2]; signal input pR; signal input pVw[2]; signal input pB[2]; signal input pZ[2];
     signal input dV[2]; signal input dE[2]; signal input dR; signal input dVw[2]; signal input dB[2]; signal input dZ[2];
     signal output personKey;
@@ -198,10 +300,18 @@ template DocumentKeys() {
     signal sel;                 // 0: path 1, 1: path 2
     sel <== path - 1;
     sel * (sel - 1) === 0;
+    pnSrc * (pnSrc - 1) === 0;
+    sel * pnSrc === 0;          // the name path takes no number
+    signal pnA;
+    pnA <== pn + pnSrc * (pnValue - pn);
     signal a;
-    a <== pn + sel * (name0 - pn);
+    a <== pnA + sel * (name0 - pnA);
+    signal bN;
+    bN <== sel * name1;
+    signal bL;
+    bL <== pnSrc * pnLen;
     signal b;
-    b <== sel * name1;
+    b <== bN + bL;
 
     component pk = KeyedFingerprint();
     pk.tag <== path;

@@ -16,7 +16,10 @@ fn main() {
         let name = v["name"].as_str().unwrap();
         let dg1: Vec<u8> = (0..v["dg1"].as_str().unwrap().len() / 2).map(|i| u8::from_str_radix(&v["dg1"].as_str().unwrap()[2 * i..2 * i + 2], 16).unwrap()).collect();
         let path = v["path"].as_str().unwrap().parse::<u8>().unwrap();
-        let prep = fp::prepare(&g, &dg1, 2026, path, Some((v["pR"].as_str().unwrap(), v["dR"].as_str().unwrap()))).expect("prepare");
+        let dg13: Option<Vec<u8>> = v.get("dg13").and_then(|x| x.as_str()).map(|h| (0..h.len() / 2).map(|i| u8::from_str_radix(&h[2 * i..2 * i + 2], 16).unwrap()).collect());
+        let tag = v.get("pnTag").and_then(|x| x.as_str()).map(|t| t.parse::<u32>().unwrap());
+        let rule = match (&dg13, tag) { (Some(d), Some(t)) => Some((d.as_slice(), t)), _ => None };
+        let prep = fp::prepare(&g, &dg1, 2026, path, rule, Some((v["pR"].as_str().unwrap(), v["dR"].as_str().unwrap()))).expect("prepare");
         let ans = fp::evaluate_for_tests(&g, v["k"].as_str().unwrap(), &prep["pB"], &prep["dB"]).expect("evaluate");
         let inp = fp::complete(&g, &prep, &ans["K"], &ans).expect("complete");
         let ok = inp == v["input"];

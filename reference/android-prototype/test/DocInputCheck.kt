@@ -20,8 +20,10 @@ fun main(args: Array<String>) {
         fun hex(k: String) = kv.getValue(k).chunked(2).map { it.toInt(16).toByte() }.toByteArray()
         val chip = DocInput.Chip(hex("dg1"), hex("eContent"), hex("signedAttrs"), hex("signature"),
             BigInteger(kv.getValue("modulus"), 16), BigInteger(kv.getValue("exponent"), 16),
-            kv.getValue("ldsHash"), kv.getValue("sigHash"), kv.getValue("sigOid"))
-        val built = DocInput.build(chip, LocalDate.parse(kv.getValue("today")))
+            kv.getValue("ldsHash"), kv.getValue("sigHash"), kv.getValue("sigOid"), kv["dg13"]?.let { hex("dg13") })
+        val pnTag = kv["pnTag"]?.toInt()
+        if (pnTag != null && DocInput.pnTagGuess(chip.dg13) != pnTag) { bad++; println("${f.name}: the DG13 field was not recognised") }
+        val built = DocInput.build(chip, LocalDate.parse(kv.getValue("today")), pnTag = pnTag)
         val want = File(dir, f.name.removeSuffix(".chip") + ".json").readText()
         val ok = built.json == want
         if (!ok) bad++

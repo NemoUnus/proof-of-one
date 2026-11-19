@@ -340,14 +340,18 @@ mod android {
         (0..h.len() / 2).map(|i| u8::from_str_radix(&h[2 * i..2 * i + 2], 16).map_err(|e| e.into())).collect()
     }
 
-    /// Round 1: {"pB","dB","secret"} from DG1 (hex). Keep "secret" in memory only.
+    /// Round 1: {"pB","dB","secret"} from DG1 (hex) and, if the issuer's rule takes the
+    /// personal number from DG13, DG13 (hex) and the field's tag (else "" and 0).
     #[no_mangle]
     pub extern "system" fn Java_io_github_nemounus_proofofone_reader_NativeProver_fpPrepare<'l>(
         mut env: JNIEnv<'l>, _c: JClass<'l>, graph: JString<'l>, dg1: JString<'l>, year: jni::sys::jint, path: jni::sys::jint,
+        dg13: JString<'l>, pn_tag: jni::sys::jint,
     ) -> jstring {
         let r = (|| -> Result<serde_json::Value, super::Error> {
             let g = std::fs::read(s(&mut env, &graph)?)?;
-            super::fingerprint::prepare(&g, &hex(&s(&mut env, &dg1)?)?, year as u32, path as u8, None)
+            let d13 = hex(&s(&mut env, &dg13)?)?; // empty: no DG13 rule
+            let rule = if d13.is_empty() || pn_tag <= 0 { None } else { Some((d13.as_slice(), pn_tag as u32)) };
+            super::fingerprint::prepare(&g, &hex(&s(&mut env, &dg1)?)?, year as u32, path as u8, rule, None)
         })();
         env.new_string(json_or_error(r)).map(|x| x.into_raw()).unwrap_or(std::ptr::null_mut())
     }

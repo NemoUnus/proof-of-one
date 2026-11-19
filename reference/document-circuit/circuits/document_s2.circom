@@ -4,4 +4,4 @@
 // (reference, NOT for production use). The circuit itself is in lib/document_core.circom.
 pragma circom 2.1.6;
 include "./lib/document_core.circom";
-component main {public [dscRoot, today, currentYear, cm, challenge, path, pB, pZ, dB, dZ]} = DocumentProof(448, 192, 16, 160, 160, 26, 17, 2);
+component main {public [dscRoot, today, currentYear, cm, challenge, path, pB, pZ, dB, dZ, pnSrc, pnTag]} = DocumentProof(448, 192, 16, 160, 160, 26, 17, 2);

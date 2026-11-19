@@ -74,7 +74,37 @@ fn map(t: Fr) -> Result<(Pt, Fr, u8), Error> {
 /// The fields of a TD3 passport's DG1 (spec §3), as the values of each key.
 struct Fields { person: [Fr; 5], document: [Fr; 5] }
 fn be(b: &[u8]) -> Fr { Fr::from_be_bytes_mod_order(b) }
-fn fields(dg1: &[u8], current_year: u32, path: u8) -> Result<Fields, Error> {
+/// The value of the DG13 field with tag `tag`, left-aligned in 31 bytes, and its length
+/// (spec §3; the circuit's Dg13Field): found by walking the fields from the first.
+pub fn dg13_field(b: &[u8], tag: u32) -> Result<(Fr, u64), Error> {
+    if b.len() < 4 || b[0] != 0x6D { return Err("not a DG13".into()); }
+    let (cs, clen) = match b[1] {
+        x if x < 0x80 => (2usize, x as usize),
+        0x81 => (3, b[2] as usize),
+        0x82 => (4, b[2] as usize * 256 + b[3] as usize),
+        _ => return Err("DG13 length".into()),
+    };
+    let end = cs + clen;
+    if end > b.len() { return Err("DG13 too short".into()); }
+    let (mut i, mut hit, mut n) = (cs, None, 0);
+    while i < end {
+        let two = b[i] & 0x1F == 0x1F;
+        let tl = if two { 2 } else { 1 };
+        let t = if two { b[i] as u32 * 256 + b[i + 1] as u32 } else { b[i] as u32 };
+        let lb = b[i + tl];
+        let (l, hl) = if lb < 0x80 { (lb as usize, tl + 1) } else if lb == 0x81 { (b[i + tl + 1] as usize, tl + 2) } else { return Err("DG13 field length".into()) };
+        if t == tag { hit = Some((i + hl, l)); n += 1; }
+        i += hl + l;
+    }
+    if i != end || n != 1 { return Err("DG13 field not found exactly once".into()); }
+    let (st, l) = hit.unwrap();
+    if l < 1 || l > 31 { return Err("DG13 field length out of range".into()); }
+    let mut v = [0u8; 31];
+    v[..l].copy_from_slice(&b[st..st + l]);
+    Ok((be(&v), l as u64))
+}
+
+fn fields(dg1: &[u8], current_year: u32, path: u8, dg13: Option<(&[u8], u32)>) -> Result<Fields, Error> {
     if dg1.len() != 93 || dg1[0] != 0x61 { return Err("DG1 is not a TD3 passport's".into()); }
     let l1 = &dg1[5..49];
     let l2 = &dg1[49..93];
@@ -86,9 +116,11 @@ fn fields(dg1: &[u8], current_year: u32, path: u8) -> Result<Fields, Error> {
     let sex = match l2[20] { b'M' => 1u64, b'F' => 2, _ => 0 };
     let (nat, iss) = (code3(&l2[10..13]), code3(&l1[2..5]));
     let bd = Fr::from(birth_day as u64);
-    let person = match path {
-        1 => [nat, be(&l2[28..42]), Fr::zero(), bd, Fr::from(sex)],
-        2 => [nat, be(&l1[5..36]), be(&l1[36..44]), bd, Fr::from(sex)],
+    let person = match (path, dg13) {
+        (1, Some((d, tag))) => { let (v, l) = dg13_field(d, tag)?; [nat, v, Fr::from(l), bd, Fr::from(sex)] }
+        (1, None) => [nat, be(&l2[28..42]), Fr::zero(), bd, Fr::from(sex)],
+        (2, None) => [nat, be(&l1[5..36]), be(&l1[36..44]), bd, Fr::from(sex)],
+        (2, Some(_)) => return Err("a DG13 rule applies to path 1 only".into()),
         _ => return Err("unknown path".into()),
     };
     Ok(Fields { person, document: [iss, be(&l2[0..9]), Fr::zero(), Fr::zero(), Fr::zero()] })
@@ -138,8 +170,9 @@ fn pt_of(v: &serde_json::Value) -> Result<Pt, Error> {
 
 /// Round 1. Returns {"pB", "dB"} for the service, and "secret": what round 2 needs
 /// (keep it in memory only). `r` may be given for tests: {"pR": "...", "dR": "..."}.
-pub fn prepare(helper_graph: &[u8], dg1: &[u8], current_year: u32, path: u8, fixed_r: Option<(&str, &str)>) -> Result<serde_json::Value, Error> {
-    let f = fields(dg1, current_year, path)?;
+/// `dg13`: when the issuer's rule puts the personal number in DG13, its bytes and the tag.
+pub fn prepare(helper_graph: &[u8], dg1: &[u8], current_year: u32, path: u8, dg13: Option<(&[u8], u32)>, fixed_r: Option<(&str, &str)>) -> Result<serde_json::Value, Error> {
+    let f = fields(dg1, current_year, path, dg13)?;
     let w = helper(helper_graph, (Fr::from(path as u64), &f.person), (Fr::from(3u64), &f.document), [[Fr::zero(); 10]; 2])?;
     let (xp, hp) = hash_to_curve(w[0], w[1])?;
     let (xd, hd) = hash_to_curve(w[2], w[3])?;
@@ -148,7 +181,7 @@ pub fn prepare(helper_graph: &[u8], dg1: &[u8], current_year: u32, path: u8, fix
     let hints = |h: &[(Fr, u8); 2]| serde_json::json!({ "v": [dec(&h[0].0), dec(&h[1].0)], "e": [h[0].1.to_string(), h[1].1.to_string()] });
     Ok(serde_json::json!({
         "pB": pt_json(&mul(&xp, &rp)), "dB": pt_json(&mul(&xd, &rd)),
-        "secret": { "path": path.to_string(), "pX": pt_json(&xp), "dX": pt_json(&xd), "pR": dec(&rp), "dR": dec(&rd),
+        "secret": { "path": path.to_string(), "pnSrc": if dg13.is_some() { "1" } else { "0" }, "pX": pt_json(&xp), "dX": pt_json(&xd), "pR": dec(&rp), "dR": dec(&rd),
                     "pH": hints(&hp), "dH": hints(&hd) },
     }))
 }
@@ -161,7 +194,7 @@ pub fn complete(helper_graph: &[u8], prep: &serde_json::Value, k_pub: &serde_jso
     let k = pt_of(k_pub)?;
     if !valid(&k) { return Err("invalid service key".into()); }
     let g = g8();
-    let mut out = serde_json::json!({ "path": s["path"].clone() });
+    let mut out = serde_json::json!({ "path": s["path"].clone(), "pnSrc": s["pnSrc"].clone() });
     let mut qs = [[Fr::zero(); 10]; 2];
     let mut parts = Vec::new();
     for (i, (pre, x)) in [("p", "pX"), ("d", "dX")].iter().enumerate() {

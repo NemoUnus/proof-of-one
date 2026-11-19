@@ -22,6 +22,7 @@ object DocInput {
     const val MAX_E = 448
     const val MAX_SA = 192
     const val DEPTH = 16
+    const val MAX_DG13 = 512
 
     /** A circuit suite (document-circuit/src/icao.js, SUITES). */
     class Suite(val id: Int, val hash: String, val k: Int, val maxBits: Int, val fixedE: Long?, val ebits: Int)
@@ -39,6 +40,7 @@ object DocInput {
         val ldsHash: String,         // "SHA-1" or "SHA-256" (hashes of the data groups)
         val sigHash: String,         // digest of the CMS signature
         val sigOid: String,          // signature algorithm OID
+        val dg13: ByteArray? = null, // DG13 (national use), where the chip has it and its hash matched
     )
 
     /** The suite the chip's signature fits, or a reason why none does. */
@@ -66,8 +68,12 @@ object DocInput {
      * member's commitment, the service's challenge and the face commitment's blinding.
      * Throws IllegalArgumentException with a reason if the document does not fit.
      */
+    /**
+     * `pnTag`: when the issuer's rule takes the personal number from DG13, the field's tag
+     * (spec §3; π_doc step 8a); otherwise null.
+     */
     fun build(c: Chip, today: LocalDate, cm: BigInteger = BigInteger.ONE, challenge: BigInteger = BigInteger.ONE,
-              rFace: BigInteger = BigInteger.valueOf(7)): Built {
+              rFace: BigInteger = BigInteger.valueOf(7), pnTag: Int? = null): Built {
         val (s, why) = suiteOf(c)
         require(s != null) { why }
         require(c.dg1.size == 93 && c.dg1[0] == 0x61.toByte()) { "DG1 is not a TD3 passport's (${c.dg1.size} bytes)" }
@@ -100,6 +106,17 @@ object DocInput {
         put("exponent", str(c.exponent)); put("rFace", str(rFace))
         put("rsaQ", q.joinToString(",", "[", "]") { arr(it) })
         put("rsaR", r.joinToString(",", "[", "]") { arr(it) })
+        // DG13 (step 8a): when unused, zeros of padded length 64, and DG1's entry
+        if (pnTag != null) {
+            val d13 = c.dg13 ?: throw IllegalArgumentException("the rule needs DG13, which this chip does not have")
+            val p13 = shaPad(d13, MAX_DG13)
+            val d13Off = indexOf(c.eContent, bytes(0x30, 5 + hl, 0x02, 0x01, 0x0D, 0x04, hl) + MessageDigest.getInstance(s.hash).digest(d13))
+            require(d13Off >= 0) { "the DG13 hash entry was not found in the security object" }
+            dg13Field(d13, pnTag) // checks the field is there exactly once
+            put("pnTag", str(pnTag)); put("dg13", arr(p13.first)); put("d13Len", str(p13.second)); put("d13Off", str(d13Off))
+        } else {
+            put("pnTag", str(0)); put("dg13", arr(List(MAX_DG13) { 0 })); put("d13Len", str(64)); put("d13Off", str(dg1Off))
+        }
         j.append('}')
         return Built(j.toString(), s, e.second, sa.second, expected(c.dg1, year))
     }
@@ -176,6 +193,50 @@ object DocInput {
             expMonth = ey * 12L + em,
             expiryDay = dayNumber(ey, em, num(25, 27)),
         )
+    }
+
+    /** The fields (tag, value) of DG13, walked from the first as the circuit does. */
+    fun dg13Fields(b: ByteArray): List<Pair<Int, ByteArray>> {
+        val u = { i: Int -> b[i].toInt() and 0xff }
+        require(b.size >= 4 && u(0) == 0x6D) { "not a DG13" }
+        val (cs, clen) = when {
+            u(1) < 0x80 -> 2 to u(1)
+            u(1) == 0x81 -> 3 to u(2)
+            u(1) == 0x82 -> 4 to u(2) * 256 + u(3)
+            else -> throw IllegalArgumentException("DG13 length")
+        }
+        val end = cs + clen
+        require(end <= b.size) { "DG13 too short" }
+        val out = mutableListOf<Pair<Int, ByteArray>>()
+        var i = cs
+        while (i < end) {
+            val two = u(i) and 0x1F == 0x1F
+            val tl = if (two) 2 else 1
+            val t = if (two) u(i) * 256 + u(i + 1) else u(i)
+            val lb = u(i + tl)
+            val (l, hlen) = when { lb < 0x80 -> lb to tl + 1; lb == 0x81 -> u(i + tl + 1) to tl + 2; else -> throw IllegalArgumentException("DG13 field length") }
+            out += t to b.copyOfRange(i + hlen, i + hlen + l)
+            i += hlen + l
+        }
+        require(i == end) { "DG13 fields do not end with the data group" }
+        return out
+    }
+
+    /** The field under `tag`, which must be there exactly once and be 1 to 31 bytes long. */
+    fun dg13Field(b: ByteArray, tag: Int): ByteArray {
+        val hits = dg13Fields(b).filter { it.first == tag }
+        require(hits.size == 1) { "DG13 field %X not found exactly once".format(tag) }
+        require(hits[0].second.size in 1..31) { "DG13 field length out of range" }
+        return hits[0].second
+    }
+
+    /**
+     * TEST SCREEN ONLY: the tag of a DG13 field that holds exactly ten ASCII digits (as the
+     * national numbers seen so far do), or null. In the pilot the rule comes from the
+     * service for each issuing state; this guess lets the test screen try the DG13 path.
+     */
+    fun pnTagGuess(dg13: ByteArray?): Int? = dg13?.let {
+        try { dg13Fields(it).filter { (_, v) -> v.size <= 31 && v.count { x -> x in 0x30..0x39 } == 10 }.singleOrNull()?.first } catch (e: IllegalArgumentException) { null }
     }
 
     /** The input with the fingerprint inputs (from NativeProver.fpComplete) added. */

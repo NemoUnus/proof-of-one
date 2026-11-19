@@ -8,7 +8,7 @@ The uniqueness service must recognise a person who enrols twice, and a document 
 
 | Key | Computed from (signed DG1 of a TD3 passport) | Recognises |
 |---|---|---|
-| **Person key** `Fp`, path 1 | nationality, personal number (MRZ optional data), birth day, sex | the same person, across renewals |
+| **Person key** `Fp`, path 1 | nationality, personal number (MRZ optional data, or a field of DG13 where the issuer's rule says so), birth day, sex | the same person, across renewals |
 | **Person key** `Fp`, path 2 | nationality, MRZ name, birth day, sex | the same person, where there is no personal number (a match is only a signal: Decision #43) |
 | **Document key** `Fd` | issuing state, document number | the same document |
 
@@ -46,6 +46,7 @@ The fields (`fields()` in the reference code; MRZ positions of ICAO 9303 TD3):
 | Key | tag | v₁ | v₂ | v₃ | v₄ | v₅ |
 |---|---|---|---|---|---|---|
 | person, path 1 | 1 | nationality code | personal number (14 MRZ characters, as bytes, big-endian) | 0 | birth day | sex code |
+| person, path 1, number in DG13 | 1 | nationality code | the DG13 field's value, left-aligned in 31 bytes, big-endian | its length in bytes (1–31) | birth day | sex code |
 | person, path 2 | 2 | nationality code | name, characters 1–31 | name, characters 32–39 | birth day | sex code |
 | document | 3 | issuing-state code | document number (9 characters) | 0 | 0 | 0 |
 
@@ -85,7 +86,9 @@ The DLEQ proof stops a service that would answer different people with different
 
 **Path.** `path` (1 or 2) is a public input, and `issuer` (the issuing state) a public output. The service accepts only the path its rules give for that issuer, so a person cannot obtain a second person key through the other path.
 
-Public signals of π_doc are now, in order: outputs `birthDay, sexCode, natCode, expMonth, cFace, personKey, documentKey, issuer`; inputs `dscRoot, today, currentYear, cm, challenge, path, pB[2], pZ[2], dB[2], dZ[2]`. Constraints: 592,197 (suite 1) and 763,666 (suite 2), of which about 14,500 for step 8.
+**Personal number in DG13 (step 8a, 19 November 2026).** DG13 is the data group for national use; some issuers put the personal number there and not in the MRZ (Decision #43 foresaw it). Where the issuer's rule says so, π_doc also: hashes DG13 (up to 512 bytes after padding) and checks the hash against the DG13 entry of the signed security object; walks the fields of DG13 from the first, one position at a time, so that the field it takes is a whole field of the signed data and never bytes inside another one; requires exactly one field with the rule's tag, of 1 to 31 bytes; and takes that value, with its length, as the number. Public inputs `pnSrc` (0: MRZ or name path, 1: DG13) and `pnTag` (the field's tag) let the service check the issuer's rule. Bytes are taken as they are: the value's encoding is the issuer's and stays the same across renewals, so no decoding is needed. Refused in the tests: a changed DG13 byte, a tag that is absent, and fingerprint inputs made for another number.
+
+Public signals of π_doc are now, in order: outputs `birthDay, sexCode, natCode, expMonth, cFace, personKey, documentKey, issuer`; inputs `dscRoot, today, currentYear, cm, challenge, path, pB[2], pZ[2], dB[2], dZ[2], pnSrc, pnTag`. Constraints: 880,640 (suite 1) and 913,581 (suite 2): about 14,500 for step 8 and about 150,000 for step 8a, mostly the SHA-1 of DG13.
 
 ## 6. What each party learns
 
@@ -100,7 +103,7 @@ Public signals of π_doc are now, in order: outputs `birthDay, sexCode, natCode,
 - Stored per member: `Fp`, `Fd`, the path and the issuing state; nothing else. Uniqueness rules (Decision #47): a known `Fd` is the same document again, refused; a known `Fp` with a new `Fd` is a renewal or another nationality, which the pilot refuses as well, because the face comparison that must decide it (§6.6) runs only on the phone in the pilot. A member who loses a phone re-enrols through the recovery path (Decision #52).
 - Limits (Decision #53, point 1): until the key is split between operators, the service answers only inside an enrolment session that carries a fresh challenge, limits the number of evaluations per session and per day, and publishes the running count of evaluations, so that a holder of the service who tried to evaluate guesses would show in the count.
 - Reservation (Decision #43, point 2): `Fp` and `Fd` are reserved atomically before the credential is issued.
-- **Path rule for the pilot: path 2 (name).** The passports of the pilot's single issuer carry no personal number in the MRZ (checked by a holder on 18 November 2026; the chips seen so far have no DG11 either). Decision #43 makes a name-path match only a signal, to be settled by comparing faces; the pilot has no face comparison on the service (Decision #57, point 3), so it refuses a name-path match outright. Two volunteers with the same name in the MRZ, the same birth date and the same sex would therefore be refused as one person; among about 100 people who know the founder this is unlikely, and such a case is resolved by hand and reported. The app reports which path a passport allows, so that other issuers can be checked the same way.
+- **Path rule for the pilot: path 1, number in DG13.** The passports of the pilot's single issuer carry no personal number in the MRZ and have no DG11, but their DG13 holds it in one field (found by a holder on 18 November 2026: the app showed the last three digits of the ten-digit number of that field on the holder's screen only, and they matched). The rule (path 1, DG13, the field's tag) is part of the service's configuration. Where an issuer carries no number at all, path 2 (name) applies; a name-path match is then refused outright in the pilot, as the service has no face comparison (Decision #57, point 3).
 
 ## 8. Open points for review
 

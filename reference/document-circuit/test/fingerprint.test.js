@@ -41,14 +41,14 @@ test("the circuit computes the reference fingerprints; blinding and the service'
   assert.notStrictEqual(a1.input.pB[0], a2.input.pB[0]); // different blinded points
   assert.strictEqual(a1.personKey, a2.personKey);
   assert.strictEqual(a1.documentKey, a2.documentKey);
-  const o = await run({ dg1: [...dg1(A), ...Array(35).fill(0)], natCode: FP.fields(dg1(A), 2026).natCode, birthDay: FP.fields(dg1(A), 2026).birthDay, sexCode: 1n, ...a1.input });
+  const o = await run({ dg1: [...dg1(A), ...Array(35).fill(0)], natCode: FP.fields(dg1(A), 2026).natCode, birthDay: FP.fields(dg1(A), 2026).birthDay, sexCode: 1n, pnValue: 0n, pnLen: 0n, ...a1.input });
   assert.strictEqual(o.personKey, a1.personKey.toString());
   assert.strictEqual(o.documentKey, a1.documentKey.toString());
   assert.strictEqual(o.issuer, a1.issuer.toString());
 });
 
 // The circuit input around DocumentKeys, as π_doc gives it (DG1 bytes and the fields it reads itself).
-const full = (d, e) => { const f = FP.fields(d, 2026); return { dg1: [...d, ...Array(35).fill(0)], natCode: f.natCode, birthDay: f.birthDay, sexCode: f.sexCode, ...e.input }; };
+const full = (d, e, field = { value: 0n, len: 0n }) => { const f = FP.fields(d, 2026); return { dg1: [...d, ...Array(35).fill(0)], natCode: f.natCode, birthDay: f.birthDay, sexCode: f.sexCode, pnValue: field.value, pnLen: field.len, ...e.input }; };
 
 test("renewal: a new document number keeps the person key and changes the document key", async () => {
   const a = enrol(dg1(A)), b = enrol(dg1({ ...A, number: "Y87654321", expiry: "360101" }));
@@ -98,4 +98,22 @@ test("the service refuses points outside the prime-order subgroup, and the phone
   const ev = FP.evaluate(k, prep.person.B);
   assert.ok(!FP.verifyEvaluation(FP.keyOf(k), prep.person.B, FP.mul(ev.Z, 2n), ev.proof));
   assert.ok(!FP.verifyEvaluation(FP.keyOf(k + 1n), prep.person.B, ev.Z, ev.proof));
+});
+
+test("path 1 from DG13: the number in the national data group, stable across renewals and different from the MRZ path", { skip: !built && "run npm run build:keys first" }, async () => {
+  const dg13 = I.nationalDg13({ personal: "0012345678" });
+  const rule = { dg13, pnTag: 0x5f07n };
+  const d = dg1(A), renewed = dg1({ ...A, number: "Y87654321" });
+  const run13 = (dd, ru) => { const prep = FP.prepare(dd, 2026, 1, ru); return FP.complete(prep, FP.evaluate(k, prep.person.B).Z, FP.evaluate(k, prep.document.B).Z); };
+  const a = run13(d, rule), b = run13(renewed, rule);
+  assert.strictEqual(a.personKey, b.personKey);
+  assert.notStrictEqual(a.personKey, enrol(d).personKey); // MRZ number path: another domain
+  assert.notStrictEqual(a.personKey, run13(d, { dg13: I.nationalDg13({ personal: "0012345679" }), pnTag: 0x5f07n }).personKey);
+  const fv = FP.dg13Field(dg13, 0x5f07n);
+  assert.strictEqual(fv.len, 22n); // byte-order mark and ten UTF-16 digits
+  const o = await run(full(d, a, fv));
+  assert.strictEqual(o.personKey, a.personKey.toString());
+  await fails(full(d, a, { value: fv.value, len: 21n }));        // another length
+  await fails(full(d, a, { value: fv.value + 1n, len: fv.len }));  // another value
+  await fails({ ...full(d, a, fv), pnSrc: 0n });                   // claimed as the MRZ path
 });

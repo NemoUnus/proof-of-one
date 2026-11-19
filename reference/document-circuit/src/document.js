@@ -10,7 +10,7 @@ const I = require("./icao");
 const { IncrementalTree } = require("../../ballot-circuit/src/trees");
 const A = require("../../ballot-circuit/src/attrs");
 
-const MAX_E = 448, MAX_SA = 192, DEPTH = 16;
+const MAX_E = 448, MAX_SA = 192, DEPTH = 16, MAX_DG13 = 512;
 const WASM = path.join(__dirname, "..", "build", "document_js", "document.wasm");
 // Compiled circuit of each suite (npm run build builds suite 1, npm run build:s2 suite 2).
 const wasmOf = (suite = 1) => suite === 1 ? WASM
@@ -28,9 +28,9 @@ async function init() {
 }
 // The fingerprint part of the input (step 8): the phone's two rounds with a service.
 // `answer(B)` returns the service's Z for a blinded point; by default the TEST-ONLY service.
-function keysFor(dg1, currentYear, path = 1, answer = (B) => FP.evaluate(TEST_SERVICE_KEY, B).Z) {
+function keysFor(dg1, currentYear, path = 1, answer = (B) => FP.evaluate(TEST_SERVICE_KEY, B).Z, rule = null) {
   if (!FP) throw new Error("call init() first");
-  const prep = FP.prepare(dg1, currentYear, path);
+  const prep = FP.prepare(dg1, currentYear, path, rule);
   return FP.complete(prep, answer(prep.person.B), answer(prep.document.B));
 }
 
@@ -87,8 +87,11 @@ function expected(mrz, currentYear) {
 const natCodeOf = A.natCode;
 
 // Circuit input for one document. `dsc` = { tree, index } from icao.buildDscTree.
-function buildInput(doc, { tree, leafIndex, today, currentYear, cm = 1n, challenge = 1n, rFace = 7n, keys = null }) {
-  keys = keys || keysFor(doc.dg1, currentYear);
+// `pnTag`: when the issuer's rule puts the personal number in DG13 under this tag, the
+// person key takes it from there (doc.dg13 must be present).
+function buildInput(doc, { tree, leafIndex, today, currentYear, cm = 1n, challenge = 1n, rFace = 7n, keys = null, pnTag = null }) {
+  const rule = pnTag === null ? null : { dg13: doc.dg13, pnTag: BigInt(pnTag) };
+  keys = keys || keysFor(doc.dg1, currentYear, 1, undefined, rule);
   const S = I.SUITES[doc.suite ?? 1];
   const P = I.prefixes(I.HASH_LEN[S.lds]), PM = I.prefixes(I.HASH_LEN[S.sig]);
   const dg1 = shaPad(doc.dg1, 128);
@@ -97,6 +100,13 @@ function buildInput(doc, { tree, leafIndex, today, currentYear, cm = 1n, challen
   const dg2Off = doc.eContent.indexOf(P.dg2Hash);
   const mdOff = doc.signedAttrs.indexOf(PM.messageDigest);
   if (dg1Off < 0 || dg2Off < 0 || mdOff < 0) throw new Error("unexpected document structure");
+  // DG13 (step 8a): when unused, any bytes; the entry checked is then DG1's.
+  let d13 = { bytes: Array(MAX_DG13).fill(0n), len: 64 }, d13Off = dg1Off;
+  if (pnTag !== null) {
+    d13 = shaPad(doc.dg13, MAX_DG13);
+    d13Off = doc.eContent.indexOf(Buffer.concat([P.dg13Hash, I.digest(S.lds, doc.dg13)]));
+    if (d13Off < 0) throw new Error("no DG13 entry in the security object");
+  }
   const { siblings, pathIndex } = tree.path(leafIndex);
   const sigInt = BigInt("0x" + doc.signature.toString("hex"));
   const nInt = BigInt("0x" + doc.dscCert.publicKey.n.toString(16));
@@ -109,6 +119,7 @@ function buildInput(doc, { tree, leafIndex, today, currentYear, cm = 1n, challen
     dscSiblings: siblings, dscPathIndex: pathIndex.map(BigInt), rFace,
     ...rsaHints(sigInt % nInt, nInt, I.exponentOf(doc.dscCert), S.k, S.fixedE === null ? S.ebits : 0),
     ...keys.input,
+    pnTag: pnTag === null ? 0n : BigInt(pnTag), dg13: d13.bytes, d13Len: BigInt(d13.len), d13Off: BigInt(d13Off),
   };
 }
 
@@ -123,4 +134,4 @@ async function witness(input, suite = 1) {
 async function prove(input, zkey, suite = 1) { return snarkjs.groth16.fullProve(input, wasmOf(suite), zkey); }
 async function verify(vkey, publicSignals, proof) { return snarkjs.groth16.verify(vkey, publicSignals, proof); }
 
-module.exports = { TEST_SERVICE_KEY, keysFor, MAX_E, MAX_SA, DEPTH, WASM, wasmOf, init, shaPad, limbs, rsaHints, expected, natCodeOf, buildInput, witness, prove, verify, IncrementalTree };
+module.exports = { TEST_SERVICE_KEY, keysFor, MAX_DG13, MAX_E, MAX_SA, DEPTH, WASM, wasmOf, init, shaPad, limbs, rsaHints, expected, natCodeOf, buildInput, witness, prove, verify, IncrementalTree };

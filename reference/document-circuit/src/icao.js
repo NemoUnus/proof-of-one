@@ -62,6 +62,7 @@ function prefixes(hl) {
   return {
     dg1Hash: Buffer.from([0x30, 5 + hl, 0x02, 0x01, 0x01, 0x04, hl]),
     dg2Hash: Buffer.from([0x30, 5 + hl, 0x02, 0x01, 0x02, 0x04, hl]),
+    dg13Hash: Buffer.from([0x30, 5 + hl, 0x02, 0x01, 0x0d, 0x04, hl]),
     messageDigest: Buffer.concat([Buffer.from([0x30, 15 + hl]), oid(OID.messageDigest), Buffer.from([0x31, 2 + hl, 0x04, hl])]),
   };
 }
@@ -124,19 +125,31 @@ function createCountry(code = "UTO", nDsc = 1, { suite = 1, e } = {}) {
 }
 
 // ------------------------------------------------------------------ a document
-function issueDocument(country, person = {}, { dscIndex = 0, extraGroups = [14], signingTime = true } = {}) {
+// A synthetic DG13 ("national use"): a template 6D of text fields in UTF-16 with a byte-order
+// mark, among them the personal number under `pnTag`, as some issuers do. SYNTHETIC.
+function nationalDg13({ personal = "0012345678", pnTag = 0x5f07, extra = 6 } = {}) {
+  const u16 = (s) => Buffer.concat([Buffer.from([0xfe, 0xff]), Buffer.from(s, "utf16le").swap16()]);
+  const tagB = (t) => (t > 0xff ? [t >> 8, t & 0xff] : [t]);
+  const fields = [tlv(0x5a, Buffer.from("01")), tlv(0x5b, Buffer.from("TEST01"))];
+  for (let i = 1; i <= extra; i++) fields.push(tlv([0x5f, i], u16("FIELD" + "X".repeat(i))));
+  fields.push(tlv(tagB(pnTag), u16(personal)));
+  fields.push(tlv([0x5f, 0x11], u16("SYNTHETIC ADDRESS LINE, TEST ONLY")));
+  return tlv(0x6d, ...fields);
+}
+
+function issueDocument(country, person = {}, { dscIndex = 0, extraGroups = [14], signingTime = true, dg13 = null } = {}) {
   const mrz = mrzTD3({ issuer: country.code, nationality: person.nationality ?? country.code, ...person });
   const dg1 = dg1Of(mrz);
   const dg2 = tlv([0x75], tlv([0x7f, 0x61], crypto.randomBytes(1500)));
   const dsc = country.dscs[dscIndex];
   const S = SUITES[dsc.suite ?? 1];
-  const groups = [[1, dg1], [2, dg2], ...extraGroups.map((n) => [n, tlv(0x60 + n, crypto.randomBytes(40))])];
+  const groups = [[1, dg1], [2, dg2], ...(dg13 ? [[13, dg13]] : []), ...extraGroups.map((n) => [n, tlv(0x60 + n, crypto.randomBytes(40))])];
   const eContent = seq(int(0), seq(oid(OID[S.lds])), seq(...groups.map(([n, b]) => seq(int(n), octet(digest(S.lds, b))))));
   const attrs = [seq(oid(OID.contentType), set(oid(OID.ldsSecurityObject))), seq(oid(OID.messageDigest), set(octet(digest(S.sig, eContent))))];
   if (signingTime) attrs.push(seq(oid(OID.signingTime), set(tlv(0x17, Buffer.from("260101120000Z")))));
   const signedAttrs = set(...attrs); // signed with the SET tag (0x31), as CMS requires
   const signature = crypto.sign(S.sig, signedAttrs, { key: dsc.key.privateKey, padding: crypto.constants.RSA_PKCS1_PADDING });
-  return { suite: S.id, mrz, dg1, dg2, eContent, signedAttrs, signature, dscCert: dsc.cert, faceImage: dg2 };
+  return { suite: S.id, mrz, dg1, dg2, dg13, eContent, signedAttrs, signature, dscCert: dsc.cert, faceImage: dg2 };
 }
 
 // ------------------------------------------------------------------ trust list of document signers
@@ -203,4 +216,4 @@ function createMasterList(issuer, cscaCerts, { tamper = false, signWith = null }
   return seq(oid("1.2.840.113549.1.7.2"), tlv(0xa0, signedData));
 }
 
-module.exports = { SUITES, HASH_LEN, prefixes, digest, sha1, exponentOf, createMasterList, certDer, tlv, oid, seq, set, octet, int, sha256, OID, PREFIX, checkDigit, mrzTD3, dg1Of, rsaKey, cert, createCountry, issueDocument, verifyDsc, modulusChunks, dscLeaf, buildDscTree, ALG };
+module.exports = { nationalDg13, SUITES, HASH_LEN, prefixes, digest, sha1, exponentOf, createMasterList, certDer, tlv, oid, seq, set, octet, int, sha256, OID, PREFIX, checkDigit, mrzTD3, dg1Of, rsaKey, cert, createCountry, issueDocument, verifyDsc, modulusChunks, dscLeaf, buildDscTree, ALG };

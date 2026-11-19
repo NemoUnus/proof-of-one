@@ -74,6 +74,28 @@ test("keyed fingerprints (step 8): the proof outputs the reference person and do
   await rejects(inputFor(doc, s2a, 0, { keys: D.keysFor(other.dg1, YEAR, 1) }), "keys of another passport");
 });
 
+test("personal number in DG13 (step 8a): the field is found by walking DG13, its hash is checked; tampering and a wrong tag fail", opts, async () => {
+  const dg13 = I.nationalDg13({ personal: "0098765432" });
+  const doc = I.issueDocument(s2a, { birth: "900101", sex: "M", expiry: "330101" }, { dg13, extraGroups: [12, 14] });
+  const keys = D.keysFor(doc.dg1, YEAR, 1, undefined, { dg13, pnTag: 0x5f07n });
+  const w = await wit(inputFor(doc, s2a, 0, { keys, pnTag: 0x5f07 }));
+  assert.equal(w.outputs.personKey, keys.personKey);
+  // the same person, renewed passport (new number, new DG13 bytes elsewhere): same person key
+  const doc2 = I.issueDocument(s2a, { birth: "900101", sex: "M", expiry: "330101", number: "N11111111" }, { dg13: I.nationalDg13({ personal: "0098765432", extra: 5 }), extraGroups: [12] });
+  const w2 = await wit(inputFor(doc2, s2a, 0, { pnTag: 0x5f07 }));
+  assert.equal(w2.outputs.personKey, keys.personKey);
+  // tampered DG13 (its hash no longer matches the signed entry)
+  const bad = inputFor(doc, s2a, 0, { keys, pnTag: 0x5f07 });
+  bad.dg13 = bad.dg13.slice(); bad.dg13[40] = bad.dg13[40] ^ 1n;
+  await rejects(bad, "tampered DG13");
+  // another tag (absent from DG13), and a tag that is present but not the rule's
+  await rejects({ ...inputFor(doc, s2a, 0, { keys, pnTag: 0x5f07 }), pnTag: 0x5f12n }, "absent tag");
+  await rejects({ ...inputFor(doc, s2a, 0, { keys, pnTag: 0x5f07 }), pnTag: 0x5f02n }, "other field");
+  // fingerprint inputs made for another DG13 number cannot be used with this document
+  const otherKeys = D.keysFor(doc.dg1, YEAR, 1, undefined, { dg13: I.nationalDg13({ personal: "0098765433" }), pnTag: 0x5f07n });
+  await rejects(inputFor(doc, s2a, 0, { keys: otherKeys, pnTag: 0x5f07 }), "keys of another number");
+});
+
 test("any odd exponent: 40001, 3 and 65537 are accepted with the same circuit", opts, async () => {
   for (const c of [s2b, s2e3, s2e65537]) {
     const doc = I.issueDocument(c, { expiry: "300101" });

@@ -117,8 +117,32 @@ async function init() {
       birthDay, sexCode: sex === "M" ? 1n : sex === "F" ? 2n : 0n,
     };
   }
-  // The values hashed for each key (path: 1 = personal number, 2 = name).
-  function personValues(f, path) {
+  // The value of the DG13 field with tag `tag` (spec §3; circuits/lib/fingerprint.circom,
+  // Dg13Field): the value left-aligned in 31 bytes, and its length.
+  function dg13Field(dg13, tag) {
+    const b = Buffer.from(dg13);
+    if (b[0] !== 0x6d) throw new Error("not a DG13");
+    let cs, clen;
+    if (b[1] < 0x80) { cs = 2; clen = b[1]; } else if (b[1] === 0x81) { cs = 3; clen = b[2]; } else if (b[1] === 0x82) { cs = 4; clen = b[2] * 256 + b[3]; } else throw new Error("DG13 length");
+    const end = cs + clen;
+    let i = cs, hit = null, n = 0;
+    while (i < end) {
+      const two = (b[i] & 0x1f) === 0x1f, tl = two ? 2 : 1, t = two ? b[i] * 256 + b[i + 1] : b[i];
+      const lb = b[i + tl];
+      let L, hl;
+      if (lb < 0x80) { L = lb; hl = tl + 1; } else if (lb === 0x81) { L = b[i + tl + 1]; hl = tl + 2; } else throw new Error("DG13 field length");
+      if (t === Number(tag)) { hit = b.subarray(i + hl, i + hl + L); n++; }
+      i += hl + L;
+    }
+    if (i !== end || n !== 1) throw new Error("DG13 field not found exactly once");
+    if (hit.length < 1 || hit.length > 31) throw new Error("DG13 field length out of range");
+    return { value: BigInt("0x" + Buffer.concat([hit, Buffer.alloc(31 - hit.length)]).toString("hex")), len: BigInt(hit.length) };
+  }
+
+  // The values hashed for each key (path: 1 = personal number, 2 = name). With `rule`
+  // { dg13, pnTag }, path 1 takes the number from that DG13 field (pnSrc = 1).
+  function personValues(f, path, rule = null) {
+    if (BigInt(path) === PATH_NUMBER && rule) { const d = dg13Field(rule.dg13, rule.pnTag); return [f.natCode, d.value, d.len, f.birthDay, f.sexCode]; }
     if (BigInt(path) === PATH_NUMBER) return [f.natCode, f.personalNumber, 0n, f.birthDay, f.sexCode];
     if (BigInt(path) === PATH_NAME) return [f.natCode, f.name0, f.name1, f.birthDay, f.sexCode];
     throw new Error("unknown path");
@@ -155,10 +179,11 @@ async function init() {
 
   // Phone, round 1: the two points to send, blinded. Round 2: with the service's answers,
   // the fingerprints and the inputs of π_doc's DocumentKeys (circuits/lib/fingerprint.circom).
-  function prepare(dg1, currentYear, path) {
+  function prepare(dg1, currentYear, path, rule = null) {
+    if (rule && BigInt(path) !== PATH_NUMBER) throw new Error("a DG13 rule applies to path 1 only");
     const f = fields(dg1, currentYear);
     const one = (tag, vals) => { const h = hashToCurve(tag, vals), r = randomR(); return { x: h.x, hints: h.hints, r, B: blind(h.x, r) }; };
-    return { f, path: BigInt(path), person: one(BigInt(path), personValues(f, path)), document: one(TAG_DOCUMENT, documentValues(f)) };
+    return { f, path: BigInt(path), rule, person: one(BigInt(path), personValues(f, path, rule)), document: one(TAG_DOCUMENT, documentValues(f)) };
   }
   const inv8 = inv(8n, L);
   function complete(prep, Zp, Zd) {
@@ -168,12 +193,12 @@ async function init() {
     const P_ = io(prep.person, p), D_ = io(prep.document, d);
     return {
       personKey: p.F, documentKey: d.F, issuer: prep.f.issuer,
-      input: { path: prep.path, pV: P_.V, pE: P_.E, pR: P_.R, pVw: P_.Vw, pB: P_.B, pZ: P_.Z,
+      input: { path: prep.path, pnSrc: prep.rule ? 1n : 0n, pV: P_.V, pE: P_.E, pR: P_.R, pVw: P_.Vw, pB: P_.B, pZ: P_.Z,
         dV: D_.V, dE: D_.E, dR: D_.R, dVw: D_.Vw, dB: D_.B, dZ: D_.Z },
     };
   }
 
-  return { P, L, G, H, add, mul, valid, map, hashToCurve, prepare, complete, fields, personValues, documentValues, randomR, blind, evaluate,
+  return { P, L, G, H, add, mul, valid, map, hashToCurve, prepare, complete, dg13Field, fields, personValues, documentValues, randomR, blind, evaluate,
     verifyEvaluation, finish, keyOf: (k) => mul(G, k), PATH_NUMBER, PATH_NAME, TAG_DOCUMENT };
 }
 

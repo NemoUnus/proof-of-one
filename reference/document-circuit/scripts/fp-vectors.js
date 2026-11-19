@@ -12,17 +12,19 @@ const FPm = require("../src/fingerprint");
     ["number path", { surname: "TESTER", given: "ALEX", number: "X12345678", personal: "1234567890<<<<", birth: "850704", sex: "M", expiry: "300101" }, 1],
     ["name path", { surname: "DOE", given: "JANE MARIA", number: "A00000001", birth: "011231", sex: "F", expiry: "290229" }, 2],
     ["other sex, old birth", { surname: "LONGSURNAMEWITHMANYLETTERS", given: "GIVENNAMES ARE LONG TOO", number: "Z99999999", personal: "<<<<<<<<<<<<<<", birth: "270101", sex: "<", expiry: "281231" }, 1],
+    ["number in DG13", { surname: "NATIONAL", given: "DATA", number: "D13000001", birth: "771120", sex: "F", expiry: "320505" }, 1, { dg13: I.nationalDg13({ personal: "0076543210" }), pnTag: 0x5f07n }],
+    ["number in DG13, other tag", { surname: "NATIONAL", given: "DATA", number: "D13000001", birth: "771120", sex: "F", expiry: "320505" }, 1, { dg13: I.nationalDg13({ personal: "0076543210", pnTag: 0x5f0b, extra: 9 }), pnTag: 0x5f0bn }],
   ];
   const out = [];
   let r = 1000000000000000000000000000001n;
-  for (const [name, p, path] of people) {
+  for (const [name, p, path, rule] of people) {
     const dg1 = I.dg1Of(I.mrzTD3({ issuer: "UTO", nationality: "UTO", ...p }));
-    const prep = FP.prepare(dg1, 2026, path);
+    const prep = FP.prepare(dg1, 2026, path, rule || null);
     prep.person.r = r; prep.person.B = FP.blind(prep.person.x, r); r += 2n;
     prep.document.r = r; prep.document.B = FP.blind(prep.document.x, r); r += 2n;
     const k = 777777777777777777777777n + BigInt(out.length);
     const res = FP.complete(prep, FP.evaluate(k, prep.person.B).Z, FP.evaluate(k, prep.document.B).Z);
-    out.push(S({ name, dg1: dg1.toString("hex"), path: String(path), pR: prep.person.r, dR: prep.document.r, k, input: res.input }));
+    out.push(S({ name, dg1: dg1.toString("hex"), path: String(path), ...(rule ? { dg13: rule.dg13.toString("hex"), pnTag: rule.pnTag } : {}), pR: prep.person.r, dR: prep.document.r, k, input: res.input }));
   }
   process.stdout.write(JSON.stringify(out, null, 1) + "\n");
   process.exit(0);

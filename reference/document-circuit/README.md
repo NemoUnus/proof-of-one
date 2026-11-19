@@ -53,8 +53,8 @@ The setup script can take an existing 2^20 powers-of-tau file as its argument: `
 
 | Item | Value |
 |---|---|
-| Constraints, suite 1 | **592,197** since 18 November 2026, with the keyed fingerprints (step 8, 14,519); before: 577,678 (SHA-256 about 366,000; RSA-2048 185,903; the rest about 26,000) |
-| Constraints, suite 2 | **763,666** since 18 November 2026, with the keyed fingerprints; before: 749,147 (SHA-1 about 14,200 per block; RSA-3072 with a 17-bit exponent takes most of the rest) |
+| Constraints, suite 1 | **880,640** since 19 November 2026, with the personal number in DG13 (step 8a, about 288,000 with SHA-256); 592,197 with the keyed fingerprints alone (step 8, 14,519); before: 577,678 (SHA-256 about 366,000; RSA-2048 185,903; the rest about 26,000) |
+| Constraints, suite 2 | **913,581** since 19 November 2026, with the personal number in DG13 (step 8a, 149,915 with SHA-1); 763,666 with the keyed fingerprints alone; before: 749,147 (SHA-1 about 14,200 per block; RSA-3072 with a 17-bit exponent takes most of the rest) |
 | Witness generation | about 3 s (suite 1) and 6 s (suite 2) on a server core with WebAssembly; **0.24 s** (suite 2) with the native witness graph (see below) |
 | Groth16 proving, suite 2 | **11.5–12.3 s on 2 server cores** (three runs; arkworks; peak memory 2.5 GB), TEST-ONLY random setup |
 | Groth16 proving, suite 1 | **about 11–12 s on 2 server cores** (arkworks; peak memory 1.9 GB; verification 3–4 ms), with a TEST-ONLY random setup: see [`../prove-bench`](../prove-bench/). The snarkjs setup (`npm run setup:test`) needs a 2^20 powers-of-tau file. Phone times: schedule 0.8 |

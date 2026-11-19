@@ -24,7 +24,8 @@ object NativeProver {
 
     // Keyed fingerprints (docs/specs/document-fingerprint-oprf-v0.1.md), with the Poseidon
     // helper graph fp_helper.graph. Round 1: {"pB","dB","secret"}; keep "secret" in memory.
-    external fun fpPrepare(helperGraphPath: String, dg1Hex: String, currentYear: Int, path: Int): String
+    // With a DG13 rule: DG13 as hex and the field's tag; otherwise "" and 0.
+    external fun fpPrepare(helperGraphPath: String, dg1Hex: String, currentYear: Int, path: Int, dg13Hex: String, pnTag: Int): String
     // Round 2: checks the service's DLEQ proofs; returns π_doc's fingerprint inputs.
     external fun fpComplete(helperGraphPath: String, prepare: String, serviceKey: String, answer: String): String
     // TEST ONLY: the answer of a synthetic service holding key k, until the real service exists.

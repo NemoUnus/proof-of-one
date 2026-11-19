@@ -220,6 +220,13 @@ template DocumentProof(maxE, maxSA, depth, LDS_HB, SIG_HB, K, EBITS, ALG) {
     signal input dZ[2];
     signal input pV[2]; signal input pE[2]; signal input pR; signal input pVw[2]; // hints and secrets of the phone
     signal input dV[2]; signal input dE[2]; signal input dR; signal input dVw[2];
+    // The personal number in DG13 (Decision #43), where the issuer's rule puts it there.
+    // Public: pnSrc (0: MRZ or unused, 1: DG13) and pnTag (the DG13 field's tag).
+    signal input pnSrc;
+    signal input pnTag;
+    signal input dg13[512];      // DG13, padded for H_lds (any bytes when pnSrc = 0)
+    signal input d13Len;         // its padded length
+    signal input d13Off;         // start of the DG13 hash entry in eContent (when pnSrc = 0: dg1Off)
 
     // ---------------- outputs
     signal output birthDay;
@@ -401,6 +408,24 @@ template DocumentProof(maxE, maxSA, depth, LDS_HB, SIG_HB, K, EBITS, ALG) {
     // nationality: three letters at L2+10
     natCode <== dg1[L2 + 10] * 65536 + dg1[L2 + 11] * 256 + dg1[L2 + 12];
 
+    // ---- 8a. DG13 and its hash entry, when the personal number is taken from it
+    component hDg13 = HashBytes(512, LDS_HB);
+    hDg13.paddedIn <== dg13;
+    hDg13.paddedInLength <== d13Len;
+    component dg13Hash = HashBitsToBytes(LDS_HB);
+    dg13Hash.bits <== hDg13.out;
+    component rd13 = ReadHashAfterPrefix(maxE, 7, LHL);
+    rd13.in <== eContent;
+    rd13.paddedLen <== eLen;
+    rd13.start <== d13Off;
+    // the entry of DG13 (n = 13) when used; otherwise the prover points at DG1's entry
+    for (var i = 0; i < 7; i++) rd13.prefix[i] <== P1[i] + (i == 4 ? pnSrc * 12 : 0);
+    for (var i = 0; i < LHL; i++) pnSrc * (rd13.value[i] - dg13Hash.bytes[i]) === 0;
+    component pnField = Dg13Field(512);
+    pnField.dg13 <== dg13;
+    pnField.tag <== pnTag;
+    pnField.on <== pnSrc;
+
     // ---- 8. keyed fingerprints (person key and document key)
     component keys = DocumentKeys();
     keys.dg1 <== dg1;
@@ -408,6 +433,9 @@ template DocumentProof(maxE, maxSA, depth, LDS_HB, SIG_HB, K, EBITS, ALG) {
     keys.birthDay <== birthDay;
     keys.sexCode <== sexCode;
     keys.path <== path;
+    keys.pnSrc <== pnSrc;
+    keys.pnValue <== pnField.value;
+    keys.pnLen <== pnField.len;
     keys.pV <== pV; keys.pE <== pE; keys.pR <== pR; keys.pVw <== pVw; keys.pB <== pB; keys.pZ <== pZ;
     keys.dV <== dV; keys.dE <== dE; keys.dR <== dR; keys.dVw <== dVw; keys.dB <== dB; keys.dZ <== dZ;
     personKey <== keys.personKey;
