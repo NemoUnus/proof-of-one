@@ -1,0 +1,24 @@
+[package]
+name = "poo-service-core"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Proof of One: the cryptography of the pilot's enrolment service (OPRF answer with DLEQ proof, EdDSA-Poseidon credential), for WebAssembly. TEST ONLY."
+publish = false
+
+[lib]
+crate-type = ["lib", "cdylib"]
+
+[dependencies]
+ark-bn254 = { version = "0.6", default-features = false }
+ark-ff = { version = "0.6", default-features = false }
+ark-ec = { version = "0.6", default-features = false }
+ark-ed-on-bn254 = { version = "0.6", default-features = false }
+light-poseidon = "=0.5.0"
+serde_json = "1"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
