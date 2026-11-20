@@ -3,7 +3,8 @@
 # Builds the service's cryptography (reference/service-core, Rust) to WebAssembly with a
 # pinned toolchain, checks it against the project's JavaScript references
 # (reference/enrol-service/test), measures the time per call, and commits the checked
-# core.wasm next to the Worker, from where Cloudflare deploys it. Anyone can rebuild it
+# core.wasm next to the Worker, from where Cloudflare deploys it. It also tests the Worker
+# (src/service.js) end to end, and π_doc's verifier contract with a real synthetic proof. Anyone can rebuild it
 # from the sources with the same toolchain and compare the hash printed below.
 name: Enrolment service
 
@@ -12,8 +13,10 @@ on:
     branches: [main]
     paths:
       - "reference/service-core/**"
-      - "reference/enrol-service/test/**"
-      - "reference/enrol-service/src/core.js"
+      - "reference/enrol-service/**"
+      - "!reference/enrol-service/src/core.wasm"
+      - "reference/contracts/src/DocVerifier.sol"
+      - "reference/contracts/test/doc-verifier.test.js"
       - ".github/workflows/enrol-service.yml"
   workflow_dispatch:
 
@@ -45,15 +48,22 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
 
       - name: References for the tests
         working-directory: reference/document-circuit
         run: npm ci --ignore-scripts
 
-      - name: Check the core against the references, and its speed
+      - name: Check the core against the references, its speed, and the Worker
         working-directory: reference/enrol-service
-        run: node --test --test-reporter=tap test/
+        run: node --test --test-reporter=tap test/*.test.mjs
+
+      - name: π_doc's verifier contract with a real synthetic proof
+        working-directory: reference/contracts
+        run: |
+          npm ci --no-audit --no-fund
+          node scripts/compile.js
+          node --test --test-force-exit --test-reporter=tap test/doc-verifier.test.js
 
       - name: Commit core.wasm if it changed
         run: |
