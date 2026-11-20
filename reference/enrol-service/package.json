@@ -1,1 +1,13 @@
-{ "type": "module", "private": true }
+{
+  "name": "proof-of-one-enrol-service",
+  "private": true,
+  "description": "Proof of One pilot enrolment service (Cloudflare Worker). TEST ONLY.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "test": "node --test test/*.test.mjs",
+    "bench": "node scripts/bench-core.mjs"
+  },
+  "devDependencies": { "wrangler": "4.131.2" }
+}

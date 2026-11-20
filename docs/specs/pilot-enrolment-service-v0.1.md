@@ -41,7 +41,8 @@ Phone                                   Service                              Tes
 ## 4. Platform and limits
 
 - **Cloudflare Workers, free plan**, like the relay; deployed from this repository. Free Workers may use about 10 ms of processor time per request. Curve arithmetic in JavaScript would exceed that, so the service's cryptography (OPRF answer and DLEQ, credential signature, Poseidon) is the Rust code of `native-prover` compiled to WebAssembly.
-- **π_doc is verified by a verifier contract** on the test network, called with `eth_call`: free, no transaction, and the pairing does not run in the Worker. The contract is deployed once (a step of the next test-network plan). Its key is the TEST-ONLY, reproducible one the app uses.
+- **Measured (21 November 2026):** the core compiled to WebAssembly takes 4.4–5.0 ms for an evaluation (both answers with their DLEQ proofs and subgroup checks) and 2.2–2.6 ms for a credential, on a server under Node 22 (`reference/enrol-service`).
+- **π_doc is verified by a verifier contract** on the test network, called with `eth_call`: free, no transaction, and the pairing does not run in the Worker (`DocVerifier`, 375,678 gas in an `eth_call`). The contract is deployed once (a step of the next test-network plan). Its key is the TEST-ONLY, reproducible one the app uses.
 - **Storage:** Cloudflare D1 (SQLite), free tier: sessions (deleted after 10 minutes), members (`Fp`, `Fd`, issuer, path, time), daily counters.
 - **Secrets** (in the Cloudflare dashboard, never in files): the OPRF key `k`, the credential signing keys, the revocation-handle secret.
 - **Limits and openness (Decision #53, point 1):** one OPRF evaluation per session; sessions per day capped (for the pilot, 300); `/info` shows the running number of evaluations and of enrolments, so that a holder of the service who evaluated guesses would show in the counts.
@@ -60,7 +61,7 @@ Phone                                   Service                              Tes
 
 1. A new Worker from this repository, as for the relay (root directory `reference/enrol-service`).
 2. A D1 database bound to it (a few clicks).
-3. Its secrets, made on the founder's computer with a small script that prints them once.
+3. Its secrets, made in the browser with a page of the repository (`testnet/web/enrol-secrets.html`), which shows them once and sends them nowhere.
 4. The issuing-state rules as a variable of the Worker, so that no country is named in the repository.
 
 ## 7. Open points

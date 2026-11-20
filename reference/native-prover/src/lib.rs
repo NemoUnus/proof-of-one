@@ -137,8 +137,8 @@ impl ArkCircuit {
     /// π_doc from circuit inputs on the phone (N31, step 2): the witness from the circuit's
     /// witness graph, then the proof, then the check. Returns the public signals (snarkjs
     /// order: outputs, then public inputs) as decimal strings, whether the proof verified,
-    /// and the witness and proving times in ms.
-    pub fn prove_inputs(&self, graph: &[u8], inputs_json: &str) -> Result<(Vec<String>, bool, u128, u128), Error> {
+    /// the witness and proving times in ms, and the proof (snarkjs JSON).
+    pub fn prove_inputs(&self, graph: &[u8], inputs_json: &str) -> Result<(Vec<String>, bool, u128, u128, serde_json::Value), Error> {
         let t = std::time::Instant::now();
         let wtns = circom_witnesscalc::calc_witness(inputs_json, graph).map_err(|e| e.to_string())?;
         let w = parse_wtns(&wtns)?;
@@ -156,8 +156,24 @@ impl ArkCircuit {
             &self.pk, r, s, &self.matrices, self.num_instance, self.num_constraints, &w)?;
         let pvk = Groth16::<Bn254>::process_vk(&self.pk.vk)?;
         let ok = Groth16::<Bn254>::verify_with_processed_vk(&pvk, &w[1..self.num_instance], &proof)?;
-        Ok((w[1..self.num_instance].iter().map(dec).collect(), ok, witness_ms, t.elapsed().as_millis()))
+        let pj: serde_json::Value = serde_json::from_str(&proof_json(&proof))?;
+        Ok((w[1..self.num_instance].iter().map(dec).collect(), ok, witness_ms, t.elapsed().as_millis(), pj))
     }
+
+    /// The verifying key in snarkjs's verification_key.json format (for the Solidity
+    /// verifier of the enrolment service, which checks π_doc).
+    pub fn vkey_json(&self) -> serde_json::Value { vkey_json(&self.pk.vk) }
+}
+
+/// A Groth16 verifying key in snarkjs's verification_key.json format.
+pub fn vkey_json(vk: &ark_groth16::VerifyingKey<Bn254>) -> serde_json::Value {
+    let g1 = |q: &ark_bn254::G1Affine| serde_json::json!([dec(&q.x), dec(&q.y), "1"]);
+    let g2 = |q: &ark_bn254::G2Affine| serde_json::json!([[dec(&q.x.c0), dec(&q.x.c1)], [dec(&q.y.c0), dec(&q.y.c1)], ["1", "0"]]);
+    serde_json::json!({
+        "protocol": "groth16", "curve": "bn128", "nPublic": vk.gamma_abc_g1.len() - 1,
+        "vk_alpha_1": g1(&vk.alpha_g1), "vk_beta_2": g2(&vk.beta_g2), "vk_gamma_2": g2(&vk.gamma_g2), "vk_delta_2": g2(&vk.delta_g2),
+        "IC": vk.gamma_abc_g1.iter().map(g1).collect::<Vec<_>>(),
+    })
 }
 
 impl ArkCircuit {
@@ -313,7 +329,7 @@ mod android {
     }
 
     // π_doc from a real passport's inputs (challenge 2): witness graph, proof, check.
-    // {"verified":bool,"public":[…],"testTree":bool,"loadMs":n,"witnessMs":n,"proveMs":n,"peakMb":n} or {"error":…}.
+    // {"verified":bool,"public":[…],"proof":{…},"testTree":bool,"loadMs":n,"witnessMs":n,"proveMs":n,"peakMb":n} or {"error":…}.
     fn run_doc_inputs(env: &mut JNIEnv, pk: &JString, mats: &JString, graph: &JString, tree: &JString, inputs: &JString) -> Result<String, super::Error> {
         let pk: String = env.get_string(pk)?.into();
         let mats: String = env.get_string(mats)?.into();
@@ -325,8 +341,8 @@ mod android {
         let c = super::ArkCircuit::load_cached(&pk, &mats, &format!("{pk}.raw"))?;
         let load_ms = t.elapsed().as_millis();
         let g = std::fs::read(&graph)?;
-        let (public, ok, witness_ms, prove_ms) = c.prove_inputs(&g, &inputs)?;
-        Ok(serde_json::json!({ "verified": ok, "public": public, "testTree": test_tree, "loadMs": load_ms as u64,
+        let (public, ok, witness_ms, prove_ms, proof) = c.prove_inputs(&g, &inputs)?;
+        Ok(serde_json::json!({ "verified": ok, "public": public, "proof": proof, "testTree": test_tree, "loadMs": load_ms as u64,
             "witnessMs": witness_ms as u64, "proveMs": prove_ms as u64, "peakMb": super::peak_mb() }).to_string())
     }
 

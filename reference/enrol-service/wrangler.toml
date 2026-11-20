@@ -1,0 +1,24 @@
+# Proof of One — the pilot's enrolment service (TEST). Design:
+# docs/specs/pilot-enrolment-service-v0.1.md. Secrets (OPRF_KEY, CREDENTIAL_KEY,
+# REVOCATION_KEY) and the issuing-state rules (RULES) and accepted roots (DSC_ROOTS) are set
+# in the Cloudflare dashboard (Settings → Variables and secrets), never in this file.
+name = "proof-of-one-enrol"
+main = "src/worker.js"
+compatibility_date = "2026-09-01"
+workers_dev = true
+preview_urls = false
+keep_vars = true      # keep the variables set in the dashboard when deploying from the repository
+
+[vars]
+RPC_URL = "https://sepolia.base.org"
+DOC_VERIFIER = ""     # π_doc's verifier contract, after its deployment on the test network
+EPOCH = "0"
+DAILY_SESSIONS = "300"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "proof-of-one-enrol"
+database_id = "00000000-0000-0000-0000-000000000000"   # replaced with the database's id when it is made
+
+[observability]
+enabled = false   # no request logs

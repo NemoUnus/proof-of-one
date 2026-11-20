@@ -17,11 +17,13 @@
 // NOT constant-time. TEST ONLY: not reviewed outside the project.
 
 use ark_bn254::Fr;
-use ark_ec::{twisted_edwards::Affine, AffineRepr, CurveGroup};
-use ark_ed_on_bn254::{EdwardsAffine, EdwardsConfig, Fr as Sc};
+use ark_ec::{twisted_edwards::Affine, AdditiveGroup, AffineRepr, CurveGroup};
+use ark_ed_on_bn254::{EdwardsAffine, EdwardsConfig, EdwardsProjective, Fr as Sc};
 use ark_ff::{BigInteger, Field, MontFp, PrimeField, Zero};
 use light_poseidon::{Poseidon, PoseidonHasher};
 use serde_json::{json, Value};
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::str::FromStr;
 
 pub type Error = String;
@@ -92,9 +94,44 @@ fn valid(p: &Pt) -> Result<EdwardsAffine, Error> {
 fn mul(p: &EdwardsAffine, k: &Sc) -> EdwardsAffine { (*p * *k).into_affine() }
 
 // ---- Poseidon (circomlib)
+thread_local! {
+    static HASHERS: RefCell<HashMap<usize, Poseidon<Fr>>> = RefCell::new(HashMap::new());
+    static BASE_TABLE: Vec<EdwardsAffine> = {
+        let mut t = Vec::with_capacity(256);
+        let mut p: EdwardsProjective = base8().into();
+        for _ in 0..256 { t.push(p.into_affine()); p.double_in_place(); }
+        t
+    };
+    static PUBLIC: RefCell<Option<(String, Pt)>> = const { RefCell::new(None) };
+}
+/// Poseidon with circomlib's parameters (1 to 12 inputs); one hasher per width, kept.
 pub fn poseidon(inputs: &[Fr]) -> Result<Fr, Error> {
-    let mut h = Poseidon::<Fr>::new_circom(inputs.len()).map_err(|e| e.to_string())?;
-    h.hash(inputs).map_err(|e| e.to_string())
+    HASHERS.with(|m| {
+        let mut m = m.borrow_mut();
+        if !m.contains_key(&inputs.len()) {
+            m.insert(inputs.len(), Poseidon::<Fr>::new_circom(inputs.len()).map_err(|e| e.to_string())?);
+        }
+        m.get_mut(&inputs.len()).unwrap().hash(inputs).map_err(|e| e.to_string())
+    })
+}
+/// k·Base8 from a table of 2^i·Base8 (additions only).
+fn mul_base(k: &Sc) -> EdwardsAffine {
+    BASE_TABLE.with(|t| {
+        let bits = k.into_bigint().to_bits_le();
+        let mut acc = EdwardsProjective::zero();
+        for (i, b) in bits.iter().enumerate() { if *b { acc += t[i]; } }
+        acc.into_affine()
+    })
+}
+/// K = k·Base8, computed once per key.
+fn oprf_public(s: &Secrets) -> Pt {
+    let id = dec(&s.k);
+    PUBLIC.with(|c| {
+        if let Some((i, p)) = &*c.borrow() { if *i == id { return *p; } }
+        let p = of_ark(&mul_base(&s.k));
+        *c.borrow_mut() = Some((id, p));
+        p
+    })
 }
 
 fn str_of<'a>(v: &'a Value, key: &str) -> Result<&'a str, Error> {
@@ -113,8 +150,7 @@ pub fn secrets(v: &Value) -> Result<Secrets, Error> {
 
 /// {"K": OPRF public key, "A": credential public key, "keyLeaf": H(A)}.
 pub fn public(s: &Secrets) -> Result<Value, Error> {
-    let g = base8();
-    let (kp, ap) = (of_ark(&mul(&g, &s.k)), of_ark(&mul(&g, &s.a)));
+    let (kp, ap) = (oprf_public(s), of_ark(&mul_base(&s.a)));
     Ok(json!({ "K": pt_json(&kp), "A": pt_json(&ap), "keyLeaf": dec(&poseidon(&[ap.0, ap.1])?) }))
 }
 
@@ -124,10 +160,9 @@ fn dleq_hash(kp: &Pt, b: &Pt, z: &Pt, t1: &Pt, t2: &Pt) -> Result<Sc, Error> {
 
 /// One OPRF answer with its DLEQ proof; `t` is the proof's nonce.
 fn answer(k: &Sc, kp: &Pt, b: &Pt, t: &Sc) -> Result<(Pt, Sc, Sc), Error> {
-    let g = base8();
     let ba = valid(b)?;
     let z = of_ark(&mul(&ba, k));
-    let (t1, t2) = (of_ark(&mul(&g, t)), of_ark(&mul(&ba, t)));
+    let (t1, t2) = (of_ark(&mul_base(t)), of_ark(&mul(&ba, t)));
     let c = dleq_hash(kp, b, &z, &t1, &t2)?;
     Ok((z, c, *t + c * k))
 }
@@ -137,7 +172,7 @@ fn answer(k: &Sc, kp: &Pt, b: &Pt, t: &Sc) -> Result<(Pt, Sc, Sc), Error> {
 pub fn evaluate(s: &Secrets, v: &Value) -> Result<Value, Error> {
     let r = hexbytes(str_of(v, "rand")?)?;
     if r.len() < 128 { return Err("128 random bytes are needed".into()); }
-    let kp = of_ark(&mul(&base8(), &s.k));
+    let kp = oprf_public(s);
     let (pb, db) = (pt(&v["pB"])?, pt(&v["dB"])?);
     let (pz, pc, ps) = answer(&s.k, &kp, &pb, &scalar(&r[..64])?)?;
     let (dz, dc, ds) = answer(&s.k, &kp, &db, &scalar(&r[64..128])?)?;
@@ -172,10 +207,9 @@ pub fn sign(s: &Secrets, v: &Value) -> Result<Value, Error> {
     m.extend(attrs);
     m.push(cm); m.push(rn); m.push(epoch);
     let msg = poseidon(&m)?;
-    let g = base8();
-    let a = of_ark(&mul(&g, &s.a));
+    let a = of_ark(&mul_base(&s.a));
     let r = scalar(&hexbytes(str_of(v, "rand")?)?)?;
-    let r8 = of_ark(&mul(&g, &r));
+    let r8 = of_ark(&mul_base(&r));
     let hm = poseidon(&[r8.0, r8.1, a.0, a.1, msg])?;
     // circomlib's verifier: S·Base8 = R8 + (8·hm)·A, with A = a·Base8
     let sig = r + Sc::from(8u64) * sc_of_fr(&hm) * s.a;

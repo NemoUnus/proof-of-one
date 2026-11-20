@@ -13,7 +13,7 @@ fn main() {
     let load = t.elapsed().as_millis();
     let g = std::fs::read(&a[3]).expect("graph");
     match c.prove_inputs(&g, &inputs) {
-        Ok((public, ok, wms, pms)) => println!("{}", serde_json::json!({ "verified": ok, "public": public, "testTree": test_tree, "loadMs": load as u64, "witnessMs": wms as u64, "proveMs": pms as u64, "peakMb": poo_native_prover::peak_mb() })),
+        Ok((public, ok, wms, pms, proof)) => println!("{}", serde_json::json!({ "verified": ok, "public": public, "proof": proof, "testTree": test_tree, "loadMs": load as u64, "witnessMs": wms as u64, "proveMs": pms as u64, "peakMb": poo_native_prover::peak_mb() })),
         Err(e) => { println!("{}", serde_json::json!({ "error": e.to_string() })); std::process::exit(1); }
     }
 }
