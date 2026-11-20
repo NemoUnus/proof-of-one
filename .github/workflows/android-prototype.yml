@@ -90,6 +90,9 @@ jobs:
           ./target/release/prove-mem setup ../document-circuit/build/document_s2.r1cs ../document-circuit/build/bench_s2.wtns $D
           ./target/release/prove-mem compress - - $D
           gzip -6 -c $D/matrices.bin > $D/doc_matrices.gz
+          # The enrolment service's verifier contract (DocVerifier) holds this key's verifying key.
+          (cd ../native-prover && cargo build --release --locked --bin doc-vkey && ./target/release/doc-vkey $D/pk_c.bin > $RUNNER_TEMP/doc_s2_vkey.json)
+          cmp $RUNNER_TEMP/doc_s2_vkey.json ../enrol-service/keys/doc_s2_vkey.json && echo "verifying key matches the enrolment service's verifier"
           ls -la $D ../document-circuit/build
       # The phone's input builder (DocInput.kt) must build exactly the reference input
       # (document-circuit/src/document.js) on synthetic passports of both suites.
