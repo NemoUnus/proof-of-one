@@ -97,6 +97,7 @@ On 12 November (UTC+4):
 |---|---|
 | 12:22 | Poll 2 (first deployment) closed |
 | 13:28 | Poll 2's result published: 0 · 0 · 1 · 1, 2 voters; challenge period until 19 November, 13:28 |
+| 20 Nov, 15:59 | Poll 2 **finalized** after the challenge period, which nobody used: state **Final**, totals 0 · 0 · 1 · 1, 2 distinct voters. Poll 2 is complete |
 | 13:36 | The relay switched to poll 3 on this deployment. Member 6 changed its answer to option 1 from the app prototype through the relay. Its kit was made for the revocation root before member 8's revocation; the app rebuilt the revocation path from the public list (N33) and the contract **accepted** the ballot |
 
 Expected result when poll 3 closes on 17 November: 2 · 1 · 1 · 0. Since this run, `vote.html` explains the contract's refusals in plain words, instead of "unknown custom error".
