@@ -1,0 +1,65 @@
+# SPDX-License-Identifier: Apache-2.0
+# The pilot's enrolment service (docs/specs/pilot-enrolment-service-v0.1.md).
+# Builds the service's cryptography (reference/service-core, Rust) to WebAssembly with a
+# pinned toolchain, checks it against the project's JavaScript references
+# (reference/enrol-service/test), measures the time per call, and commits the checked
+# core.wasm next to the Worker, from where Cloudflare deploys it. Anyone can rebuild it
+# from the sources with the same toolchain and compare the hash printed below.
+name: Enrolment service
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "reference/service-core/**"
+      - "reference/enrol-service/test/**"
+      - "reference/enrol-service/src/core.js"
+      - ".github/workflows/enrol-service.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: enrol-service
+  cancel-in-progress: false
+
+jobs:
+  core:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust 1.97.0 for WebAssembly
+        run: rustup toolchain install 1.97.0 --profile minimal --target wasm32-unknown-unknown
+
+      - name: Build the core
+        working-directory: reference/service-core
+        env:
+          RUSTFLAGS: "--remap-path-prefix=/home/runner=/h"
+        run: |
+          cargo +1.97.0 build --release --locked --target wasm32-unknown-unknown --lib
+          cp target/wasm32-unknown-unknown/release/poo_service_core.wasm ../enrol-service/src/core.wasm
+          ls -l ../enrol-service/src/core.wasm
+          sha256sum ../enrol-service/src/core.wasm
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: References for the tests
+        working-directory: reference/document-circuit
+        run: npm ci --ignore-scripts
+
+      - name: Check the core against the references, and its speed
+        working-directory: reference/enrol-service
+        run: node --test --test-reporter=tap test/
+
+      - name: Commit core.wasm if it changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add reference/enrol-service/src/core.wasm
+          if git diff --cached --quiet; then echo "core.wasm unchanged."; exit 0; fi
+          git commit -m "enrol-service: core.wasm built and checked by CI ($(sha256sum reference/enrol-service/src/core.wasm | cut -c1-16))"
+          git push
