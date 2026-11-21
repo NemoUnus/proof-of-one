@@ -106,11 +106,26 @@ test("sign: circomlib verifies the credential; message and handle as enrolment.j
   assert.throws(() => core.call("sign", { secrets, fp, attrs: attrs.slice(1), cm, epoch, rand: randomHex(64) }), /8 attribute/);
 });
 
-test("poseidon equals circomlibjs for 1 to 12 inputs (the core's widest hash has 12)", () => {
-  for (let n = 1; n <= 12; n++) {
+test("poseidon equals circomlibjs for 1 to 16 inputs", () => {
+  for (let n = 1; n <= 16; n++) {
     const xs = Array.from({ length: n }, (_, i) => BigInt(i * 1000003 + n));
     assert.strictEqual(core.call("poseidon", { inputs: S(xs) }), H(xs).toString(), `n = ${n}`);
   }
+});
+
+test("tree: root and paths equal ballot-circuit's IncrementalTree", () => {
+  const { IncrementalTree } = require("../../ballot-circuit/src/trees");
+  for (const n of [0, 1, 2, 5]) {
+    const ref = new IncrementalTree(H, 16);
+    const leaves = Array.from({ length: n }, (_, i) => BigInt(i * 7919 + 11));
+    leaves.forEach((l) => ref.insert(l));
+    assert.strictEqual(core.call("tree", { leaves: S(leaves), depth: 16 }).root, ref.root.toString());
+    for (let i = 0; i < n; i++) {
+      const t = core.call("tree", { leaves: S(leaves), depth: 16, index: i }), r = ref.path(i);
+      assert.deepStrictEqual([t.siblings, t.pathIndex], [r.siblings.map(String), r.pathIndex.map(String)]);
+    }
+  }
+  assert.throws(() => core.call("tree", { leaves: ["1"], depth: 16, index: 1 }), /no such leaf/);
 });
 
 test("time per call (the Worker's limit is about 10 ms of processor time per request)", { skip: !useWasm && "WebAssembly only" }, () => {

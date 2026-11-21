@@ -52,17 +52,20 @@ Phone                                   Service                              Tes
 
 π_doc proves that the document's signer (DSC) is a leaf of a published tree. In the pilot:
 
-- When a phone meets a signer that is not in the tree, it sends the DSC certificate (public data) to `POST /signer`.
-- The service checks the certificate's signature against the issuing state's CSCA certificate, which it holds from the master lists (trust list specification), and its validity dates; if valid, it adds the leaf and publishes the new root and the list of leaves.
-- The phone asks for its path (`GET /path?leaf=…`) and proves against the new root.
-- The CSCA certificates the service holds, and every leaf with the certificate it came from, are published, so anyone can recheck the tree with the public trust-list tool.
+- When a phone meets a signer that is not in the tree, it sends the DSC certificate (public data) and π_doc's suite to `POST /signer`.
+- The service checks the certificate's signature against the CSCA certificates it holds (variable `CSCA_CERTS`, taken from the master lists under the trust-list specification) with WebCrypto (RSA PKCS #1 v1.5, RSA-PSS, ECDSA on P-256, P-384 and P-521; brainpool curves not yet), that the DSC is valid today and was issued while its CSCA was valid, that it is not self-signed, and that its RSA key fits the suite. If so, it adds the key's leaf (as π_doc builds it) and records the new root. At most 100 new signers a day.
+- The phone asks for its path (`GET /path?leaf=…`) and proves against that root. Every root the tree has had stays accepted, since signers are never removed in the pilot.
+- `GET /signers` publishes the tree: per leaf its suite and the SHA-256 fingerprints of the DSC and of the CSCA that signed it. The certificates themselves are not republished: the ICAO master list may not be redistributed (trust list specification, §2), and the DSCs are on every passport of their issuer. Anyone who holds a certificate can recompute its leaf and fingerprint and recheck the tree. The list names no country.
+- Measured (21 November 2026): a new signer costs about 1 ms for the leaf and 1.5–2.5 ms for the tree with up to 20 signers. Above about 60 signers the tree's hashes would exceed the Worker's time limit; the service would then keep the tree's inner nodes in its store instead of recomputing them.
+
+**What the service reveals.** A live service cannot hide which issuing states it accepts: `/session` answers per state, and the fingerprints and leaves can be matched against the public master lists and DSC collections. The repository and the project's texts still name no state; the rules and certificates are set only in the Worker's configuration.
 
 ## 6. What the founder sets up
 
 1. A new Worker from this repository, as for the relay (root directory `reference/enrol-service`).
 2. A D1 database bound to it (a few clicks).
 3. Its secrets, made in the browser with a page of the repository (`testnet/web/enrol-secrets.html`), which shows them once and sends them nowhere.
-4. The issuing-state rules as a variable of the Worker, so that no country is named in the repository.
+4. The issuing-state rules and the CSCA certificates as variables of the Worker, so that no country is named in the repository.
 
 ## 7. Open points
 

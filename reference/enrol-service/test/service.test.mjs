@@ -89,7 +89,7 @@ test("info: the OPRF key and the credential key belong to the secrets", async ()
   const r = await call("GET", "/info");
   assert.strictEqual(r.status, 200);
   assert.deepStrictEqual(r.body.K, S(FP.keyOf(k())));
-  assert.deepStrictEqual(r.body.dscRoots, ["999", ROOT]);
+  assert.strictEqual(r.body.signers, 0);
   assert.strictEqual(r.body.enrolments, 0);
 });
 

@@ -8,7 +8,8 @@
 //             of H(CREDENTIAL_MSG, attributes, cm, rn, epoch), as the enclave's issue() in
 //             reference/enrolment-circuit/src/enrolment.js
 //   public    the public keys that belong to the service's secrets
-//   poseidon  Poseidon (circomlib parameters), for the Worker's own hashes
+//   poseidon  Poseidon (circomlib parameters, 1 to 16 inputs), for the Worker's own hashes
+//   tree      root and path of the tree of checked signers (as ballot-circuit/src/trees.js)
 //
 // The functions are pure: the Worker passes fresh random bytes (crypto.getRandomValues)
 // for every nonce, so no random source is needed inside WebAssembly.
@@ -20,11 +21,11 @@ use ark_bn254::Fr;
 use ark_ec::{twisted_edwards::Affine, AdditiveGroup, AffineRepr, CurveGroup};
 use ark_ed_on_bn254::{EdwardsAffine, EdwardsConfig, EdwardsProjective, Fr as Sc};
 use ark_ff::{BigInteger, Field, MontFp, PrimeField, Zero};
-use light_poseidon::{Poseidon, PoseidonHasher};
 use serde_json::{json, Value};
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::str::FromStr;
+
+mod poseidon;
 
 pub type Error = String;
 pub type Pt = (Fr, Fr);
@@ -95,7 +96,6 @@ fn mul(p: &EdwardsAffine, k: &Sc) -> EdwardsAffine { (*p * *k).into_affine() }
 
 // ---- Poseidon (circomlib)
 thread_local! {
-    static HASHERS: RefCell<HashMap<usize, Poseidon<Fr>>> = RefCell::new(HashMap::new());
     static BASE_TABLE: Vec<EdwardsAffine> = {
         let mut t = Vec::with_capacity(256);
         let mut p: EdwardsProjective = base8().into();
@@ -103,17 +103,10 @@ thread_local! {
         t
     };
     static PUBLIC: RefCell<Option<(String, Pt)>> = const { RefCell::new(None) };
+    static ZEROS: RefCell<Vec<Fr>> = RefCell::new(vec![Fr::zero()]);
 }
-/// Poseidon with circomlib's parameters (1 to 12 inputs); one hasher per width, kept.
-pub fn poseidon(inputs: &[Fr]) -> Result<Fr, Error> {
-    HASHERS.with(|m| {
-        let mut m = m.borrow_mut();
-        if !m.contains_key(&inputs.len()) {
-            m.insert(inputs.len(), Poseidon::<Fr>::new_circom(inputs.len()).map_err(|e| e.to_string())?);
-        }
-        m.get_mut(&inputs.len()).unwrap().hash(inputs).map_err(|e| e.to_string())
-    })
-}
+/// Poseidon with circomlib's parameters, 1 to 16 inputs (poseidon.rs).
+pub fn poseidon(inputs: &[Fr]) -> Result<Fr, Error> { poseidon::hash(inputs) }
 /// k·Base8 from a table of 2^i·Base8 (additions only).
 fn mul_base(k: &Sc) -> EdwardsAffine {
     BASE_TABLE.with(|t| {
@@ -227,6 +220,39 @@ pub fn verify_signature(a: &Pt, msg: &Fr, r8: &Pt, s: &str) -> Result<bool, Erro
     Ok(left == right)
 }
 
+/// An append-only Poseidon Merkle tree as reference/ballot-circuit/src/trees.js builds it
+/// (empty leaves 0, H(left, right)): its root and, for `index`, the path.
+pub fn tree(leaves: &[Fr], depth: usize, index: Option<usize>) -> Result<Value, Error> {
+    if depth > 32 || leaves.len() > (1usize << depth.min(31)) { return Err("too many leaves for the depth".into()); }
+    if let Some(i) = index { if i >= leaves.len() { return Err("no such leaf".into()); } }
+    let zeros = ZEROS.with(|z| -> Result<Vec<Fr>, Error> {
+        let mut z = z.borrow_mut();
+        while z.len() <= 32 { let last = *z.last().unwrap(); z.push(poseidon(&[last, last])?); }
+        Ok(z.clone())
+    })?;
+    let mut level = leaves.to_vec();
+    let (mut siblings, mut bits) = (Vec::new(), Vec::new());
+    let mut i = index.unwrap_or(0);
+    for d in 0..depth {
+        let zero = zeros[d];
+        if index.is_some() {
+            let sib = i ^ 1;
+            siblings.push(dec(level.get(sib).unwrap_or(&zero)));
+            bits.push((i & 1).to_string());
+            i >>= 1;
+        }
+        let mut next = Vec::with_capacity((level.len() + 1) / 2);
+        for pair in level.chunks(2) {
+            next.push(poseidon(&[pair[0], *pair.get(1).unwrap_or(&zero)])?);
+        }
+        level = next;
+    }
+    let root = level.first().copied().unwrap_or(zeros[depth]);
+    let mut out = json!({ "root": dec(&root) });
+    if index.is_some() { out["siblings"] = json!(siblings); out["pathIndex"] = json!(bits); }
+    Ok(out)
+}
+
 /// One entry point for the Worker: `name`, JSON in, JSON out ({"error"} on failure).
 pub fn call(name: &str, input: &str) -> String {
     let run = || -> Result<Value, Error> {
@@ -239,6 +265,12 @@ pub fn call(name: &str, input: &str) -> String {
                 let xs = v["inputs"].as_array().ok_or("inputs expected")?;
                 let xs = xs.iter().map(|x| fr(x.as_str().ok_or("decimal string expected")?)).collect::<Result<Vec<_>, _>>()?;
                 Ok(json!(dec(&poseidon(&xs)?)))
+            }
+            "tree" => {
+                let ls = v["leaves"].as_array().ok_or("leaves expected")?;
+                let ls = ls.iter().map(|x| fr(x.as_str().ok_or("decimal string expected")?)).collect::<Result<Vec<_>, _>>()?;
+                let depth = v["depth"].as_u64().ok_or("depth expected")? as usize;
+                tree(&ls, depth, v["index"].as_u64().map(|i| i as usize))
             }
             "verifyAnswer" => Ok(json!(verify_answer(&pt(&v["K"])?, &pt(&v["B"])?, &pt(&v["Z"])?,
                 &sc_of_fr(&fr(str_of(&v, "c")?)?), &sc_of_fr(&fr(str_of(&v, "s")?)?))?)),

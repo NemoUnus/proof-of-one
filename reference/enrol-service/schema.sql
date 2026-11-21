@@ -20,3 +20,19 @@ CREATE TABLE IF NOT EXISTS counters (
   name TEXT PRIMARY KEY,        -- "evaluations", "enrolments", "sessions:<day>"
   n INTEGER NOT NULL
 );
+-- The tree of checked signers (design §5): one leaf per document-signer key that the
+-- service checked against a CSCA it holds. Public: leaf, suite, and the SHA-256
+-- fingerprints of the DSC and of the CSCA (the certificates themselves are not republished).
+CREATE TABLE IF NOT EXISTS signers (
+  idx INTEGER PRIMARY KEY,      -- position in the tree, from 0
+  leaf TEXT NOT NULL UNIQUE,
+  suite INTEGER NOT NULL,
+  dsc TEXT NOT NULL,            -- SHA-256 of the DSC certificate
+  csca TEXT NOT NULL,           -- SHA-256 of the CSCA certificate that signed it
+  created INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS roots (
+  root TEXT PRIMARY KEY,        -- every root the tree has had (signers are never removed)
+  size INTEGER NOT NULL,
+  created INTEGER NOT NULL
+);

@@ -10,6 +10,10 @@
 //   POST /enrol {session, proof, publicSignals}
 //                              checks π_doc and the session, reserves the two keyed
 //                              fingerprints, signs the credential
+//   POST /signer {dsc, suite}  checks a document signer's certificate against the CSCAs
+//                              held, adds its key to the tree of checked signers
+//   GET  /path?leaf=…          the root and a signer's path, for π_doc
+//   GET  /signers              the tree: leaves, suites, fingerprints of DSC and CSCA
 //
 // It never receives the face, the MRZ, the document number, the personal number or the
 // name. It stores per member: person key, document key, issuing state, path, time.
@@ -20,13 +24,19 @@
 //   OPRF_KEY, CREDENTIAL_KEY, REVOCATION_KEY   (secrets) 64 random bytes each, hex
 //   RULES          {"ABC": {"path": 1, "pnSrc": 1, "pnTag": "5F10"}, ...}: the issuing
 //                  states accepted, and where their person key comes from (spec §7)
-//   DSC_ROOTS      comma-separated roots of the tree of checked signers that are accepted
+//   CSCA_CERTS     the CSCA certificates the service checks signers against (base64 DER);
+//                  only their SHA-256 fingerprints are published
+//   DSC_ROOTS      extra accepted roots (comma-separated), for tests; the tree's own roots
+//                  are always accepted
 //   RPC_URL, DOC_VERIFIER   the test network and π_doc's verifier contract
 //   EPOCH, DAILY_SESSIONS   credential epoch ("0"); sessions per day (300)
 //   DB             the D1 database (schema.sql)
 import { randomHex } from "./core.js";
+import { DEPTH, checkSigner } from "./signers.js";
+import { fromBase64 } from "./x509.js";
 
 const SESSION_SECONDS = 600;
+const SIGNERS_PER_DAY = 100;
 const CORS = { "access-control-allow-origin": "*", "access-control-allow-methods": "POST, GET, OPTIONS", "access-control-allow-headers": "content-type" };
 const reply = (status, body) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", ...CORS } });
 class Refusal extends Error { constructor(status, msg) { super(msg); this.status = status; } }
@@ -90,7 +100,7 @@ async function info(env, deps) {
   const pub = getCore(deps).call("public", { secrets: secrets(env) });
   const db = env.DB;
   return { service: "Proof of One pilot enrolment service (TEST)", K: pub.K, A: pub.A, keyLeaf: pub.keyLeaf, epoch: String(env.EPOCH ?? "0"),
-    dscRoots: String(env.DSC_ROOTS || "").split(",").map((s) => s.trim()).filter(Boolean), docVerifier: env.DOC_VERIFIER || null,
+    dscRoot: await currentRoot(env, deps), signers: await signerCount(env), docVerifier: env.DOC_VERIFIER || null,
     evaluations: await counter(db, "evaluations"), enrolments: await counter(db, "enrolments") };
 }
 
@@ -142,8 +152,9 @@ async function enrol(env, deps, body, now) {
   if (!same.every(([a, b]) => a === b)) refuse(403, "the proof is not for this session");
   if (Math.abs(Number(v.today) - dayNumber(now)) > 1) refuse(403, "the proof's date is not today");
   if (v.currentYear !== String(new Date((Number(v.today) - 25567) * 86400000).getUTCFullYear())) refuse(403, "the proof's year is not the year of its date");
-  const roots = String(env.DSC_ROOTS || "").split(",").map((x) => x.trim());
-  if (!roots.includes(v.dscRoot)) refuse(403, "the document's signer is not in the tree of checked signers");
+  const extra = String(env.DSC_ROOTS || "").split(",").map((x) => x.trim()).filter(Boolean);
+  const known = extra.includes(v.dscRoot) || (await env.DB.prepare("SELECT 1 AS ok FROM roots WHERE root = ?1").bind(v.dscRoot).first());
+  if (!known) refuse(403, "the document's signer is not in the tree of checked signers");
   const rule = rules(env).get(Number(v.issuer));
   if (!rule || v.path !== rule.path || v.pnSrc !== rule.pnSrc || v.pnTag !== rule.pnTag) refuse(403, "the proof does not follow the issuing state's rule");
   // one attempt per session
@@ -166,18 +177,66 @@ async function enrol(env, deps, body, now) {
   return { credential: { rn: cred.rn, link: "0", epoch: String(env.EPOCH ?? "0"), A: cred.A, R8: cred.R8, S: cred.S }, msg: cred.msg };
 }
 
+// ---- the tree of checked signers (design §5)
+async function leaves(env) {
+  return (await env.DB.prepare("SELECT leaf FROM signers ORDER BY idx").all()).results.map((r) => r.leaf);
+}
+async function signerCount(env) { return (await env.DB.prepare("SELECT count(*) AS n FROM signers").first()).n; }
+async function currentRoot(env, deps) { return getCore(deps).call("tree", { leaves: await leaves(env), depth: DEPTH }).root; }
+
+async function signer(env, deps, body, now) {
+  const suite = Number(body?.suite);
+  if (suite !== 1 && suite !== 2) refuse(400, "suite 1 or 2 expected");
+  if (typeof body?.dsc !== "string" || body.dsc.length > 8000) refuse(400, "the certificate (base64) expected");
+  let der;
+  try { der = fromBase64(body.dsc); } catch { refuse(400, "the certificate (base64) expected"); }
+  let s;
+  try { s = await checkSigner(getCore(deps), env, der, suite, now); } catch (e) { refuse(403, e.message); }
+  const known = await env.DB.prepare("SELECT idx FROM signers WHERE leaf = ?1").bind(s.leaf).first();
+  if (known) return { leaf: s.leaf, index: known.idx, root: await currentRoot(env, deps), added: false };
+  const day = `signers:${dayNumber(now)}`;
+  if ((await counter(env.DB, day)) >= SIGNERS_PER_DAY) refuse(429, "too many new signers today; try tomorrow");
+  await count(env.DB, day);
+  const idx = await signerCount(env);
+  try {
+    await env.DB.prepare("INSERT INTO signers (idx, leaf, suite, dsc, csca, created) VALUES (?1, ?2, ?3, ?4, ?5, ?6)")
+      .bind(idx, s.leaf, suite, s.dsc, s.csca, Math.floor(now / 1000)).run();
+  } catch { refuse(409, "the tree changed meanwhile; send the certificate again"); }
+  const root = await currentRoot(env, deps);
+  await env.DB.prepare("INSERT OR IGNORE INTO roots (root, size, created) VALUES (?1, ?2, ?3)").bind(root, idx + 1, Math.floor(now / 1000)).run();
+  return { leaf: s.leaf, index: idx, root, added: true };
+}
+
+async function signerPath(env, deps, url) {
+  const leaf = url.searchParams.get("leaf");
+  if (!isField(leaf || "")) refuse(400, "leaf expected");
+  const all = await leaves(env);
+  const index = all.indexOf(leaf);
+  if (index < 0) refuse(404, "this signer is not in the tree; send its certificate to /signer");
+  const t = getCore(deps).call("tree", { leaves: all, depth: DEPTH, index });
+  return { leaf, index, root: t.root, siblings: t.siblings, pathIndex: t.pathIndex };
+}
+
+async function signerList(env, deps) {
+  const rows = (await env.DB.prepare("SELECT idx, leaf, suite, dsc, csca, created FROM signers ORDER BY idx").all()).results;
+  return { depth: DEPTH, root: await currentRoot(env, deps), signers: rows };
+}
+
 export async function handle(request, env, deps = {}) {
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
   const now = deps.now ? deps.now() : Date.now();
-  const path = new URL(request.url).pathname;
+  const url = new URL(request.url), path = url.pathname;
   try {
     if (request.method === "GET" && path === "/info") return reply(200, await info(env, deps));
+    if (request.method === "GET" && path === "/path") return reply(200, await signerPath(env, deps, url));
+    if (request.method === "GET" && path === "/signers") return reply(200, await signerList(env, deps));
     if (request.method !== "POST") return reply(404, { error: "not found" });
     let body;
     try { body = await request.json(); } catch { refuse(400, "JSON expected"); }
     if (path === "/session") return reply(200, await session(env, deps, body, now));
     if (path === "/evaluate") return reply(200, await evaluate(env, deps, body, now));
     if (path === "/enrol") return reply(200, await enrol(env, deps, body, now));
+    if (path === "/signer") return reply(200, await signer(env, deps, body, now));
     return reply(404, { error: "not found" });
   } catch (e) {
     if (e instanceof Refusal) return reply(e.status, { error: e.message });
