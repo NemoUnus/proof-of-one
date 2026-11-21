@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Just enough X.509 for the enrolment service: read a document signer's certificate (DSC),
-// check its signature against a country signing CA (CSCA) with WebCrypto, and read the
+// check its signature against a country signing CA (CSCA) (RSA in BigInt, ECDSA with
+// WebCrypto), and read the
 // RSA key that π_doc's DSC tree leaf binds. Not a general certificate validator: no
 // extensions, no revocation lists (open point of the trust-list specification).
 
@@ -82,16 +83,71 @@ const RSA_PKCS1 = { "1.2.840.113549.1.1.5": "SHA-1", "1.2.840.113549.1.1.11": "S
 const ECDSA = { "1.2.840.10045.4.3.2": "SHA-256", "1.2.840.10045.4.3.3": "SHA-384", "1.2.840.10045.4.3.4": "SHA-512", "1.2.840.10045.4.1": "SHA-1" };
 const CURVES = { "1.2.840.10045.3.1.7": ["P-256", 32], "1.3.132.0.34": ["P-384", 48], "1.3.132.0.35": ["P-521", 66] };
 
-// RSASSA-PSS parameters: hash and salt length (defaults SHA-1, 20).
+// ---- RSA verification in plain arithmetic. The Workers runtime refuses to import RSA keys
+// whose public exponent is not 3 or 65537 ("invalid publicExponent"), and real CSCAs use
+// others (one in the pilot: 56611). RSA signatures are therefore checked here with BigInt,
+// as RFC 8017 says; only the hashes come from WebCrypto.
+const HLEN = { "SHA-1": 20, "SHA-256": 32, "SHA-384": 48, "SHA-512": 64 };
+const DIGEST_INFO = { // DER prefixes of DigestInfo, with the NULL parameter and without it
+  "SHA-1": ["3021300906052b0e03021a05000414", "301f300706052b0e03021a0414"],
+  "SHA-256": ["3031300d060960864801650304020105000420", "302f300b06096086480165030402010420"],
+  "SHA-384": ["3041300d060960864801650304020205000430", "303f300b06096086480165030402020430"],
+  "SHA-512": ["3051300d060960864801650304020305000440", "304f300b06096086480165030402030440"],
+};
+const hexOf = (b) => Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
+const digest = async (hash, data) => new Uint8Array(await crypto.subtle.digest(hash, data));
+function modPow(b, e, m) { let r = 1n; b %= m; while (e > 0n) { if (e & 1n) r = (r * b) % m; b = (b * b) % m; e >>= 1n; } return r; }
+function i2osp(x, len) { const out = new Uint8Array(len); for (let i = len - 1; i >= 0; i--) { out[i] = Number(x & 255n); x >>= 8n; } if (x !== 0n) return null; return out; }
+function rsaOpen(sig, { n, e }) { // s^e mod n, or null when s is not a valid representative
+  const s = big(sig);
+  if (sig.length !== Math.ceil(n.toString(2).length / 8) || s >= n) return null;
+  return modPow(s, e, n);
+}
+async function rsaPkcs1Verify(key, hash, sig, data) {
+  const m = rsaOpen(sig, key); if (m === null) return false;
+  const k = Math.ceil(key.n.toString(2).length / 8);
+  const em = i2osp(m, k); if (!em) return false;
+  const h = hexOf(await digest(hash, data));
+  return DIGEST_INFO[hash].some((prefix) => {
+    const t = prefix + h, ps = k - 3 - t.length / 2;
+    return ps >= 8 && hexOf(em) === "0001" + "ff".repeat(ps) + "00" + t;
+  });
+}
+async function mgf1(hash, seed, len) {
+  const out = new Uint8Array(len); let off = 0;
+  for (let c = 0; off < len; c++) {
+    const blk = await digest(hash, new Uint8Array([...seed, (c >>> 24) & 255, (c >>> 16) & 255, (c >>> 8) & 255, c & 255]));
+    out.set(blk.subarray(0, Math.min(blk.length, len - off)), off); off += blk.length;
+  }
+  return out;
+}
+async function rsaPssVerify(key, { hash, mgfHash, salt }, sig, data) {
+  const m = rsaOpen(sig, key); if (m === null) return false;
+  const emBits = key.n.toString(2).length - 1, emLen = Math.ceil(emBits / 8), hLen = HLEN[hash];
+  const em = i2osp(m, emLen); if (!em || emLen < hLen + salt + 2 || em[emLen - 1] !== 0xbc) return false;
+  const masked = em.subarray(0, emLen - hLen - 1), H = em.subarray(emLen - hLen - 1, emLen - 1);
+  const top = 0xff >> (8 * emLen - emBits);
+  if (masked[0] & ~top & 0xff) return false;
+  const db = (await mgf1(mgfHash, H, masked.length)).map((x, i) => x ^ masked[i]);
+  db[0] &= top;
+  const ps = emLen - hLen - salt - 2;
+  for (let i = 0; i < ps; i++) if (db[i] !== 0) return false;
+  if (db[ps] !== 1) return false;
+  const mp = new Uint8Array(8 + hLen + salt);
+  mp.set(await digest(hash, data), 8); mp.set(db.subarray(db.length - salt), 8 + hLen);
+  return hexOf(await digest(hash, mp)) === hexOf(H);
+}
+// RSASSA-PSS parameters: hash, MGF1 hash and salt length (defaults SHA-1, SHA-1, 20).
 function pssParams(p) {
-  let hash = "SHA-1", salt = 20;
-  if (!p) return { hash, salt };
+  let hash = "SHA-1", mgfHash = "SHA-1", salt = 20;
+  if (!p) return { hash, mgfHash, salt };
   for (const f of children(p, readTlv(p, 0))) {
     const inner = readTlv(p, f.off);
     if (f.tag === 0xa0) hash = HASH[oid(p, children(p, inner)[0])] || null;
+    if (f.tag === 0xa1) { const [, prm] = children(p, inner); mgfHash = prm ? HASH[oid(p, children(p, prm)[0])] || null : null; }
     if (f.tag === 0xa2) salt = Number(big(value(p, inner)));
   }
-  return { hash, salt };
+  return { hash, mgfHash, salt };
 }
 // ECDSA signature: DER SEQUENCE { r, s } to WebCrypto's r ‖ s of fixed length.
 function rawEcdsa(sig, n) {
@@ -100,24 +156,19 @@ function rawEcdsa(sig, n) {
   const out = new Uint8Array(2 * n); out.set(fix(r)); out.set(fix(s), n); return out;
 }
 
-// Whether `cert` carries a valid signature by `ca`'s key (WebCrypto).
+// Whether `cert` carries a valid signature by `ca`'s key.
 export async function signedBy(cert, ca) {
-  const subtle = crypto.subtle;
-  if (ca.keyAlg === RSA && RSA_PKCS1[cert.sigAlg]) {
-    const k = await subtle.importKey("spki", ca.spki, { name: "RSASSA-PKCS1-v1_5", hash: RSA_PKCS1[cert.sigAlg] }, false, ["verify"]);
-    return subtle.verify("RSASSA-PKCS1-v1_5", k, cert.signature, cert.tbs);
-  }
+  if (ca.keyAlg === RSA && RSA_PKCS1[cert.sigAlg]) return rsaPkcs1Verify(ca.rsa, RSA_PKCS1[cert.sigAlg], cert.signature, cert.tbs);
   if (ca.keyAlg === RSA && cert.sigAlg === "1.2.840.113549.1.1.10") {
-    const { hash, salt } = pssParams(cert.sigAlgParams);
-    if (!hash) throw new Error("unsupported RSASSA-PSS hash");
-    const k = await subtle.importKey("spki", ca.spki, { name: "RSA-PSS", hash }, false, ["verify"]);
-    return subtle.verify({ name: "RSA-PSS", saltLength: salt }, k, cert.signature, cert.tbs);
+    const p = pssParams(cert.sigAlgParams);
+    if (!HLEN[p.hash] || !HLEN[p.mgfHash]) throw new Error("unsupported RSASSA-PSS hash");
+    return rsaPssVerify(ca.rsa, p, cert.signature, cert.tbs);
   }
   if (ca.keyAlg === EC && ECDSA[cert.sigAlg]) {
     const c = CURVES[ca.curve];
     if (!c) throw new Error("the CSCA's curve is not supported here (brainpool or explicit parameters)");
-    const k = await subtle.importKey("spki", ca.spki, { name: "ECDSA", namedCurve: c[0] }, false, ["verify"]);
-    return subtle.verify({ name: "ECDSA", hash: ECDSA[cert.sigAlg] }, k, rawEcdsa(cert.signature, c[1]), cert.tbs);
+    const k = await crypto.subtle.importKey("spki", ca.spki, { name: "ECDSA", namedCurve: c[0] }, false, ["verify"]);
+    return crypto.subtle.verify({ name: "ECDSA", hash: ECDSA[cert.sigAlg] }, k, rawEcdsa(cert.signature, c[1]), cert.tbs);
   }
   throw new Error(`signature algorithm ${cert.sigAlg} not supported`);
 }

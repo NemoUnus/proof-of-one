@@ -96,15 +96,16 @@ test("refused: a signer of a CSCA not held, the wrong suite, an expired certific
   assert.strictEqual(env.DB.sql.prepare("SELECT count(*) AS n FROM signers").get().n, 0);
 });
 
-// A certificate built by hand: an RSA document signer under an ECDSA P-256 CSCA.
-function ecCert({ subject, issuer, spki, sign, ca }) {
+// A certificate built by hand, signed with node's crypto: `alg` is the signature algorithm
+// (DER), `signer(tbs)` the signature.
+function handCert({ subject, issuer, spki, alg, signer, ca }) {
   const name = (cn, c) => I.seq(I.set(I.seq(I.oid("2.5.4.3"), I.tlv(0x0c, Buffer.from(cn)))), I.set(I.seq(I.oid("2.5.4.6"), I.tlv(0x13, Buffer.from(c)))));
   const t = (d) => I.tlv(0x17, Buffer.from(d));
-  const alg = I.seq(I.oid("1.2.840.10045.4.3.2"));
   const tbs = I.seq(I.tlv(0xa0, I.int(2)), I.int(ca ? 1 : 2), alg, name(...issuer), I.seq(t("200101000000Z"), t("391231000000Z")), name(...subject), spki);
-  const sig = crypto.sign("sha256", tbs, sign);
-  return Buffer.concat([I.seq(tbs, alg, I.tlv(0x03, Buffer.concat([Buffer.from([0]), sig])))]);
+  return Buffer.concat([I.seq(tbs, alg, I.tlv(0x03, Buffer.concat([Buffer.from([0]), signer(tbs)])))]);
 }
+const ECDSA256 = I.seq(I.oid("1.2.840.10045.4.3.2"));
+function ecCert({ sign, ...o }) { return handCert({ ...o, alg: ECDSA256, signer: (tbs) => crypto.sign("sha256", tbs, sign) }); }
 test("an ECDSA CSCA (P-256) and the X.509 reader", async () => {
   const ca = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
   const caDer = ecCert({ subject: ["CSCA EC TEST", "EC"], issuer: ["CSCA EC TEST", "EC"], spki: ca.publicKey.export({ type: "spki", format: "der" }), sign: ca.privateKey, ca: true });
@@ -119,5 +120,40 @@ test("an ECDSA CSCA (P-256) and the X.509 reader", async () => {
   assert.ok(!(await signedBy(parseCertificate(bad), cc)));
   env.CSCA_CERTS = caDer.toString("base64");
   const r = await call("POST", "/signer", { dsc: dDer.toString("base64"), suite: 1 });
+  assert.strictEqual(r.status, 200, JSON.stringify(r.body));
+});
+
+// Real CSCAs use RSA exponents other than 3 and 65537, which the Workers runtime refuses to
+// import (the pilot's issuer: 56611); RSA signatures are therefore checked in BigInt.
+test("RSA CSCAs with an unusual exponent: PKCS #1 v1.5 and PSS, as the Workers runtime cannot", async () => {
+  const ca = crypto.generateKeyPairSync("rsa", { modulusLength: 2048, publicExponent: 56611 });
+  const caSpki = ca.publicKey.export({ type: "spki", format: "der" });
+  const sha256rsa = I.seq(I.oid("1.2.840.113549.1.1.11"), I.tlv(0x05, Buffer.alloc(0)));
+  const sha1rsa = I.seq(I.oid("1.2.840.113549.1.1.5"), I.tlv(0x05, Buffer.alloc(0)));
+  const pss = I.seq(I.oid("1.2.840.113549.1.1.10"), I.seq(
+    I.tlv(0xa0, I.seq(I.oid("2.16.840.1.101.3.4.2.1"))),
+    I.tlv(0xa1, I.seq(I.oid("1.2.840.113549.1.1.8"), I.seq(I.oid("2.16.840.1.101.3.4.2.1")))),
+    I.tlv(0xa2, I.int(32))));
+  const caDer = handCert({ subject: ["CSCA RSA TEST", "RX"], issuer: ["CSCA RSA TEST", "RX"], spki: caSpki, alg: sha256rsa, ca: true,
+    signer: (tbs) => crypto.sign("sha256", tbs, ca.privateKey) });
+  const dk = crypto.generateKeyPairSync("rsa", { modulusLength: 3072, publicExponent: 58333 });
+  const dSpki = dk.publicKey.export({ type: "spki", format: "der" });
+  const make = (alg, signer) => handCert({ subject: ["DSC RSA TEST", "RX"], issuer: ["CSCA RSA TEST", "RX"], spki: dSpki, alg, signer });
+  const cases = {
+    pkcs1sha256: make(sha256rsa, (tbs) => crypto.sign("sha256", tbs, ca.privateKey)),
+    pkcs1sha1: make(sha1rsa, (tbs) => crypto.sign("sha1", tbs, ca.privateKey)),
+    pss: make(pss, (tbs) => crypto.sign("sha256", tbs, { key: ca.privateKey, padding: crypto.constants.RSA_PKCS1_PSS_PADDING, saltLength: 32 })),
+  };
+  const cc = parseCertificate(caDer);
+  assert.strictEqual(cc.rsa.e, 56611n);
+  for (const [name, der] of Object.entries(cases)) {
+    assert.ok(await signedBy(parseCertificate(der), cc), name);
+    const bad = Buffer.from(der); bad[bad.length - 5] ^= 1; // a changed signature byte
+    assert.ok(!(await signedBy(parseCertificate(bad), cc)), name + " (changed signature)");
+    const bad2 = Buffer.from(der); bad2[60] ^= 1; // a changed signed byte
+    assert.ok(!(await signedBy(parseCertificate(bad2), cc)), name + " (changed data)");
+  }
+  env.CSCA_CERTS = caDer.toString("base64");
+  const r = await call("POST", "/signer", { dsc: cases.pss.toString("base64"), suite: 2 });
   assert.strictEqual(r.status, 200, JSON.stringify(r.body));
 });
