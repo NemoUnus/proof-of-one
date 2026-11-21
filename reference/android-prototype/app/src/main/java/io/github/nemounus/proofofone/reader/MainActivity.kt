@@ -193,9 +193,9 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             share.visibility = View.VISIBLE
             FaceStore.chipPhoto = result.faceImage; FaceStore.chipMime = result.faceMime
             faceBtn.visibility = if (result.faceImage != null) View.VISIBLE else View.GONE
-            DocStore.chip = result.chip
+            DocStore.chip = result.chip; DocStore.genuine = result.ok
             docBtn.visibility = if (result.chip != null) View.VISIBLE else View.GONE
-            enrolBtn.visibility = if (result.chip?.dscDer != null) View.VISIBLE else View.GONE
+            enrolBtn.visibility = if (result.ok && result.chip?.dscDer != null) View.VISIBLE else View.GONE
         }
     }
 }

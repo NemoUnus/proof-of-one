@@ -34,6 +34,8 @@ import kotlin.concurrent.thread
 /** The chip data, held in memory between the reader screen and this test only. */
 object DocStore {
     @Volatile var chip: DocInput.Chip? = null
+    /** The chip's data matched its security object and the security object's signature held. */
+    @Volatile var genuine = false
 }
 
 // TEST ONLY: the key of the synthetic uniqueness service used on this screen. Fingerprints

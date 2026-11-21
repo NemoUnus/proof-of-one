@@ -48,6 +48,10 @@ The secrets and the credential stay in the app's private storage (`member.json`,
 - **What it is not.** A check made on the phone can be bypassed by a modified app, and it does not detect a printed photo or a screen held to the camera. In the pilot it stops honest mistakes (someone else's passport picked up at home) and gives the measurements; the design's defences (the attested enclave's face comparison, Decision #33) are not in the pilot.
 - **Translated.** The face check's texts are in the six languages. The technical test tools (face check test, enrolment proof test, ballot proof benchmark) stay in English and are folded under **▸ Test tools (English)** on the first screen, so that volunteers do not meet them.
 
+### v0.10.1: clear reasons
+
+When enrolment cannot go on, the screen now says why, in the member's language, and the shared result keeps the technical detail in English. Checked on the phone before the face check: the chip not confirmed as genuine (the enrol button is not even shown), a signature type the pilot does not support, an expired passport. Refusals of the service: a country not in the pilot, a signing authority that could not be verified, today's limit reached, a timed-out session, a passport already enrolled. Also: no connection to the service (with the advice to use a VPN where it is blocked), the service busy, the proof failing on the phone, and a face that does not match the passport photo ("Only the passport's holder can enrol with it"). A retried restore is now added to the shared result.
+
 ## Face check test (v0.4, Decision Log #57)
 
 After a successful read, the button **Face check test** compares the chip photo (DG2) with a selfie, **on the phone**, and shows a similarity score. Its purpose is to set the threshold of the pilot's face check from real measurements: the passport holder, and other people, against the same chip photo. Nothing is stored or sent; the selfie file is deleted as soon as it is read; **Share the numbers** shares the scores only.

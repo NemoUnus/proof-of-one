@@ -115,8 +115,32 @@ class EnrolActivity : Activity() {
             memberFile().exists() -> { status.text = t("alreadyHere"); showNumber(JSONObject(memberFile().readText()).optString("number")) }
             DocStore.chip == null -> status.text = t("readFirst")
             DocStore.chip?.dscDer == null -> status.text = t("noCert")
+            // Clear reasons first, on the phone, before the face check (v0.10.1).
+            !DocStore.genuine -> status.text = t("notGenuine")
+            DocInput.suiteOf(DocStore.chip!!).first == null -> status.text = t("unsupported")
+            expired(DocStore.chip!!) -> status.text = t("expired")
             FaceStore.chipPhoto == null -> faceStatus.text = t("faceNoPhoto")
             else -> { faceStatus.text = t("facePrep"); thread { prepareChipFace() } }
+        }
+    }
+
+    /** The expiry date in the MRZ is before today (π_doc would refuse it: document_core, step 6). */
+    private fun expired(c: DocInput.Chip): Boolean = try {
+        val now = LocalDate.now()
+        DocInput.expected(c.dg1, now.year).expiryDay < DocInput.dayNumber(now.year, now.monthValue, now.dayOfMonth)
+    } catch (e: Exception) { false }
+
+    /** A refusal of the service, in words the member can act on; the report keeps the details. */
+    private fun explain(e: EnrolService.Failure, stage: String): String {
+        val m = e.message ?: ""
+        return when {
+            "not part of the pilot" in m -> L10n.t("notInPilot")
+            "used up" in m || "too many new signers" in m -> L10n.t("busyToday")
+            "session expired" in m -> L10n.t("sessionExpired")
+            "document is already enrolled" in m -> L10n.t("already")
+            stage == "signer" || "signer" in m -> L10n.t("signerRefused")
+            "test network did not answer" in m || e.status >= 500 -> L10n.t("serviceBusy")
+            else -> L10n.t("refused", m)
         }
     }
 
@@ -360,11 +384,16 @@ class EnrolActivity : Activity() {
             } catch (e: EnrolService.Failure) {
                 log += "REFUSED at step '$stage' (HTTP ${e.status}): ${e.message}"
                 shareText = log.joinToString("\n")
-                runOnUiThread { status.text = t("refused", e.message ?: ""); report.text = shareText; share.visibility = View.VISIBLE; start.isEnabled = !memberFile().exists() }
+                runOnUiThread { status.text = explain(e, stage); report.text = shareText; share.visibility = View.VISIBLE; start.isEnabled = !memberFile().exists() }
             } catch (e: Throwable) {
                 log += "ERROR at step '$stage': ${e.javaClass.simpleName}: ${e.message}"
                 shareText = log.joinToString("\n")
-                runOnUiThread { status.text = t("error", stage, e.message ?: ""); report.text = shareText; share.visibility = View.VISIBLE; start.isEnabled = !memberFile().exists() }
+                val why = when {
+                    e is java.io.IOException -> t("noService")
+                    stage == "proof" -> t("proofFail")
+                    else -> t("error", stage, e.message ?: "")
+                }
+                runOnUiThread { status.text = why; report.text = shareText; share.visibility = View.VISIBLE; start.isEnabled = !memberFile().exists() }
             } finally {
                 runOnUiThread { window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
             }
