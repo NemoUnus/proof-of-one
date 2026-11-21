@@ -163,3 +163,7 @@ Cloudflare Worker `proof-of-one-enrol` (`reference/enrol-service`), deployed fro
 | Its leaf `H(A)` | `9973527310186799711322196578667569713052864781320094708470015773211842834432` |
 
 At that time: no signers in the tree (root `19217088…593251`, the empty depth-16 tree), 0 evaluations, 0 enrolments. The secrets were made in the founder's browser with `web/enrol-secrets.html` and pasted straight into the dashboard; nobody else has seen them.
+
+### First real enrolment (21 November 2026, 19:20 UTC+4)
+
+The first enrolment of a real passport with the live service, from the Android app v0.8 (Decision #57; the founder's own passport, no other volunteer yet). The signer's certificate was first refused: the Workers runtime will not import RSA keys whose public exponent is not 3 or 65537, and the issuing state's CSCA uses another one; RSA signatures are now checked with BigInt arithmetic (update 150). Then, in 70 s: the signer was checked against its CSCA and added to the tree (position 0); the issuing state's rule (person key from the personal number in DG13) was applied; both fingerprints were computed through `/evaluate` and their DLEQ proofs verified on the phone; π_doc was made and verified on the phone in 3.7 s with the real tree path, then verified by `DocVerifier` through `eth_call`; the credential was signed and kept on the phone. Registration on the ledger (π_reg) is the next step. As for every pilot record, this enrolment is deleted with the service's store after the pilot.
