@@ -137,7 +137,7 @@ class ChipReader(private val isoDep: IsoDep, private val key: BACKey) {
             if (sigOk && pub is RSAPublicKey && content != null && attrs != null) {
                 val d13 = extra[13]?.takeIf { hashes[13]?.contentEquals(md.digest(it)) == true }
                 chip = DocInput.Chip(dg1Bytes, content, attrs, signer.signature, pub.modulus, pub.publicExponent,
-                    sod.digestAlgorithm, sod.signerInfoDigestAlgorithm, sigAlg, d13)
+                    sod.digestAlgorithm, sod.signerInfoDigestAlgorithm, sigAlg, d13, dsc?.encoded)
             }
         } catch (e: Exception) {
             r.appendLine("signature check error: ${e.message ?: e.javaClass.simpleName}")

@@ -262,6 +262,10 @@ fn proof_json(p: &Proof<Bn254>) -> String {
 
 /// Minimal reader of the .wtns format (iden3 binfile: header section 1, values section 2).
 pub mod fingerprint;
+pub mod member;
+// Poseidon (circomlib parameters), shared with the enrolment service's core.
+#[path = "../../service-core/src/poseidon.rs"]
+pub mod poseidon;
 
 pub fn parse_wtns(b: &[u8]) -> Result<Vec<Fr>, Error> {
     let u32_at = |o: usize| u32::from_le_bytes(b[o..o + 4].try_into().unwrap()) as usize;
@@ -384,6 +388,15 @@ mod android {
             let a: serde_json::Value = serde_json::from_str(&s(&mut env, &answer)?)?;
             super::fingerprint::complete(&g, &p, &k, &a)
         })();
+        env.new_string(json_or_error(r)).map(|x| x.into_raw()).unwrap_or(std::ptr::null_mut())
+    }
+
+    /// The member's secrets for a new identity (member.rs), from random bytes (hex, ≥ 192 bytes).
+    #[no_mangle]
+    pub extern "system" fn Java_io_github_nemounus_proofofone_reader_NativeProver_memberNew<'l>(
+        mut env: JNIEnv<'l>, _c: JClass<'l>, rand: JString<'l>,
+    ) -> jstring {
+        let r = (|| -> Result<serde_json::Value, super::Error> { super::member::new_member(&hex(&s(&mut env, &rand)?)?) })();
         env.new_string(json_or_error(r)).map(|x| x.into_raw()).unwrap_or(std::ptr::null_mut())
     }
 

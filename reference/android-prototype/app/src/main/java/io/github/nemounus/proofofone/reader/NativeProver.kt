@@ -28,6 +28,9 @@ object NativeProver {
     external fun fpPrepare(helperGraphPath: String, dg1Hex: String, currentYear: Int, path: Int, dg13Hex: String, pnTag: Int): String
     // Round 2: checks the service's DLEQ proofs; returns π_doc's fingerprint inputs.
     external fun fpComplete(helperGraphPath: String, prepare: String, serviceKey: String, answer: String): String
+    // The member's secrets for a new identity, from random bytes (hex, at least 192 bytes):
+    // {"s","salt","rho","idc","cm","cn"} (enrolment.js newMember). Only cm leaves the phone.
+    external fun memberNew(randHex: String): String
     // TEST ONLY: the answer of a synthetic service holding key k, until the real service exists.
     external fun fpTestService(helperGraphPath: String, k: String, pB: String, dB: String): String
 }

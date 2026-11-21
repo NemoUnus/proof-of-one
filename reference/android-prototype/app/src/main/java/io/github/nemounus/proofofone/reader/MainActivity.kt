@@ -25,9 +25,9 @@ import java.security.Security
 /**
  * Test app for schedule activity 0.8: reads a passport chip and checks it on the phone.
  * The three values from the passport's machine-readable zone open the chip (BAC/PACE);
- * they stay in memory only and are cleared after each read. The app has no internet
- * permission. The report can be shared by the user; it holds no name, document number
- * or birth date.
+ * they stay in memory only and are cleared after each read. Only the enrolment screen
+ * (EnrolActivity, v0.8) uses the internet, and only to the pilot's enrolment service. The
+ * report can be shared by the user; it holds no name, document number or birth date.
  */
 class MainActivity : Activity(), NfcAdapter.ReaderCallback {
 
@@ -40,6 +40,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
     private lateinit var share: Button
     private lateinit var faceBtn: Button
     private lateinit var docBtn: Button
+    private lateinit var enrolBtn: Button
     private var key: BACKey? = null
     private var shareText = ""
 
@@ -87,6 +88,11 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             setOnClickListener { startActivity(Intent(this@MainActivity, DocProofActivity::class.java)) }
         }
         col.addView(docBtn)
+        enrolBtn = Button(this).apply {
+            text = "Enrol with the pilot service (sends the proof)"; visibility = View.GONE
+            setOnClickListener { startActivity(Intent(this@MainActivity, EnrolActivity::class.java)) }
+        }
+        col.addView(enrolBtn)
         col.addView(Button(this).apply {
             text = "Ballot proof benchmark (native prover)"
             setOnClickListener { startActivity(Intent(this@MainActivity, ProverActivity::class.java)) }
@@ -159,6 +165,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             faceBtn.visibility = if (result.faceImage != null) View.VISIBLE else View.GONE
             DocStore.chip = result.chip
             docBtn.visibility = if (result.chip != null) View.VISIBLE else View.GONE
+            enrolBtn.visibility = if (result.chip?.dscDer != null) View.VISIBLE else View.GONE
         }
     }
 }

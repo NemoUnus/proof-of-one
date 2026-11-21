@@ -27,8 +27,8 @@ const Z_MAP: u64 = 5;
 
 fn fr(s: &str) -> Result<Fr, Error> { Fr::from_str(s).map_err(|_| format!("bad field element {s}").into()) }
 fn sc(s: &str) -> Result<Sc, Error> { Sc::from_str(s).map_err(|_| format!("bad scalar {s}").into()) }
-fn dec<F: PrimeField>(x: &F) -> String { x.into_bigint().to_string() }
-fn g8() -> Pt {
+pub(crate) fn dec<F: PrimeField>(x: &F) -> String { x.into_bigint().to_string() }
+pub(crate) fn g8() -> Pt {
     (fr("5299619240641551281634865583518297030282874472190772894086521144482721001553").unwrap(),
      fr("16950150798460657717958625567821834550301663161624707787222815936182638968203").unwrap())
 }
@@ -47,7 +47,7 @@ fn mul_bits(p: &Pt, bits_be: &[bool]) -> Pt {
     for &b in bits_be { r = add(&r, &r); if b { r = add(&r, p); } }
     r
 }
-fn mul(p: &Pt, k: &Sc) -> Pt { mul_bits(p, &k.into_bigint().to_bits_be()) }
+pub(crate) fn mul(p: &Pt, k: &Sc) -> Pt { mul_bits(p, &k.into_bigint().to_bits_be()) }
 fn on_curve(p: &Pt) -> bool {
     let (x2, y2) = (p.0 * p.0, p.1 * p.1);
     Fr::from(A_ED) * x2 + y2 == Fr::one() + Fr::from(D_ED) * x2 * y2

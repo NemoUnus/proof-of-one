@@ -1,6 +1,6 @@
 # Chip reader and native prover — Android test app (schedule activities 0.8 and 1.4-00)
 
-> **Test app only. Not audited, not for real enrolment.** It reads a passport chip and checks it on the phone; it does not create an identity and sends nothing anywhere (it has no internet permission).
+> **Test app only. Not audited.** It reads a passport chip and checks it on the phone. Since v0.8 one screen, **Enrol with the pilot service**, enrols the passport with the pilot's enrolment service (Decision Log #57): the only screen that sends anything, and only to that service.
 
 ## What it does
 
@@ -21,6 +21,19 @@ The report also measures what the zero-knowledge proof π_doc must handle on rea
 The button **Ballot proof benchmark (native prover)** opens a second screen. It makes the ballot proof π_vote three times with the native prover ([`../native-prover/`](../native-prover/)), from the same synthetic input and TEST-ONLY key as the browser benchmark, checks it on the phone and shows a result to share. It needs no passport and sends nothing. The app is built for 64-bit ARM phones only.
 
 Since v0.3 a second button runs the **enrolment proof π_doc** benchmark with a TEST-ONLY random key; since v0.5 it proves suite 2 (749,147 constraints) from a synthetic passport, with the witness computed on the phone (see below).
+
+## Enrolment with the pilot service (v0.8, Decision Log #57 and #58)
+
+After a passport is read, **Enrol with the pilot service** runs the whole enrolment against the pilot's service ([`../enrol-service`](../enrol-service), [design](../../docs/specs/pilot-enrolment-service-v0.1.md)):
+
+1. the signer's certificate goes to `/signer`, which checks it against the issuing state's CSCA and adds it to the tree of checked signers; the app takes its path from `/path`;
+2. a session gives a fresh challenge, the date and the issuing state's rule (person-key path, DG13 field);
+3. the member's secrets are made on the phone (`member.rs`, as `enrolment.js newMember`); only the commitment `cm` leaves the phone;
+4. the keyed fingerprints: the blinded points go to `/evaluate`, the answers are checked against the service's published key (DLEQ);
+5. π_doc is made on the phone with the real tree path, the challenge and the date (no test tree);
+6. `/enrol` checks π_doc (through the verifier contract), the session, the rule and the uniqueness of both fingerprints, and signs the credential.
+
+The secrets and the credential stay in the app's private storage (`member.json`, no backup); uninstalling the app deletes them. Sent to the service: the signer's certificate (public), the issuing state, two blinded points, π_doc and its public values (birth date, sex, nationality, expiry month, face commitment, the two keyed fingerprints). Never sent: the photo, the MRZ, the document number, the personal number, the name. A passport can be enrolled once; the face check does not yet gate this screen (its threshold is still being measured).
 
 ## Face check test (v0.4, Decision Log #57)
 
@@ -82,8 +95,8 @@ The APK is debug-signed. On Android, allow installing apps from the file manager
 
 ## Privacy
 
-- No internet permission; the app cannot send data by itself.
-- The three access values and the chip data stay in memory and are cleared after each read; nothing is written to storage.
+- Internet (since v0.8) is used by the enrolment screen only, and only to the pilot's enrolment service. The other screens send nothing.
+- The three access values and the chip data stay in memory and are cleared after each read. The only thing written to storage is the enrolled member's secrets and credential (`member.json`, private to the app).
 - The screen is protected from screenshots while the app is open (`FLAG_SECURE`). Use **Share** to send the report.
 
 ## Dependencies and licences

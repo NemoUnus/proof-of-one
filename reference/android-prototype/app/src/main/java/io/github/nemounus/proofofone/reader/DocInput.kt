@@ -41,6 +41,7 @@ object DocInput {
         val sigHash: String,         // digest of the CMS signature
         val sigOid: String,          // signature algorithm OID
         val dg13: ByteArray? = null, // DG13 (national use), where the chip has it and its hash matched
+        val dscDer: ByteArray? = null, // the document signer's certificate (DER), sent to the enrolment service's /signer
     )
 
     /** The suite the chip's signature fits, or a reason why none does. */
@@ -239,6 +240,14 @@ object DocInput {
         try { dg13Fields(it).filter { (_, v) -> v.size <= 31 && v.count { x -> x in 0x30..0x39 } == 10 }.singleOrNull()?.first } catch (e: IllegalArgumentException) { null }
     }
 
+    /** The input with the signer's path in the tree of checked signers (from the enrolment service's /path). */
+    fun withTree(json: String, root: String, siblings: List<String>, pathIndex: List<String>): String {
+        require(json.endsWith("}") && siblings.size == DEPTH && pathIndex.size == DEPTH) { "bad tree path" }
+        fun arr(xs: List<String>) = xs.joinToString(",", "[", "]") { "\"$it\"" }
+        return json.dropLast(1) + ",\"dscRoot\":\"$root\",\"dscSiblings\":${arr(siblings)},\"dscPathIndex\":${arr(pathIndex)}}"
+    }
+    /** The issuing state of a TD3 passport, from the MRZ (line 1, characters 3–5). */
+    fun issuerOf(dg1: ByteArray): String = String(dg1, 5 + 2, 3, Charsets.US_ASCII)
     /** The input with the fingerprint inputs (from NativeProver.fpComplete) added. */
     fun withKeys(json: String, keys: String): String {
         require(json.endsWith("}") && keys.startsWith("{") && keys.length > 2) { "bad JSON" }

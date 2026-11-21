@@ -7,7 +7,9 @@
     <queries>
         <intent><action android:name="android.media.action.IMAGE_CAPTURE" /></intent>
     </queries>
-    <!-- No internet permission: the app cannot send anything anywhere. -->
+    <!-- Internet (v0.8): only for the enrolment screen, which talks to the pilot's enrolment
+         service alone (EnrolService.kt). The other screens send nothing. -->
+    <uses-permission android:name="android.permission.INTERNET" />
     <application
         android:label="Proof of One reader (test)"
         android:allowBackup="false"
@@ -22,6 +24,7 @@
         <activity android:name=".ProverActivity" android:exported="false" />
         <activity android:name=".FaceActivity" android:exported="false" />
         <activity android:name=".DocProofActivity" android:exported="false" />
+        <activity android:name=".EnrolActivity" android:exported="false" />
         <!-- Lets the camera app write the selfie into this app's cache; deleted once read. -->
         <provider android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.files" android:exported="false"

@@ -21,6 +21,8 @@ Files:
 
 Tests: `test/core.test.mjs` (the core against the JavaScript references), `test/service.test.mjs` (the Worker end to end, with the reference phone code, SQLite in place of D1 and a stand-in for the chain), `test/signers.test.mjs` (signers of synthetic countries, RSA and ECDSA CSCAs; leaves and paths against the reference code), `../contracts/test/doc-verifier.test.js` (the contract with the real proof, called with the Worker's own calldata). Node 22.
 
+`test/e2e.local.mjs` (not in CI, it needs the 179 MB TEST-ONLY key) runs the whole enrolment as the app does it, on one machine: a synthetic passport with the personal number in DG13, `/signer` and `/path`, a session, the member's secrets from the phone's native code, the fingerprints through `/evaluate` with the DLEQ proofs checked, π_doc from the native prover with the real tree path, and `/enrol` with the real `DocVerifier` on a local chain. On 21 November 2026: enrolled in 9 s, π_doc 5.5 s.
+
 **Measured (21 November 2026, Node 22 on a server):** the core takes 3.5–4.8 ms for `/evaluate` (two answers, two DLEQ proofs, two subgroup checks), 1.2 ms for the credential signature, about 1 ms for a signer's leaf and 1.5–2.5 ms for the tree with up to 20 signers; Workers' free plan allows about 10 ms of processor time per request. Verifying π_doc costs 375,678 gas, free by `eth_call`.
 
 **Configuration** (Settings → Variables and secrets of the Worker; nothing secret in this repository):
