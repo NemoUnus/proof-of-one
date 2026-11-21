@@ -72,4 +72,6 @@ jobs:
           git add reference/enrol-service/src/core.wasm
           if git diff --cached --quiet; then echo "core.wasm unchanged."; exit 0; fi
           git commit -m "enrol-service: core.wasm built and checked by CI ($(sha256sum reference/enrol-service/src/core.wasm | cut -c1-16))"
+          # the repository may have moved on while this ran
+          git pull --rebase --quiet origin main
           git push
