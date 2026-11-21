@@ -230,6 +230,22 @@ pub fn complete(helper_graph: &[u8], prep: &serde_json::Value, k_pub: &serde_jso
     Ok(out)
 }
 
+/// Decision #59: the member number and the backup seed, from the person key's point x and
+/// its OPRF value W = r⁻¹·Z (as memberSeeds in fingerprint.js). Call after `complete`,
+/// which checks the service's DLEQ proof. W is known only to the phone: the service sees
+/// F = H(DST_F, x, W) only, so it cannot compute either value from what it stores.
+pub fn member_seeds(prep: &serde_json::Value, answer: &serde_json::Value) -> Result<serde_json::Value, Error> {
+    let s = &prep["secret"];
+    let x = pt_of(&s["pX"])?;
+    let z = pt_of(&answer["pZ"])?;
+    let r = sc(s["pR"].as_str().ok_or("missing r")?)?;
+    let w = mul(&z, &r.inverse().ok_or("r = 0")?);
+    let h = |tag: &str| crate::poseidon::hash(&[Fr::from_be_bytes_mod_order(tag.as_bytes()), x.0, x.1, w.0, w.1]);
+    let number = h("PoO-member-number-v1")?;
+    let backup = h("PoO-member-backup-v1")?;
+    Ok(serde_json::json!({ "numberSeed": dec(&number), "backupSeed": dec(&backup), "memberNumber": crate::member::member_number(&number) }))
+}
+
 /// TEST ONLY: the service's answer for a blinded point, with a fixed nonce.
 pub fn evaluate_for_tests(helper_graph: &[u8], k: &str, pb: &serde_json::Value, db: &serde_json::Value) -> Result<serde_json::Value, Error> {
     let k = sc(k)?;

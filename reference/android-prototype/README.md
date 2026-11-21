@@ -35,6 +35,13 @@ After a passport is read, **Enrol with the pilot service** runs the whole enrolm
 
 The secrets and the credential stay in the app's private storage (`member.json`, no backup); uninstalling the app deletes them. Sent to the service: the signer's certificate (public), the issuing state, two blinded points, π_doc and its public values (birth date, sex, nationality, expiry month, face commitment, the two keyed fingerprints). Never sent: the photo, the MRZ, the document number, the personal number, the name. A passport can be enrolled once; the face check does not yet gate this screen (its threshold is still being measured).
 
+### v0.9: languages, member number, backup and restore (Decision #55, #59)
+
+- **Languages.** A menu at the top of the passport and enrolment screens: English, فارسی, العربية, Français, Español, Deutsch, with right-to-left layout for Persian and Arabic. The texts are drafts by the AI agents, marked as not yet reviewed; the technical test screens and reports stay in English.
+- **Member number.** After enrolment the app shows the member number (`ONE-XXXX-XXXX-XXXX-XXXX-C`) derived on the phone from the person key's OPRF value; the same passport gives the same number on any phone. It is never sent.
+- **Backup.** Before enrolling, the member chooses a password (8 characters or more). After enrolment the member file is encrypted (Argon2id, AES-256-GCM) and kept by the service, which cannot open it.
+- **Restore.** Enrolling again with the same passport on another phone shows "already enrolled" with the member number, and the password restores the same membership on that phone.
+
 ## Face check test (v0.4, Decision Log #57)
 
 After a successful read, the button **Face check test** compares the chip photo (DG2) with a selfie, **on the phone**, and shows a similarity score. Its purpose is to set the threshold of the pilot's face check from real measurements: the passport holder, and other people, against the same chip photo. Nothing is stored or sent; the selfie file is deleted as soon as it is read; **Share the numbers** shares the scores only.

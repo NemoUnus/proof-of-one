@@ -35,6 +35,22 @@ const ascii = (s) => BigInt("0x" + Buffer.from(s, "ascii").toString("hex"));
 const DST_H2C = ascii("PoO-fingerprint-h2c-v1");
 const DST_F = ascii("PoO-fingerprint-F-v1");
 const DST_DLEQ = ascii("PoO-fingerprint-dleq-v1");
+// Decision #59: the member number and the backup key come from the person key's OPRF value
+// W = k·x, which only the phone obtains (the service sees only F = H(DST_F, x, W)).
+const DST_NUMBER = ascii("PoO-member-number-v1");
+const DST_BACKUP = ascii("PoO-member-backup-v1");
+const B32 = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"; // Crockford's base 32: no I, L, O, U
+// The readable member number: the low 80 bits of the seed as 16 base-32 characters in four
+// groups, then a check character: the weighted sum (i + 1)·d_i of the 16 digits mod 31,
+// which catches any single wrong character and any swap of two neighbouring ones.
+function memberNumber(seed) {
+  let v = BigInt(seed) & ((1n << 80n) - 1n);
+  const d = [];
+  for (let i = 0; i < 16; i++) { d.unshift(Number(v & 31n)); v >>= 5n; }
+  const check = d.reduce((a, x, i) => a + (i + 1) * x, 0) % 31;
+  const s = d.map((x) => B32[x]).join("");
+  return `ONE-${s.slice(0, 4)}-${s.slice(4, 8)}-${s.slice(8, 12)}-${s.slice(12, 16)}-${B32[check]}`;
+}
 const PATH_NUMBER = 1n, PATH_NAME = 2n, TAG_DOCUMENT = 3n;
 
 const mod = (a, m = P) => ((a % m) + m) % m;
@@ -198,8 +214,15 @@ async function init() {
     };
   }
 
-  return { P, L, G, H, add, mul, valid, map, hashToCurve, prepare, complete, dg13Field, fields, personValues, documentValues, randomR, blind, evaluate,
+  // Decision #59: the member number and the backup seed, from the person key's x and W.
+  function memberSeeds(prep, Zp) {
+    const { W } = finish(prep.person.x, prep.person.r, Zp);
+    const numberSeed = H([DST_NUMBER, ...prep.person.x, ...W]), backupSeed = H([DST_BACKUP, ...prep.person.x, ...W]);
+    return { numberSeed, backupSeed, memberNumber: memberNumber(numberSeed) };
+  }
+
+  return { P, L, G, H, add, mul, valid, map, hashToCurve, prepare, complete, memberSeeds, dg13Field, fields, personValues, documentValues, randomR, blind, evaluate,
     verifyEvaluation, finish, keyOf: (k) => mul(G, k), PATH_NUMBER, PATH_NAME, TAG_DOCUMENT };
 }
 
-module.exports = { init, sqrt, isSquare, P, L, MA, Z, DST_H2C, DST_F, DST_DLEQ };
+module.exports = { init, sqrt, isSquare, P, L, MA, Z, DST_H2C, DST_F, DST_DLEQ, DST_NUMBER, DST_BACKUP, memberNumber };

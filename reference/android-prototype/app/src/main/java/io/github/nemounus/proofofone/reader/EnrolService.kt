@@ -13,7 +13,7 @@ class EnrolService(private val base: String = BASE) {
     companion object { const val BASE = "https://proof-of-one-enrol.nemounus.workers.dev" }
 
     /** A refusal or failure, with the service's own message where it gave one. */
-    class Failure(val status: Int, message: String) : Exception(message)
+    class Failure(val status: Int, message: String, val body: JSONObject? = null) : Exception(message)
 
     private fun call(method: String, path: String, body: JSONObject? = null): JSONObject {
         val c = (URL(base + path).openConnection() as HttpURLConnection).apply {
@@ -26,7 +26,7 @@ class EnrolService(private val base: String = BASE) {
             val code = c.responseCode
             val text = (if (code in 200..299) c.inputStream else c.errorStream)?.bufferedReader()?.use { it.readText() } ?: ""
             val j = try { JSONObject(text) } catch (e: Exception) { throw Failure(code, "unexpected answer (HTTP $code)") }
-            if (code !in 200..299) throw Failure(code, j.optString("error", "HTTP $code"))
+            if (code !in 200..299) throw Failure(code, j.optString("error", "HTTP $code"), j)
             return j
         } finally { c.disconnect() }
     }
@@ -36,6 +36,7 @@ class EnrolService(private val base: String = BASE) {
     fun signer(dscBase64: String, suite: Int) = call("POST", "/signer", JSONObject().put("dsc", dscBase64).put("suite", suite))
     fun path(leaf: String) = call("GET", "/path?leaf=$leaf")
     fun evaluate(session: String, pB: Any, dB: Any) = call("POST", "/evaluate", JSONObject().put("session", session).put("pB", pB).put("dB", dB))
+    fun backup(session: String, blob: String) = call("POST", "/backup", JSONObject().put("session", session).put("backup", blob))
     fun enrol(session: String, proof: JSONObject, publicSignals: Any) =
         call("POST", "/enrol", JSONObject().put("session", session).put("proof", proof).put("publicSignals", publicSignals))
 }

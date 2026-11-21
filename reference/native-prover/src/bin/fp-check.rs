@@ -4,7 +4,8 @@
 //   fp-check <fp_helper.graph> <vectors.json>
 // For each vector: round 1 with the vector's r gives its blinded points; a TEST-ONLY service
 // with the vector's key answers; round 2 checks the DLEQ proofs and must give exactly the
-// reference's π_doc inputs. A wrong proof and a wrong key must be refused.
+// reference's π_doc inputs, and the same member number and backup seed (Decision #59).
+// A wrong proof and a wrong key must be refused.
 use poo_native_prover::fingerprint as fp;
 fn main() {
     let a: Vec<String> = std::env::args().collect();
@@ -22,7 +23,9 @@ fn main() {
         let prep = fp::prepare(&g, &dg1, 2026, path, rule, Some((v["pR"].as_str().unwrap(), v["dR"].as_str().unwrap()))).expect("prepare");
         let ans = fp::evaluate_for_tests(&g, v["k"].as_str().unwrap(), &prep["pB"], &prep["dB"]).expect("evaluate");
         let inp = fp::complete(&g, &prep, &ans["K"], &ans).expect("complete");
-        let ok = inp == v["input"];
+        let mem = fp::member_seeds(&prep, &ans).expect("member seeds");
+        let ok = inp == v["input"] && mem == v["member"];
+        if mem != v["member"] { eprintln!("{name}: member seeds {mem}\nwant {}", v["member"]); }
         if !ok { bad += 1; eprintln!("{name}: got {inp}\nwant {}", v["input"]); }
         // refusals
         let mut wrong = ans.clone();

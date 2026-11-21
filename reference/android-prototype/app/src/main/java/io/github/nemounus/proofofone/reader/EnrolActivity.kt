@@ -1,12 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
-// Proof of One — enrolment with the pilot's service (Decision Log #57, #58; design
+// Proof of One — enrolment with the pilot's service (Decision Log #57, #58, #59; design
 // docs/specs/pilot-enrolment-service-v0.1.md). From the chip data read on the first screen:
 //   1. the signer's certificate to /signer, and its path in the tree of checked signers;
 //   2. a session (fresh challenge, the issuing state's rule);
 //   3. the member's secrets, made here (only the commitment cm leaves the phone);
-//   4. the keyed fingerprints: blinded points to /evaluate, the answers checked (DLEQ);
+//   4. the keyed fingerprints: blinded points to /evaluate, the answers checked (DLEQ); from
+//      the person key's OPRF value, the member number and the backup seed (#59);
 //   5. π_doc on this phone, with the real tree path, challenge and date;
-//   6. /enrol: the service checks π_doc and the fingerprints, and signs the credential.
+//   6. /enrol: the service checks π_doc and the fingerprints, and signs the credential;
+//   7. /backup: the member file, encrypted under the member's password and the backup seed.
+// When the person is already enrolled, the service answers with the encrypted backup instead,
+// and the member's password restores the same membership on this phone (#59).
 // The secrets and the credential are kept in this app's private storage (member.json);
 // uninstalling the app deletes them. The face, MRZ, document number, personal number and
 // name never leave the phone. TEST: TEST-ONLY proving key, test network, pilot service.
@@ -16,14 +20,15 @@ import android.app.Activity
 import android.content.Intent
 import android.graphics.Typeface
 import android.os.Bundle
+import android.text.InputType
 import android.util.Base64
 import android.view.View
 import android.view.WindowManager
 import android.widget.Button
+import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
-import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.math.BigInteger
@@ -33,32 +38,49 @@ import kotlin.concurrent.thread
 
 class EnrolActivity : Activity() {
     private lateinit var status: TextView
+    private lateinit var numberView: TextView
     private lateinit var report: TextView
+    private lateinit var pw1: EditText
+    private lateinit var pw2: EditText
     private lateinit var start: Button
+    private lateinit var restore: Button
     private lateinit var share: Button
     private var shareText = ""
+    // kept for a retried restore after a wrong password
+    private var pendingBackup: String? = null
+    private var pendingSeed: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        L10n.load(this)
         window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
+        fun t(k: String, vararg a: Any) = L10n.t(k, *a)
         val pad = (16 * resources.displayMetrics.density).toInt()
         val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(pad, pad, pad, pad) }
-        col.addView(TextView(this).apply { text = "Enrol with the pilot service"; textSize = 20f; setTypeface(null, Typeface.BOLD) })
-        col.addView(TextView(this).apply {
-            text = "Enrols this passport with the pilot's enrolment service (test network, TEST-ONLY keys). " +
-                "Sent: the signer's certificate (public), the issuing state, two blinded points, the enrolment proof and its public values " +
-                "(birth date, sex, nationality, expiry month, keyed fingerprints). Never sent: the photo, the MRZ, the document number, the personal number, the name.\n\n" +
-                "A passport can be enrolled once. Use a VPN if the service is blocked where you are. Keep the screen on (one to three minutes)."
-            setPadding(0, pad / 2, 0, 0)
-        })
-        start = Button(this).apply { text = "Enrol"; setOnClickListener { run() } }
+        L10n.dir(col)
+        col.addView(L10n.picker(this))
+        col.addView(TextView(this).apply { text = t("enrolTitle"); textSize = 20f; setTypeface(null, Typeface.BOLD) })
+        if (t("draft").isNotEmpty()) col.addView(TextView(this).apply { text = t("draft"); textSize = 12f })
+        col.addView(TextView(this).apply { text = t("enrolIntro"); setPadding(0, pad / 2, 0, 0) })
+        col.addView(TextView(this).apply { text = t("pwLabel"); setPadding(0, pad, 0, 0) })
+        fun pw(hint: String) = EditText(this).apply { this.hint = hint; inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD }
+        pw1 = pw(t("pw1")); col.addView(pw1)
+        pw2 = pw(t("pw2")); col.addView(pw2)
+        start = Button(this).apply { text = t("enrol"); setOnClickListener { run() } }
         col.addView(start)
+        restore = Button(this).apply { text = t("restore"); visibility = View.GONE; setOnClickListener { retryRestore() } }
+        col.addView(restore)
         status = TextView(this).apply { textSize = 16f; setPadding(0, pad / 2, 0, 0) }
         col.addView(status)
-        report = TextView(this).apply { typeface = Typeface.MONOSPACE; textSize = 12f; setTextIsSelectable(true); setPadding(0, pad, 0, 0) }
+        numberView = TextView(this).apply { textSize = 18f; setTypeface(null, Typeface.BOLD); setTextIsSelectable(true); setPadding(0, pad / 2, 0, 0); visibility = View.GONE }
+        col.addView(numberView)
+        report = TextView(this).apply {
+            typeface = Typeface.MONOSPACE; textSize = 12f; setTextIsSelectable(true); setPadding(0, pad, 0, 0)
+            layoutDirection = View.LAYOUT_DIRECTION_LTR; textDirection = View.TEXT_DIRECTION_LTR
+        }
         col.addView(report)
         share = Button(this).apply {
-            text = "Share the result"; visibility = View.GONE
+            text = t("shareResult"); visibility = View.GONE
             setOnClickListener {
                 startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, shareText) }, "Share"))
             }
@@ -66,13 +88,20 @@ class EnrolActivity : Activity() {
         col.addView(share)
         setContentView(ScrollView(this).apply { addView(col) })
         when {
-            memberFile().exists() -> { status.text = "This phone already holds an enrolled identity (member.json)."; start.isEnabled = false }
-            DocStore.chip == null -> { status.text = "Read a passport first."; start.isEnabled = false }
-            DocStore.chip?.dscDer == null -> { status.text = "The chip's signer certificate was not read. Read the passport again."; start.isEnabled = false }
+            memberFile().exists() -> { status.text = t("alreadyHere"); start.isEnabled = false; showNumber(JSONObject(memberFile().readText()).optString("number")) }
+            DocStore.chip == null -> { status.text = t("readFirst"); start.isEnabled = false }
+            DocStore.chip?.dscDer == null -> { status.text = t("noCert"); start.isEnabled = false }
         }
     }
 
     private fun memberFile() = File(filesDir, "member.json")
+    private fun saveMember(j: String) { val tmp = File(filesDir, "member.json.part"); tmp.writeText(j); tmp.renameTo(memberFile()) }
+
+    private fun showNumber(n: String?) {
+        if (n.isNullOrEmpty()) return
+        numberView.text = "${L10n.t("yourNumber")}\n$n\n${L10n.t("numberPrivate")}"
+        numberView.visibility = View.VISIBLE
+    }
 
     private fun file(name: String): String {
         val f = File(filesDir, name)
@@ -84,34 +113,59 @@ class EnrolActivity : Activity() {
         return f.absolutePath
     }
 
+    private fun retryRestore() {
+        val blob = pendingBackup ?: return
+        val seed = pendingSeed ?: return
+        val pw = pw1.text.toString()
+        restore.isEnabled = false
+        thread {
+            val plain = Backup.open(blob, pw, seed)
+            runOnUiThread {
+                restore.isEnabled = true
+                if (plain == null) { status.text = L10n.t("wrongPw"); return@runOnUiThread }
+                saveMember(JSONObject(plain).put("restoredDay", LocalDate.now().toString()).toString())
+                pendingBackup = null; pendingSeed = null
+                pw1.text.clear(); pw2.text.clear()
+                restore.visibility = View.GONE
+                status.text = L10n.t("restored")
+                showNumber(JSONObject(plain).optString("number"))
+            }
+        }
+    }
+
     private fun run() {
         val chip = DocStore.chip ?: return
+        fun t(k: String, vararg a: Any) = L10n.t(k, *a)
+        val password = pw1.text.toString()
+        if (password.length < 8) { status.text = t("pwShort"); return }
+        if (password != pw2.text.toString()) { status.text = t("pwDiffer"); return }
         start.isEnabled = false; share.visibility = View.GONE; report.text = ""
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        val log = mutableListOf("Proof of One pilot enrolment v0.8")
+        val log = mutableListOf("Proof of One pilot enrolment v0.9")
         fun step(s: String) = runOnUiThread { status.text = s }
         thread {
             var stage = "start"
+            var number: String? = null
             try {
                 val rnd = SecureRandom()
                 val hexOf = { x: ByteArray -> x.joinToString("") { "%02x".format(it) } }
                 val (suite, why) = DocInput.suiteOf(chip)
                 require(suite != null) { "this passport does not fit the proof yet: $why" }
                 // The files first: copying takes a minute the first time, and a session lasts 10.
-                stage = "files"; step("Preparing the files (first time only)…")
+                stage = "files"; step(t("sFiles"))
                 val pk = file("doc_s2_pk_c.bin"); val m = file("doc_s2_matrices.gzdata")
-                val g = file("document_s2.graph"); val t = file("dsc_test_tree_s2.graph"); val h = file("fp_helper.graph")
+                val g = file("document_s2.graph"); val tt = file("dsc_test_tree_s2.graph"); val h = file("fp_helper.graph")
                 require(suite.id == 2) { "the app carries the suite-2 proving key only" }
                 val svc = EnrolService()
                 val t0 = System.currentTimeMillis()
-                stage = "info"; step("Contacting the service…")
+                stage = "info"; step(t("sService"))
                 val info = svc.info()
                 log += "service: reached; ${info.getInt("enrolments")} enrolments before this one"
-                stage = "signer"; step("Checking the passport's signer with the service…")
+                stage = "signer"; step(t("sSigner"))
                 val sg = svc.signer(Base64.encodeToString(chip.dscDer, Base64.NO_WRAP), suite.id)
                 val path = svc.path(sg.getString("leaf"))
                 log += "signer: accepted (${if (sg.getBoolean("added")) "added to the tree now" else "already in the tree"}; tree position ${sg.getInt("index")})"
-                stage = "session"; step("Opening a session…")
+                stage = "session"; step(t("sService"))
                 val ses = svc.session(DocInput.issuerOf(chip.dg1))
                 val rule = ses.getJSONObject("rule")
                 val pathNo = rule.getString("path").toInt(); val pnSrc = rule.getString("pnSrc").toInt()
@@ -126,52 +180,89 @@ class EnrolActivity : Activity() {
                 if (member.has("error")) error("member secrets: " + member.getString("error"))
                 val rFace = BigInteger(128, rnd)
                 val built = DocInput.build(chip, today, BigInteger(member.getString("cm")), BigInteger(ses.getString("challenge")), rFace, pnTag)
-                // Keyed fingerprints.
-                stage = "fingerprints"; step("Computing the document fingerprints with the service…")
+                // Keyed fingerprints, then the member number and backup seed (#59).
+                stage = "fingerprints"; step(t("sKeys"))
                 val prep = JSONObject(NativeProver.fpPrepare(h, hexOf(chip.dg1), today.year, pathNo, if (pnTag != null) hexOf(chip.dg13!!) else "", pnTag ?: 0))
                 if (prep.has("error")) error("fingerprint, round 1: " + prep.getString("error"))
                 val ans = svc.evaluate(ses.getString("session"), prep.getJSONArray("pB"), prep.getJSONArray("dB"))
                 val keys = NativeProver.fpComplete(h, prep.toString(), info.getJSONArray("K").toString(), ans.toString())
                 if (JSONObject(keys).has("error")) error("fingerprint, round 2: " + JSONObject(keys).getString("error"))
+                val mem = JSONObject(NativeProver.fpMember(prep.toString(), ans.toString()))
+                if (mem.has("error")) error("member number: " + mem.getString("error"))
+                number = mem.getString("memberNumber")
+                val backupSeed = mem.getString("backupSeed")
                 log += "fingerprints: the service's answers verified (DLEQ) under its published key"
                 // π_doc with the real tree path.
-                stage = "proof"; step("Making the enrolment proof… keep the screen on.")
+                stage = "proof"; step(t("sProof"))
                 val sib = path.getJSONArray("siblings"); val idx = path.getJSONArray("pathIndex")
                 val input = DocInput.withTree(DocInput.withKeys(built.json, keys), path.getString("root"),
                     List(sib.length()) { sib.getString(it) }, List(idx.length()) { idx.getString(it) })
-                val r = JSONObject(NativeProver.proveDocInputs(pk, m, g, t, input))
+                val r = JSONObject(NativeProver.proveDocInputs(pk, m, g, tt, input))
                 if (r.has("error")) error("proof: " + r.getString("error"))
                 require(r.getBoolean("verified")) { "the proof did not verify on the phone" }
                 require(!r.optBoolean("testTree")) { "the test tree was used" }
                 log += "proof: made and verified on the phone in ${r.getLong("witnessMs") + r.getLong("proveMs")} ms"
-                // Enrol.
-                stage = "enrol"; step("Sending the proof to the service…")
-                val pub = r.getJSONArray("public")
-                val res = svc.enrol(ses.getString("session"), r.getJSONObject("proof"), pub)
+                // Enrol, or learn that this person is already enrolled.
+                stage = "enrol"; step(t("sSend"))
+                val res = try {
+                    svc.enrol(ses.getString("session"), r.getJSONObject("proof"), r.getJSONArray("public"))
+                } catch (e: EnrolService.Failure) {
+                    val b = e.body
+                    if (e.status == 409 && b != null && b.optBoolean("alreadyEnrolled")) {
+                        log += "ALREADY ENROLLED: the service recognised this person" + if (b.isNull("backup")) " (no backup kept)" else " (encrypted backup returned)"
+                        val blob = if (b.isNull("backup")) null else b.getString("backup")
+                        val plain = blob?.let { Backup.open(it, password, backupSeed) }
+                        if (plain != null) saveMember(JSONObject(plain).put("restoredDay", today.toString()).toString())
+                        log += if (plain != null) "RESTORED with the password" else if (blob != null) "backup not opened (password)" else "nothing to restore"
+                        shareText = log.joinToString("\n")
+                        runOnUiThread {
+                            showNumber(number)
+                            status.text = t("already") + "\n\n" + when {
+                                plain != null -> t("restored")
+                                blob != null -> { pendingBackup = blob; pendingSeed = backupSeed; restore.visibility = View.VISIBLE; t("wrongPw") + " " + t("restoreAsk") }
+                                else -> t("noBackup")
+                            }
+                            report.text = shareText; share.visibility = View.VISIBLE
+                            if (plain != null) { pw1.text.clear(); pw2.text.clear() }
+                        }
+                        return@thread
+                    }
+                    throw e
+                }
                 val cred = res.getJSONObject("credential")
                 val e = built.expected
                 val saved = JSONObject()
-                    .put("version", 1).put("service", EnrolService.BASE).put("enrolledDay", ses.getString("today"))
+                    .put("version", 2).put("service", EnrolService.BASE).put("enrolledDay", ses.getString("today"))
+                    .put("number", number)
                     .put("member", member).put("rFace", rFace.toString())
                     .put("attrs", JSONObject().put("birthDay", e.birthDay.toString()).put("sexCode", e.sexCode.toString())
                         .put("natCode", e.natCode.toString()).put("expMonth", e.expMonth.toString()))
                     .put("credential", cred).put("msg", res.getString("msg"))
                     .put("serviceKeys", JSONObject().put("K", info.getJSONArray("K")).put("A", info.getJSONArray("A")).put("keyLeaf", info.getString("keyLeaf")))
-                val tmp = File(filesDir, "member.json.part")
-                tmp.writeText(saved.toString()); tmp.renameTo(memberFile())
+                saveMember(saved.toString())
                 log += "ENROLLED: credential signed by the service and kept on this phone (member.json)"
                 log += "credential key equals the published key: ${if (cred.getJSONArray("A").toString() == info.getJSONArray("A").toString()) "yes" else "NO"}"
+                // The encrypted backup, in the same session (#59).
+                stage = "backup"; step(t("sBackup"))
+                val backedUp = try { svc.backup(ses.getString("session"), Backup.seal(saved.toString(), password, backupSeed)); true }
+                    catch (x: Exception) { log += "backup NOT stored: ${x.message}"; false }
+                if (backedUp) log += "backup: stored, encrypted (Argon2id + AES-GCM)"
                 log += "total time: ${(System.currentTimeMillis() - t0) / 1000} s (after the files)"
                 shareText = log.joinToString("\n")
-                runOnUiThread { status.text = "Enrolled. The credential is kept on this phone."; report.text = shareText; share.visibility = View.VISIBLE }
+                runOnUiThread {
+                    status.text = if (backedUp) t("enrolled") else t("noBackupStored")
+                    showNumber(number)
+                    pw1.text.clear(); pw2.text.clear()
+                    report.text = shareText; share.visibility = View.VISIBLE
+                }
             } catch (e: EnrolService.Failure) {
                 log += "REFUSED at step '$stage' (HTTP ${e.status}): ${e.message}"
                 shareText = log.joinToString("\n")
-                runOnUiThread { status.text = "The service refused: ${e.message}"; report.text = shareText; share.visibility = View.VISIBLE; start.isEnabled = true }
+                runOnUiThread { status.text = t("refused", e.message ?: ""); report.text = shareText; share.visibility = View.VISIBLE; start.isEnabled = !memberFile().exists() }
             } catch (e: Throwable) {
                 log += "ERROR at step '$stage': ${e.javaClass.simpleName}: ${e.message}"
                 shareText = log.joinToString("\n")
-                runOnUiThread { status.text = "Error at step '$stage': ${e.message}"; report.text = shareText; share.visibility = View.VISIBLE; start.isEnabled = !memberFile().exists() }
+                runOnUiThread { status.text = t("error", stage, e.message ?: ""); report.text = shareText; share.visibility = View.VISIBLE; start.isEnabled = !memberFile().exists() }
             } finally {
                 runOnUiThread { window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
             }

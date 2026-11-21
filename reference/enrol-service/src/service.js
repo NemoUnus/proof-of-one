@@ -14,6 +14,10 @@
 //                              held, adds its key to the tree of checked signers
 //   GET  /path?leaf=…          the root and a signer's path, for π_doc
 //   GET  /signers              the tree: leaves, suites, fingerprints of DSC and CSCA
+//   POST /backup {session, backup}
+//                              the member's encrypted backup, right after /enrol (#59); a
+//                              later enrolment of the same person, with a verified π_doc,
+//                              gets it back to restore the identity on a new phone
 //
 // It never receives the face, the MRZ, the document number, the personal number or the
 // name. It stores per member: person key, document key, issuing state, path, time.
@@ -39,8 +43,12 @@ const SESSION_SECONDS = 600;
 const SIGNERS_PER_DAY = 100;
 const CORS = { "access-control-allow-origin": "*", "access-control-allow-methods": "POST, GET, OPTIONS", "access-control-allow-headers": "content-type" };
 const reply = (status, body) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", ...CORS } });
-class Refusal extends Error { constructor(status, msg) { super(msg); this.status = status; } }
-const refuse = (status, msg) => { throw new Refusal(status, msg); };
+class Refusal extends Error { constructor(status, msg, extra = {}) { super(msg); this.status = status; this.extra = extra; } }
+const refuse = (status, msg, extra) => { throw new Refusal(status, msg, extra); };
+// Decision #59: the member's encrypted backup ("v1." + base64), opened only on the phone
+// with the member's password and a value of the person key's OPRF that only the phone gets.
+const BACKUP_MAX = 12000;
+const isBackup = (b) => typeof b === "string" && b.length <= BACKUP_MAX && /^v1\.[A-Za-z0-9+/]+={0,2}$/.test(b);
 
 // π_doc's public signals, in order (docs/specs/document-fingerprint-oprf-v0.1.md, §5).
 export const SIGNALS = ["birthDay", "sexCode", "natCode", "expMonth", "cFace", "personKey", "documentKey", "issuer",
@@ -169,12 +177,30 @@ async function enrol(env, deps, body, now) {
       .bind(v.personKey, v.documentKey, Number(v.issuer), Number(v.path), Math.floor(now / 1000)).run();
   } catch (e) {
     const m = String(e.message || e);
-    if (m.includes("members.fd")) refuse(409, "this document is already enrolled");
-    if (m.includes("members.fp")) refuse(409, "this person is already enrolled (a lost phone re-enrols through recovery)");
-    throw e;
+    if (!m.includes("UNIQUE")) throw e;
+    // The same person (Decision #59): the proof just verified shows this phone holds the
+    // document's signed data, so it gets the member's encrypted backup, if one was kept.
+    const known = await env.DB.prepare("SELECT backup FROM members WHERE fp = ?1").bind(v.personKey).first();
+    if (known) {
+      await count(env.DB, "refused:known-person");
+      refuse(409, "this person is already enrolled", { alreadyEnrolled: true, backup: known.backup || null });
+    }
+    refuse(409, "this document is already enrolled");
   }
+  await env.DB.prepare("UPDATE sessions SET fp = ?2 WHERE id = ?1").bind(s.id, v.personKey).run();
   await count(env.DB, "enrolments");
   return { credential: { rn: cred.rn, link: "0", epoch: String(env.EPOCH ?? "0"), A: cred.A, R8: cred.R8, S: cred.S }, msg: cred.msg };
+}
+
+// Decision #59: right after enrolment, in the same session, the phone stores the member's
+// encrypted backup (it holds the credential, so it can only be made after /enrol). Once.
+async function backup(env, deps, body, now) {
+  const s = await liveSession(env, body?.session, now);
+  if (s.state !== 2 || !s.fp) refuse(409, "enrol first");
+  if (!isBackup(body.backup)) refuse(400, "backup expected (v1., base64, at most 12,000 characters)");
+  const r = await env.DB.prepare("UPDATE members SET backup = ?2 WHERE fp = ?1 AND backup IS NULL").bind(s.fp, body.backup).run();
+  if (r.meta.changes !== 1) refuse(409, "a backup is already kept for this member");
+  return { stored: true };
 }
 
 // ---- the tree of checked signers (design §5)
@@ -237,9 +263,10 @@ export async function handle(request, env, deps = {}) {
     if (path === "/evaluate") return reply(200, await evaluate(env, deps, body, now));
     if (path === "/enrol") return reply(200, await enrol(env, deps, body, now));
     if (path === "/signer") return reply(200, await signer(env, deps, body, now));
+    if (path === "/backup") return reply(200, await backup(env, deps, body, now));
     return reply(404, { error: "not found" });
   } catch (e) {
-    if (e instanceof Refusal) return reply(e.status, { error: e.message });
+    if (e instanceof Refusal) return reply(e.status, { error: e.message, ...e.extra });
     return reply(500, { error: "internal error" });
   }
 }

@@ -391,6 +391,19 @@ mod android {
         env.new_string(json_or_error(r)).map(|x| x.into_raw()).unwrap_or(std::ptr::null_mut())
     }
 
+    /// Decision #59: member number and backup seed, after fpComplete has checked the answer.
+    #[no_mangle]
+    pub extern "system" fn Java_io_github_nemounus_proofofone_reader_NativeProver_fpMember<'l>(
+        mut env: JNIEnv<'l>, _c: JClass<'l>, prep: JString<'l>, answer: JString<'l>,
+    ) -> jstring {
+        let r = (|| -> Result<serde_json::Value, super::Error> {
+            let p: serde_json::Value = serde_json::from_str(&s(&mut env, &prep)?)?;
+            let a: serde_json::Value = serde_json::from_str(&s(&mut env, &answer)?)?;
+            super::fingerprint::member_seeds(&p, &a)
+        })();
+        env.new_string(json_or_error(r)).map(|x| x.into_raw()).unwrap_or(std::ptr::null_mut())
+    }
+
     /// The member's secrets for a new identity (member.rs), from random bytes (hex, ≥ 192 bytes).
     #[no_mangle]
     pub extern "system" fn Java_io_github_nemounus_proofofone_reader_NativeProver_memberNew<'l>(

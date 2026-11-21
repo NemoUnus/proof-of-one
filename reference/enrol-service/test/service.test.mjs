@@ -104,7 +104,7 @@ test("a member enrols once: credential verifies, fingerprints reserved, counts s
   assert.strictEqual(calls[0].params[0].data.length, 2 + 8 + 64 * (8 + 24));
   const rows = env.DB.sql.prepare("SELECT * FROM members").all();
   assert.strictEqual(rows.length, 1);
-  assert.deepStrictEqual(Object.keys(rows[0]).sort(), ["created", "fd", "fp", "issuer", "path"]);
+  assert.deepStrictEqual(Object.keys(rows[0]).sort(), ["backup", "created", "fd", "fp", "issuer", "path"]);
   assert.strictEqual(rows[0].fp, p.out.personKey.toString());
   const info = (await call("GET", "/info")).body;
   assert.strictEqual(info.enrolments, 1);
@@ -117,10 +117,11 @@ test("the same document again, or the same person with a new document, is refuse
   assert.strictEqual((await (await phone()).enrol()).status, 200);
   const again = await (await phone()).enrol();
   assert.strictEqual(again.status, 409);
-  assert.match(again.body.error, /document is already enrolled/);
+  assert.match(again.body.error, /person is already enrolled/); // the same passport is the same person
   const renewed = await (await phone({ ...A, number: "Y87654321", expiry: "360101" })).enrol();
   assert.strictEqual(renewed.status, 409);
   assert.match(renewed.body.error, /person is already enrolled/);
+  assert.strictEqual(renewed.body.backup, null); // no backup was stored
   assert.strictEqual((await (await phone({ ...A, personal: "99999999999999", number: "Z11111111" })).enrol()).status, 200);
   assert.strictEqual(env.DB.sql.prepare("SELECT count(*) AS n FROM members").get().n, 2);
 });
@@ -209,4 +210,32 @@ test("calldata: G2 coordinates are swapped for the precompile", () => {
 test("day numbers as π_doc's", () => {
   assert.strictEqual(dayNumber(Date.UTC(1900, 0, 1)), 0);
   assert.strictEqual(dayNumber(Date.UTC(2026, 10, 21, 23)), Math.round((Date.UTC(2026, 10, 21) - Date.UTC(1900, 0, 1)) / 86400000));
+});
+
+// Decision #59: the encrypted backup, kept after enrolment and given back to the same person.
+test("backup: stored once after enrolment, returned when the same person enrols again", async () => {
+  const p = await phone();
+  assert.strictEqual((await call("POST", "/backup", { session: p.session, backup: "v1.QUJD" })).status, 409); // before /enrol
+  assert.strictEqual((await p.enrol()).status, 200);
+  assert.strictEqual((await call("POST", "/backup", { session: p.session, backup: "not a backup" })).status, 400);
+  const ok = await call("POST", "/backup", { session: p.session, backup: "v1.QUJDRA==" });
+  assert.strictEqual(ok.status, 200, JSON.stringify(ok.body));
+  assert.strictEqual((await call("POST", "/backup", { session: p.session, backup: "v1.RUZHSA==" })).status, 409); // once
+  // the same passport again, on "another phone": refused, with the backup
+  const again = await (await phone()).enrol();
+  assert.strictEqual(again.status, 409);
+  assert.strictEqual(again.body.alreadyEnrolled, true);
+  assert.strictEqual(again.body.backup, "v1.QUJDRA==");
+  // a renewed passport of the same person: also the same person
+  const renewed = await (await phone({ ...A, number: "Y87654321", expiry: "360101" })).enrol();
+  assert.strictEqual(renewed.body.backup, "v1.QUJDRA==");
+  // another person gets nothing of it
+  const other = await (await phone({ ...A, personal: "99999999999999", number: "Z11111111" })).enrol();
+  assert.strictEqual(other.status, 200);
+  assert.ok(!("backup" in other.body));
+  // a proof that does not verify gets no backup
+  chainSays = false;
+  const bad = await (await phone()).enrol();
+  assert.strictEqual(bad.status, 403);
+  assert.ok(!("backup" in bad.body));
 });

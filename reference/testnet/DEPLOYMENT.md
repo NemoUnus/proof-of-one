@@ -61,7 +61,7 @@ After the close, the encrypted totals and ballot chain shown by the page go to [
 
 ## Notes
 
-- **Wallet warning.** MetaMask flagged the page (served from `github.io`) as possibly deceptive, and marked each transaction as a high-risk request. Each request was checked before it was confirmed: a contract deployment or a call, no change to the wallet’s assets, and a fee of a few cents at mainnet prices. The page is open source in this folder. A report to MetaMask asking for a review of the warning is still to be sent.
+- **Wallet warning.** MetaMask flagged the page (served from `github.io`) as possibly deceptive, and marked each transaction as a high-risk request. Each request was checked before it was confirmed: a contract deployment or a call, no change to the wallet’s assets, and a fee of a few cents at mainnet prices. The page is open source in this folder. The warning was no longer shown on 21 November 2026 (deployment 4), so no report was sent.
 - **Test coins** came from a faucet that asks only for an address and a captcha.
 
 ## Deployment 2 and test poll 3 (from 10 November 2026)

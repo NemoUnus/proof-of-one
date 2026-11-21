@@ -15,7 +15,7 @@ The only server of the pilot that learns anything about a member's document ([de
 Files:
 
 - `src/service.js`: the requests and checks; `src/signers.js` and `src/x509.js`: the tree of checked signers and the certificate checks. RSA signatures (PKCS #1 v1.5 and PSS) are checked with BigInt arithmetic, because the Workers runtime refuses to import RSA keys whose exponent is not 3 or 65537, and real CSCAs use others (found at the first real enrolment, 21 November 2026); ECDSA uses WebCrypto; `src/worker.js`: the entry point; `src/core.js` and `src/core.wasm`: the cryptography from [`../service-core`](../service-core) (Rust), built and committed by the workflow `enrol-service.yml`.
-- `schema.sql`: the D1 tables. Per member only person key, document key, issuing state, path, time.
+- `schema.sql`: the D1 tables. Per member only person key, document key, issuing state, path, time, and the encrypted backup of Decision #59 (opened only on the phone, with the member's password and a value of the person key's OPRF that only the phone obtains).
 - `keys/doc_s2_vkey.json`: the verifying key of π_doc (suite 2) under the TEST-ONLY key the app uses (`prove-mem`, seed 1, reproducible); the Android workflow checks that its key gives exactly this. `keys/doc_s2_proof_example.json`: a proof of a synthetic passport.
 - `scripts/gen-doc-verifier.cjs`: `../contracts/src/DocVerifier.sol` from the verifying key (snarkjs's template). `scripts/bench-core.mjs`: time per call of the core.
 

@@ -31,6 +31,9 @@ object NativeProver {
     // The member's secrets for a new identity, from random bytes (hex, at least 192 bytes):
     // {"s","salt","rho","idc","cm","cn"} (enrolment.js newMember). Only cm leaves the phone.
     external fun memberNew(randHex: String): String
+    // Decision #59, after fpComplete: {"numberSeed","backupSeed","memberNumber"} from the
+    // person key's OPRF value, which only the phone obtains.
+    external fun fpMember(prep: String, answer: String): String
     // TEST ONLY: the answer of a synthetic service holding key k, until the real service exists.
     external fun fpTestService(helperGraphPath: String, k: String, pB: String, dB: String): String
 }

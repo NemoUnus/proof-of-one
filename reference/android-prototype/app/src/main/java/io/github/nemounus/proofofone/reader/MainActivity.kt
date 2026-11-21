@@ -2,6 +2,8 @@
 package io.github.nemounus.proofofone.reader
 
 import android.app.Activity
+import org.json.JSONObject
+import java.io.File
 import android.content.Intent
 import android.graphics.Typeface
 import android.nfc.NfcAdapter
@@ -51,26 +53,40 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         Security.insertProviderAt(BouncyCastleProvider(), 1)
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE) // no screenshots while values are on screen
         nfc = NfcAdapter.getDefaultAdapter(this)
+        L10n.load(this)
+        fun t(k: String, vararg a: Any) = L10n.t(k, *a)
 
         val pad = (16 * resources.displayMetrics.density).toInt()
         val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(pad, pad, pad, pad) }
+        L10n.dir(col)
+        col.addView(L10n.picker(this))
         fun label(t: String) = TextView(this).apply { text = t; setPadding(0, pad / 2, 0, 0) }
         fun field(hint: String, digits: Boolean) = EditText(this).apply {
             this.hint = hint
             inputType = if (digits) InputType.TYPE_CLASS_NUMBER else InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
         }
         col.addView(TextView(this).apply {
-            text = "Proof of One chip reader (test)"; textSize = 20f; setTypeface(null, Typeface.BOLD)
+            text = t("title"); textSize = 20f; setTypeface(null, Typeface.BOLD)
         })
-        col.addView(label("Enter three values from the bottom lines of the passport photo page. They are used only to open the chip and are cleared after reading. Nothing is stored or sent."))
-        col.addView(label("Document number")); docNo = field("as printed", false); col.addView(docNo)
-        col.addView(label("Date of birth (YYMMDD)")); birth = field("for example 850412", true); col.addView(birth)
-        col.addView(label("Date of expiry (YYMMDD)")); expiry = field("for example 310415", true); col.addView(expiry)
-        col.addView(Button(this).apply { text = "Ready: hold the passport to the phone"; setOnClickListener { arm() } })
+        if (t("draft").isNotEmpty()) col.addView(TextView(this).apply { text = t("draft"); textSize = 12f })
+        // the member number, once enrolled (Decision #59)
+        File(filesDir, "member.json").takeIf { it.exists() }?.let { f ->
+            val n = try { JSONObject(f.readText()).optString("number") } catch (e: Exception) { "" }
+            if (n.isNotEmpty()) col.addView(TextView(this).apply {
+                text = "${t("yourNumber")}: $n\n${t("numberPrivate")}"; setTypeface(null, Typeface.BOLD); setPadding(0, pad / 2, 0, 0)
+            })
+        }
+        col.addView(label(t("intro")))
+        col.addView(label(t("docNo"))); docNo = field(t("docNoHint"), false); col.addView(docNo)
+        col.addView(label(t("birth"))); birth = field(t("dateHint"), true); col.addView(birth)
+        col.addView(label(t("expiry"))); expiry = field(t("dateHint"), true); col.addView(expiry)
+        // dates and numbers are typed left to right in every language
+        for (e in listOf(docNo, birth, expiry)) { e.textDirection = View.TEXT_DIRECTION_LTR }
+        col.addView(Button(this).apply { text = t("ready"); setOnClickListener { arm() } })
         status = TextView(this).apply { setPadding(0, pad, 0, 0); textSize = 16f }
         col.addView(status)
         share = Button(this).apply {
-            text = "Share report and signer certificate"; visibility = View.GONE
+            text = t("shareReport"); visibility = View.GONE
             setOnClickListener {
                 startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
                     type = "text/plain"; putExtra(Intent.EXTRA_TEXT, shareText)
@@ -78,6 +94,12 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             }
         }
         col.addView(share)
+        enrolBtn = Button(this).apply {
+            text = t("enrolBtn"); visibility = View.GONE
+            setOnClickListener { startActivity(Intent(this@MainActivity, EnrolActivity::class.java)) }
+        }
+        col.addView(enrolBtn)
+        col.addView(label(t("testTools")))
         faceBtn = Button(this).apply {
             text = "Face check test (chip photo vs. a selfie)"; visibility = View.GONE
             setOnClickListener { startActivity(Intent(this@MainActivity, FaceActivity::class.java)) }
@@ -88,16 +110,14 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             setOnClickListener { startActivity(Intent(this@MainActivity, DocProofActivity::class.java)) }
         }
         col.addView(docBtn)
-        enrolBtn = Button(this).apply {
-            text = "Enrol with the pilot service (sends the proof)"; visibility = View.GONE
-            setOnClickListener { startActivity(Intent(this@MainActivity, EnrolActivity::class.java)) }
-        }
-        col.addView(enrolBtn)
         col.addView(Button(this).apply {
             text = "Ballot proof benchmark (native prover)"
             setOnClickListener { startActivity(Intent(this@MainActivity, ProverActivity::class.java)) }
         })
-        report = TextView(this).apply { typeface = Typeface.MONOSPACE; textSize = 12f; setTextIsSelectable(true); setPadding(0, pad, 0, 0) }
+        report = TextView(this).apply {
+            typeface = Typeface.MONOSPACE; textSize = 12f; setTextIsSelectable(true); setPadding(0, pad, 0, 0)
+            layoutDirection = View.LAYOUT_DIRECTION_LTR; textDirection = View.TEXT_DIRECTION_LTR // the report stays in English
+        }
         col.addView(report)
         val scroll = ScrollView(this).apply { addView(col) }
         // Android 15 draws apps edge to edge: keep the content clear of the status and navigation bars.
@@ -114,9 +134,9 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         setContentView(scroll)
 
         status.text = when {
-            nfc == null -> "This phone has no NFC reader."
-            nfc?.isEnabled != true -> "NFC is off. Turn it on in the phone settings."
-            else -> "Enter the three values, then tap Ready."
+            nfc == null -> t("noNfc")
+            nfc?.isEnabled != true -> t("nfcOff")
+            else -> t("enterValues")
         }
     }
 
@@ -125,11 +145,11 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         val b = birth.text.toString().trim()
         val e = expiry.text.toString().trim()
         if (d.isEmpty() || b.length != 6 || e.length != 6) {
-            status.text = "Check the values: document number, and both dates as six digits (YYMMDD)."
+            status.text = L10n.t("checkValues")
             return
         }
         key = BACKey(d, b, e)
-        status.text = "Hold the passport flat against the back of the phone and keep still…"
+        status.text = L10n.t("hold")
         report.text = ""; share.visibility = View.GONE
     }
 
@@ -145,9 +165,9 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
     }
 
     override fun onTagDiscovered(tag: Tag) {
-        val k = key ?: run { runOnUiThread { status.text = "Enter the values and tap Ready first." }; return }
-        val iso = IsoDep.get(tag) ?: run { runOnUiThread { status.text = "This chip is not a passport chip." }; return }
-        runOnUiThread { status.text = "Reading the chip… keep still (about 5–20 seconds)." }
+        val k = key ?: run { runOnUiThread { status.text = L10n.t("enterFirst") }; return }
+        val iso = IsoDep.get(tag) ?: run { runOnUiThread { status.text = L10n.t("notPassport") }; return }
+        runOnUiThread { status.text = L10n.t("reading") }
         val result = try {
             ChipReader(iso, k).read()
         } catch (e: Exception) {
@@ -158,7 +178,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         shareText = result.report + (result.dscPem?.let { "\n$it\n" } ?: "")
         runOnUiThread {
             docNo.text.clear(); birth.text.clear(); expiry.text.clear()
-            status.text = if (result.ok) "Done: the chip data is genuine under its signer certificate." else "Done, with problems (see below)."
+            status.text = if (result.ok) L10n.t("doneOk") else if (result.chip == null && result.faceImage == null) L10n.t("readFailed") else L10n.t("doneProblems")
             report.text = result.report + (result.onScreenOnly?.let { "\n$it" } ?: "")
             share.visibility = View.VISIBLE
             FaceStore.chipPhoto = result.faceImage; FaceStore.chipMime = result.faceMime
