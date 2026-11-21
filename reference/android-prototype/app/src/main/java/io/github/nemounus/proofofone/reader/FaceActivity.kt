@@ -8,9 +8,6 @@ package io.github.nemounus.proofofone.reader
 
 import android.app.Activity
 import android.content.Intent
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.graphics.Matrix
 import android.os.Bundle
 import android.provider.MediaStore
 import android.view.WindowManager
@@ -20,8 +17,6 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.core.content.FileProvider
-import androidx.exifinterface.media.ExifInterface
-import com.gemalto.jp2.JP2Decoder
 import java.io.File
 import kotlin.concurrent.thread
 
@@ -68,7 +63,7 @@ class FaceActivity : Activity() {
         thread {
             try {
                 val t0 = System.currentTimeMillis()
-                val bm = decode(bytes, FaceStore.chipMime)
+                val bm = FaceMatcher.decodeChip(bytes, FaceStore.chipMime)
                 val m = FaceMatcher(this).also { matcher = it }
                 val f = m.analyse(bm)
                 val ms = System.currentTimeMillis() - t0
@@ -86,15 +81,6 @@ class FaceActivity : Activity() {
                 log.appendLine("chip photo error: ${e.javaClass.simpleName}: ${e.message}")
             }
         }
-    }
-
-    // JPEG 2000 (file or codestream) or JPEG
-    private fun decode(b: ByteArray, mime: String?): Bitmap {
-        val jp2 = (b.size > 12 && b[4] == 0x6A.toByte() && b[5] == 0x50.toByte()) ||
-            (b.size > 4 && b[0] == 0xFF.toByte() && b[1] == 0x4F.toByte() && b[2] == 0xFF.toByte() && b[3] == 0x51.toByte()) ||
-            (mime ?: "").contains("jp2") || (mime ?: "").contains("jpeg2000")
-        return (if (jp2) JP2Decoder(b).decode() else BitmapFactory.decodeByteArray(b, 0, b.size))
-            ?: error("the image could not be decoded")
     }
 
     private fun takeSelfie() {
@@ -117,7 +103,7 @@ class FaceActivity : Activity() {
         status.text = "Comparing…"
         thread {
             try {
-                val bm = loadSelfie()
+                val bm = FaceMatcher.loadSelfie(selfie)
                 selfie.delete()
                 val t0 = System.currentTimeMillis()
                 val f = matcher!!.analyse(bm)
@@ -139,18 +125,6 @@ class FaceActivity : Activity() {
                 runOnUiThread { status.text = "Comparison failed: ${e.javaClass.simpleName}: ${e.message}" }
             }
         }
-    }
-
-    private fun loadSelfie(): Bitmap {
-        val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeFile(selfie.path, o)
-        var sample = 1
-        while (maxOf(o.outWidth, o.outHeight) / sample > 1600) sample *= 2
-        val bm = BitmapFactory.decodeFile(selfie.path, BitmapFactory.Options().apply { inSampleSize = sample }) ?: error("the selfie could not be read")
-        val rot = when (ExifInterface(selfie.path).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)) {
-            ExifInterface.ORIENTATION_ROTATE_90 -> 90f; ExifInterface.ORIENTATION_ROTATE_180 -> 180f; ExifInterface.ORIENTATION_ROTATE_270 -> 270f; else -> 0f
-        }
-        return if (rot == 0f) bm else Bitmap.createBitmap(bm, 0, 0, bm.width, bm.height, Matrix().apply { postRotate(rot) }, true)
     }
 
     override fun onDestroy() {

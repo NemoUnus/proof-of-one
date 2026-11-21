@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Proof of One — enrolment with the pilot's service (Decision Log #57, #58, #59; design
-// docs/specs/pilot-enrolment-service-v0.1.md). From the chip data read on the first screen:
+// docs/specs/pilot-enrolment-service-v0.1.md). First, the face check (v0.10, #57 (3)): a
+// selfie is compared with the chip photo on this phone (FaceMatcher.THRESHOLD); the selfie is
+// deleted at once and no face data is sent. Enrolment (and restore) starts only once it has
+// passed. A check on the phone can be bypassed by a modified app; in the pilot it is a
+// safeguard for honest use, not a defence. Then, from the chip data read on the first screen:
 //   1. the signer's certificate to /signer, and its path in the tree of checked signers;
 //   2. a session (fresh challenge, the issuing state's rule);
 //   3. the member's secrets, made here (only the commitment cm leaves the phone);
@@ -20,6 +24,7 @@ import android.app.Activity
 import android.content.Intent
 import android.graphics.Typeface
 import android.os.Bundle
+import android.provider.MediaStore
 import android.text.InputType
 import android.util.Base64
 import android.view.View
@@ -29,6 +34,7 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import androidx.core.content.FileProvider
 import org.json.JSONObject
 import java.io.File
 import java.math.BigInteger
@@ -49,6 +55,15 @@ class EnrolActivity : Activity() {
     // kept for a retried restore after a wrong password
     private var pendingBackup: String? = null
     private var pendingSeed: String? = null
+    // the face check (v0.10)
+    private lateinit var faceStatus: TextView
+    private lateinit var selfieBtn: Button
+    private var matcher: FaceMatcher? = null
+    private var chipFace: FaceMatcher.Face? = null
+    private var faceOk = false
+    private var faceSim = 0f
+    private var faceTries = 0
+    private val selfie by lazy { File(cacheDir, "enrol_selfie.jpg") }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -62,11 +77,19 @@ class EnrolActivity : Activity() {
         col.addView(TextView(this).apply { text = t("enrolTitle"); textSize = 20f; setTypeface(null, Typeface.BOLD) })
         if (t("draft").isNotEmpty()) col.addView(TextView(this).apply { text = t("draft"); textSize = 12f })
         col.addView(TextView(this).apply { text = t("enrolIntro"); setPadding(0, pad / 2, 0, 0) })
-        col.addView(TextView(this).apply { text = t("pwLabel"); setPadding(0, pad, 0, 0) })
+        fun heading(k: String) = TextView(this).apply { text = t(k); textSize = 17f; setTypeface(null, Typeface.BOLD); setPadding(0, pad, 0, 0) }
+        col.addView(heading("faceStep"))
+        col.addView(TextView(this).apply { text = t("faceIntro"); setPadding(0, pad / 2, 0, 0) })
+        selfieBtn = Button(this).apply { text = t("takeSelfie"); isEnabled = false; setOnClickListener { takeSelfie() } }
+        col.addView(selfieBtn)
+        faceStatus = TextView(this).apply { textSize = 16f; setPadding(0, pad / 4, 0, 0) }
+        col.addView(faceStatus)
+        col.addView(heading("pwStep"))
+        col.addView(TextView(this).apply { text = t("pwLabel"); setPadding(0, pad / 2, 0, 0) })
         fun pw(hint: String) = EditText(this).apply { this.hint = hint; inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD }
         pw1 = pw(t("pw1")); col.addView(pw1)
         pw2 = pw(t("pw2")); col.addView(pw2)
-        start = Button(this).apply { text = t("enrol"); setOnClickListener { run() } }
+        start = Button(this).apply { text = t("enrol"); isEnabled = false; setOnClickListener { run() } }
         col.addView(start)
         restore = Button(this).apply { text = t("restore"); visibility = View.GONE; setOnClickListener { retryRestore() } }
         col.addView(restore)
@@ -88,10 +111,79 @@ class EnrolActivity : Activity() {
         col.addView(share)
         setContentView(ScrollView(this).apply { addView(col) })
         when {
-            memberFile().exists() -> { status.text = t("alreadyHere"); start.isEnabled = false; showNumber(JSONObject(memberFile().readText()).optString("number")) }
-            DocStore.chip == null -> { status.text = t("readFirst"); start.isEnabled = false }
-            DocStore.chip?.dscDer == null -> { status.text = t("noCert"); start.isEnabled = false }
+            memberFile().exists() -> { status.text = t("alreadyHere"); showNumber(JSONObject(memberFile().readText()).optString("number")) }
+            DocStore.chip == null -> status.text = t("readFirst")
+            DocStore.chip?.dscDer == null -> status.text = t("noCert")
+            FaceStore.chipPhoto == null -> faceStatus.text = t("faceNoPhoto")
+            else -> { faceStatus.text = t("facePrep"); thread { prepareChipFace() } }
         }
+    }
+
+    // The chip photo's face, once per screen (and again if Android closed the screen while the
+    // camera app was open).
+    @Synchronized private fun prepareChipFace(): Boolean {
+        chipFace?.let { return true }
+        return try {
+            val bytes = FaceStore.chipPhoto ?: error("no chip photo")
+            val m = matcher ?: FaceMatcher(this).also { matcher = it }
+            val f = m.analyse(FaceMatcher.decodeChip(bytes, FaceStore.chipMime))
+            chipFace = f
+            runOnUiThread {
+                if (f == null) faceStatus.text = L10n.t("faceNoChipFace")
+                else if (!faceOk) { faceStatus.text = L10n.t("faceReady"); selfieBtn.isEnabled = true }
+            }
+            f != null
+        } catch (e: Throwable) {
+            runOnUiThread { faceStatus.text = L10n.t("faceError", e.message ?: e.javaClass.simpleName) }
+            false
+        }
+    }
+
+    private fun takeSelfie() {
+        val uri = FileProvider.getUriForFile(this, "$packageName.files", selfie)
+        val i = Intent(MediaStore.ACTION_IMAGE_CAPTURE).apply {
+            putExtra(MediaStore.EXTRA_OUTPUT, uri)
+            putExtra("android.intent.extras.CAMERA_FACING", 1)          // front camera, where supported
+            putExtra("android.intent.extras.LENS_FACING_FRONT", 1)
+            putExtra("android.intent.extra.USE_FRONT_CAMERA", true)
+            addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        @Suppress("DEPRECATION") startActivityForResult(i, 1)
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        @Suppress("DEPRECATION") super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != 1) return
+        if (resultCode != RESULT_OK || !selfie.exists()) { faceStatus.text = L10n.t("faceNoSelfie"); selfie.delete(); return }
+        faceStatus.text = L10n.t("faceComparing"); selfieBtn.isEnabled = false
+        thread {
+            try {
+                val bm = try { FaceMatcher.loadSelfie(selfie) } finally { selfie.delete() }
+                if (!prepareChipFace()) return@thread
+                val f = matcher!!.analyse(bm)
+                faceTries++
+                val sim = f?.let { FaceMatcher.cosine(chipFace!!.embedding, it.embedding) }
+                runOnUiThread {
+                    selfieBtn.isEnabled = true
+                    when {
+                        sim == null -> faceStatus.text = L10n.t("faceNone")
+                        sim >= FaceMatcher.THRESHOLD -> {
+                            faceOk = true; faceSim = sim
+                            faceStatus.text = L10n.t("facePass"); selfieBtn.isEnabled = false
+                            start.isEnabled = !memberFile().exists() && DocStore.chip?.dscDer != null
+                        }
+                        else -> faceStatus.text = L10n.t("faceFail")
+                    }
+                }
+            } catch (e: Throwable) {
+                runOnUiThread { selfieBtn.isEnabled = true; faceStatus.text = L10n.t("faceError", e.message ?: e.javaClass.simpleName) }
+            }
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy(); selfie.delete(); matcher?.close()
     }
 
     private fun memberFile() = File(filesDir, "member.json")
@@ -136,12 +228,15 @@ class EnrolActivity : Activity() {
     private fun run() {
         val chip = DocStore.chip ?: return
         fun t(k: String, vararg a: Any) = L10n.t(k, *a)
+        if (!faceOk) { status.text = t("faceFirst"); return }
         val password = pw1.text.toString()
         if (password.length < 8) { status.text = t("pwShort"); return }
         if (password != pw2.text.toString()) { status.text = t("pwDiffer"); return }
         start.isEnabled = false; share.visibility = View.GONE; report.text = ""
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        val log = mutableListOf("Proof of One pilot enrolment v0.9")
+        val log = mutableListOf("Proof of One pilot enrolment v0.10",
+            "face check: passed on the phone (similarity %.2f, threshold %.2f, %d selfie%s); no face data sent".format(
+                java.util.Locale.ROOT, faceSim, FaceMatcher.THRESHOLD, faceTries, if (faceTries == 1) "" else "s"))
         fun step(s: String) = runOnUiThread { status.text = s }
         thread {
             var stage = "start"

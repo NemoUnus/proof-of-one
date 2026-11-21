@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Proof of One — the app's texts in six languages (Decision #55: several languages released
 // together, right-to-left scripts from the first version). The volunteer-facing screens
-// (passport reading, enrolment) are translated; the technical test screens and reports
-// stay in English. Translations are drafts by the project's AI agents, not yet reviewed by
+// (passport reading, face check, enrolment) are translated; the technical test screens and
+// reports stay in English. Translations are drafts by the project's AI agents, not yet reviewed by
 // native speakers (shown in the app).
 package io.github.nemounus.proofofone.reader
 
@@ -137,5 +137,45 @@ object L10n {
         "refused" to listOf("The service refused: %s", "سرویس نپذیرفت: %s", "رفضت الخدمة: %s", "Le service a refusé : %s", "El servicio rechazó: %s", "Der Dienst hat abgelehnt: %s"),
         "error" to listOf("Error at step '%s': %s", "خطا در مرحله‌ی «%s»: %s", "خطأ في المرحلة «%s»: %s", "Erreur à l'étape « %s » : %s", "Error en el paso «%s»: %s", "Fehler im Schritt „%s“: %s"),
         "shareResult" to listOf("Share the result (no personal data)", "فرستادن نتیجه (بدون اطلاعات شخصی)", "مشاركة النتيجة (بلا بيانات شخصية)", "Partager le résultat (sans données personnelles)", "Compartir el resultado (sin datos personales)", "Ergebnis teilen (ohne persönliche Daten)"),
+        // face check before enrolment (v0.10, Decision #57 (3))
+        "faceStep" to listOf("Step 1: your face", "مرحله‌ی ۱: چهره‌ی شما", "الخطوة ١: وجهك", "Étape 1 : votre visage", "Paso 1: su cara", "Schritt 1: Ihr Gesicht"),
+        "faceIntro" to listOf(
+            "Take a selfie. The phone compares it with the photo in the passport chip, on this phone only. The selfie is deleted at once; no picture or face data is sent.",
+            "یک عکس سلفی بگیرید. گوشی آن را با عکس داخل تراشه‌ی پاسپورت مقایسه می‌کند، فقط روی همین گوشی. سلفی بلافاصله پاک می‌شود و هیچ عکس یا داده‌ی چهره‌ای فرستاده نمی‌شود.",
+            "التقط صورة ذاتية. يقارنها الهاتف بالصورة الموجودة في شريحة الجواز، على هذا الهاتف فقط. تُحذف الصورة الذاتية فوراً، ولا تُرسَل أي صورة أو بيانات للوجه.",
+            "Prenez un selfie. Le téléphone le compare avec la photo de la puce du passeport, sur ce téléphone uniquement. Le selfie est effacé aussitôt ; aucune image ni donnée du visage n'est envoyée.",
+            "Hágase un selfi. El teléfono lo compara con la foto del chip del pasaporte, solo en este teléfono. El selfi se borra enseguida; no se envía ninguna imagen ni dato de la cara.",
+            "Machen Sie ein Selfie. Das Telefon vergleicht es mit dem Foto im Chip des Passes, nur auf diesem Telefon. Das Selfie wird sofort gelöscht; kein Bild und keine Gesichtsdaten werden gesendet."),
+        "takeSelfie" to listOf("Take a selfie", "گرفتن سلفی", "التقاط صورة ذاتية", "Prendre un selfie", "Hacerse un selfi", "Selfie aufnehmen"),
+        "facePrep" to listOf("Preparing the passport photo…", "در حال آماده‌سازی عکس پاسپورت…", "جارٍ تحضير صورة الجواز…", "Préparation de la photo du passeport…", "Preparando la foto del pasaporte…", "Passfoto wird vorbereitet…"),
+        "faceReady" to listOf(
+            "Ready. Take a selfie facing the camera, in good light, without glasses or a mask.",
+            "آماده است. رو به دوربین، در نور خوب و بدون عینک یا ماسک، سلفی بگیرید.",
+            "جاهز. التقط صورة ذاتية مواجهاً الكاميرا، في إضاءة جيدة، دون نظارة أو كمامة.",
+            "Prêt. Prenez un selfie face à l'appareil, sous une bonne lumière, sans lunettes ni masque.",
+            "Listo. Hágase un selfi mirando a la cámara, con buena luz, sin gafas ni mascarilla.",
+            "Bereit. Machen Sie ein Selfie mit Blick in die Kamera, bei gutem Licht, ohne Brille oder Maske."),
+        "faceNoPhoto" to listOf("The passport photo was not read. Read the passport again.", "عکس پاسپورت خوانده نشد. پاسپورت را دوباره بخوانید.", "لم تُقرأ صورة الجواز. اقرأ الجواز مرة أخرى.", "La photo du passeport n'a pas été lue. Relisez le passeport.", "No se leyó la foto del pasaporte. Vuelva a leer el pasaporte.", "Das Passfoto wurde nicht gelesen. Pass erneut lesen."),
+        "faceNoChipFace" to listOf(
+            "No face was found in the passport photo, so enrolment cannot continue. Please tell the organiser.",
+            "در عکس پاسپورت چهره‌ای پیدا نشد، پس ثبت‌نام ادامه پیدا نمی‌کند. لطفاً به هماهنگ‌کننده خبر دهید.",
+            "لم يُعثر على وجه في صورة الجواز، لذا لا يمكن متابعة التسجيل. يُرجى إبلاغ المنظِّم.",
+            "Aucun visage n'a été trouvé sur la photo du passeport ; l'inscription ne peut pas continuer. Prévenez l'organisateur.",
+            "No se encontró ninguna cara en la foto del pasaporte, así que la inscripción no puede continuar. Avise al organizador.",
+            "Im Passfoto wurde kein Gesicht gefunden, daher kann die Registrierung nicht fortgesetzt werden. Bitte den Organisator informieren."),
+        "faceComparing" to listOf("Comparing…", "در حال مقایسه…", "جارٍ المقارنة…", "Comparaison…", "Comparando…", "Wird verglichen…"),
+        "facePass" to listOf("Face check passed.", "بررسی چهره انجام شد و تأیید شد.", "تم التحقق من الوجه بنجاح.", "Vérification du visage réussie.", "Verificación de la cara superada.", "Gesichtsprüfung bestanden."),
+        "faceFail" to listOf(
+            "The selfie does not match the passport photo closely enough. Try again: face the camera, in good light, without glasses, hat or mask.",
+            "سلفی به اندازه‌ی کافی با عکس پاسپورت جور نیست. دوباره امتحان کنید: رو به دوربین، در نور خوب، بدون عینک، کلاه یا ماسک.",
+            "الصورة الذاتية لا تطابق صورة الجواز بما يكفي. حاول مرة أخرى: واجه الكاميرا، في إضاءة جيدة، دون نظارة أو قبعة أو كمامة.",
+            "Le selfie ne correspond pas assez à la photo du passeport. Réessayez : face à l'appareil, sous une bonne lumière, sans lunettes, chapeau ni masque.",
+            "El selfi no se parece lo suficiente a la foto del pasaporte. Inténtelo de nuevo: mirando a la cámara, con buena luz, sin gafas, gorra ni mascarilla.",
+            "Das Selfie stimmt nicht genug mit dem Passfoto überein. Bitte erneut versuchen: in die Kamera blicken, bei gutem Licht, ohne Brille, Mütze oder Maske."),
+        "faceNone" to listOf("No face found in the selfie. Try again, facing the camera in good light.", "در سلفی چهره‌ای پیدا نشد. دوباره امتحان کنید، رو به دوربین و در نور خوب.", "لم يُعثر على وجه في الصورة الذاتية. حاول مرة أخرى مواجهاً الكاميرا في إضاءة جيدة.", "Aucun visage trouvé sur le selfie. Réessayez, face à l'appareil, sous une bonne lumière.", "No se encontró ninguna cara en el selfi. Inténtelo de nuevo, mirando a la cámara con buena luz.", "Im Selfie wurde kein Gesicht gefunden. Erneut versuchen, in die Kamera blicken, bei gutem Licht."),
+        "faceNoSelfie" to listOf("No selfie taken.", "سلفی گرفته نشد.", "لم تُلتقط صورة ذاتية.", "Aucun selfie pris.", "No se hizo ningún selfi.", "Kein Selfie aufgenommen."),
+        "faceError" to listOf("The face check failed: %s", "بررسی چهره ناموفق بود: %s", "فشل التحقق من الوجه: %s", "La vérification du visage a échoué : %s", "La verificación de la cara falló: %s", "Die Gesichtsprüfung ist fehlgeschlagen: %s"),
+        "faceFirst" to listOf("Do the face check (step 1) first.", "اول بررسی چهره (مرحله‌ی ۱) را انجام دهید.", "أجرِ التحقق من الوجه (الخطوة ١) أولاً.", "Faites d'abord la vérification du visage (étape 1).", "Primero haga la verificación de la cara (paso 1).", "Zuerst die Gesichtsprüfung (Schritt 1) durchführen."),
+        "pwStep" to listOf("Step 2: password and enrolment", "مرحله‌ی ۲: رمز و ثبت‌نام", "الخطوة ٢: كلمة المرور والتسجيل", "Étape 2 : mot de passe et inscription", "Paso 2: contraseña e inscripción", "Schritt 2: Passwort und Registrierung"),
     )
 }

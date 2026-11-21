@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-// Proof of One — on-phone face check (test): is the person holding the phone the person in
+// Proof of One — on-phone face check: is the person holding the phone the person in
 // the chip photo? Decision Log #57, point 3: the face is compared on the phone only; no face
 // data leaves it.
 //
@@ -19,10 +19,14 @@ import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Matrix
 import android.graphics.Paint
+import androidx.exifinterface.media.ExifInterface
+import com.gemalto.jp2.JP2Decoder
+import java.io.File
 import java.nio.FloatBuffer
 import kotlin.math.max
 import kotlin.math.roundToInt
@@ -116,6 +120,35 @@ class FaceMatcher(ctx: Context) : AutoCloseable {
 
     companion object {
         fun cosine(a: FloatArray, b: FloatArray): Float = a.indices.fold(0f) { acc, i -> acc + a[i] * b[i] }
+
+        /**
+         * The pilot's threshold for "the same person" (v0.10). Provisional, from the first
+         * measurements (README: the holder 0.56–0.71, another person 0.06). It favours honest
+         * people (Decision #33 (6)) and is to be revised from the pilot's own numbers.
+         */
+        const val THRESHOLD = 0.40f
+
+        /** The chip photo: JPEG 2000 (file or codestream) or JPEG. */
+        fun decodeChip(b: ByteArray, mime: String?): Bitmap {
+            val jp2 = (b.size > 12 && b[4] == 0x6A.toByte() && b[5] == 0x50.toByte()) ||
+                (b.size > 4 && b[0] == 0xFF.toByte() && b[1] == 0x4F.toByte() && b[2] == 0xFF.toByte() && b[3] == 0x51.toByte()) ||
+                (mime ?: "").contains("jp2") || (mime ?: "").contains("jpeg2000")
+            return (if (jp2) JP2Decoder(b).decode() else BitmapFactory.decodeByteArray(b, 0, b.size))
+                ?: error("the image could not be decoded")
+        }
+
+        /** A selfie written by the camera app: scaled to at most 1600 pixels, turned upright. */
+        fun loadSelfie(f: File): Bitmap {
+            val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeFile(f.path, o)
+            var sample = 1
+            while (maxOf(o.outWidth, o.outHeight) / sample > 1600) sample *= 2
+            val bm = BitmapFactory.decodeFile(f.path, BitmapFactory.Options().apply { inSampleSize = sample }) ?: error("the selfie could not be read")
+            val rot = when (ExifInterface(f.path).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)) {
+                ExifInterface.ORIENTATION_ROTATE_90 -> 90f; ExifInterface.ORIENTATION_ROTATE_180 -> 180f; ExifInterface.ORIENTATION_ROTATE_270 -> 270f; else -> 0f
+            }
+            return if (rot == 0f) bm else Bitmap.createBitmap(bm, 0, 0, bm.width, bm.height, Matrix().apply { postRotate(rot) }, true)
+        }
     }
 }
 

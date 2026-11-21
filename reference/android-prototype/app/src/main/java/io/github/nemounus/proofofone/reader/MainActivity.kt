@@ -99,18 +99,28 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             setOnClickListener { startActivity(Intent(this@MainActivity, EnrolActivity::class.java)) }
         }
         col.addView(enrolBtn)
-        col.addView(label(t("testTools")))
+        // Technical test tools (English), folded away so that volunteers do not meet them.
+        val tests = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; visibility = View.GONE }
+        col.addView(Button(this).apply {
+            text = "▸ " + t("testTools")
+            setOnClickListener {
+                val open = tests.visibility != View.VISIBLE
+                tests.visibility = if (open) View.VISIBLE else View.GONE
+                text = (if (open) "▾ " else "▸ ") + t("testTools")
+            }
+        })
+        col.addView(tests)
         faceBtn = Button(this).apply {
             text = "Face check test (chip photo vs. a selfie)"; visibility = View.GONE
             setOnClickListener { startActivity(Intent(this@MainActivity, FaceActivity::class.java)) }
         }
-        col.addView(faceBtn)
+        tests.addView(faceBtn)
         docBtn = Button(this).apply {
             text = "Enrolment proof test (from this passport)"; visibility = View.GONE
             setOnClickListener { startActivity(Intent(this@MainActivity, DocProofActivity::class.java)) }
         }
-        col.addView(docBtn)
-        col.addView(Button(this).apply {
+        tests.addView(docBtn)
+        tests.addView(Button(this).apply {
             text = "Ballot proof benchmark (native prover)"
             setOnClickListener { startActivity(Intent(this@MainActivity, ProverActivity::class.java)) }
         })
