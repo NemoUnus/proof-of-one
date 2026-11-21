@@ -151,3 +151,15 @@ One contract, `DocVerifier` (`reference/contracts/src/DocVerifier.sol`), generat
 | 09:35 | Step 1 sent from `web/plan5.json` (deployer nonce 18): DocVerifier deployed at the planned address |
 
 Checked before deployment: on a local chain it accepts a real π_doc of a synthetic passport and refuses changed signals or proofs (`reference/contracts/test/doc-verifier.test.js`); `verifyProof` costs 375,678 gas, paid by nobody since it is called with `eth_call`.
+
+## The pilot's enrolment service (live since 21 November 2026)
+
+Cloudflare Worker `proof-of-one-enrol` (`reference/enrol-service`), deployed from this repository, with its D1 database and three secrets set in the dashboard. Address: `https://proof-of-one-enrol.nemounus.workers.dev`. Its public keys, as `/info` showed them at 10:34 (UTC+4); anyone can compare them with `/info` at any time, and a change would show that the secrets were replaced:
+
+| Key | Value |
+|---|---|
+| OPRF key `K` (keyed fingerprints) | `[6980439750498880740579680557353155876392361572102500773805716699205309031723, 14307108981324500470809436760785395615033201903704883441614035457239063522377]` |
+| Credential key `A` (EdDSA-Poseidon) | `[1789806763578855624814564503625149664414764811393647758203574245690431266832, 21766186518416066398502677487649986943960760084080257540850053389998548290076]` |
+| Its leaf `H(A)` | `9973527310186799711322196578667569713052864781320094708470015773211842834432` |
+
+At that time: no signers in the tree (root `19217088…593251`, the empty depth-16 tree), 0 evaluations, 0 enrolments. The secrets were made in the founder's browser with `web/enrol-secrets.html` and pasted straight into the dashboard; nobody else has seen them.
