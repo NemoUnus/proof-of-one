@@ -55,6 +55,7 @@ class EnrolActivity : Activity() {
     // kept for a retried restore after a wrong password
     private var pendingBackup: String? = null
     private var pendingSeed: String? = null
+    private var restoreTries = 0
     // the face check (v0.10)
     private lateinit var faceStatus: TextView
     private lateinit var selfieBtn: Button
@@ -214,8 +215,14 @@ class EnrolActivity : Activity() {
             val plain = Backup.open(blob, pw, seed)
             runOnUiThread {
                 restore.isEnabled = true
-                if (plain == null) { status.text = L10n.t("wrongPw"); return@runOnUiThread }
+                restoreTries++
+                if (plain == null) {
+                    status.text = L10n.t("wrongPw")
+                    shareText += "\nretry $restoreTries: backup not opened (password)"; report.text = shareText
+                    return@runOnUiThread
+                }
                 saveMember(JSONObject(plain).put("restoredDay", LocalDate.now().toString()).toString())
+                shareText += "\nretry $restoreTries: RESTORED with the password"; report.text = shareText
                 pendingBackup = null; pendingSeed = null
                 pw1.text.clear(); pw2.text.clear()
                 restore.visibility = View.GONE

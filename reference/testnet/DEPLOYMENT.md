@@ -174,4 +174,14 @@ Before testing v0.9, the store was migrated (`sessions.fp`, `members.backup`) an
 
 - **Enrolment** (same passport, app v0.9, Persian interface, with a password): the signer was already in the tree (position 0); both fingerprints' DLEQ proofs verified on the phone; π_doc made and verified on the phone in 3.5 s; the credential was signed, its key equals the published key, and the encrypted backup (Argon2id + AES-256-GCM, Decision #59) was stored. 70 s in all after the files.
 - **Restore** (app uninstalled and installed again, same passport, same password): π_doc made again in 3.8 s; the service recognised the person and refused a second enrolment (409, `alreadyEnrolled`) and returned the encrypted backup; the app opened it with the password and the membership was back on the phone. The member number shown was the same as after the enrolment (checked by the founder on the phone; the number itself is never sent).
-- Not yet tried on a real phone: restore with a wrong password first (the app should say so and offer a retry). Left for the pilot's volunteers.
+
+### App v0.10: face check before enrolment, and a wrong password (21 November 2026, 23:20 UTC+4)
+
+The app was uninstalled and v0.10 installed; the same passport was read again.
+
+- **Face check:** passed on the phone with the first selfie (similarity 0.69, threshold 0.40); nothing about the face was sent.
+- **Wrong password:** π_doc made again in 3.5 s; the service refused a second enrolment and returned the encrypted backup; the app could not open it with the wrong password, said so, and offered **Restore**.
+- **Restore:** with the right password typed in, Restore opened the backup and the membership was back on the phone ("Restored").
+- Found and fixed (v0.10.1): a retried restore was not added to the shared result; each retry now adds a line.
+- Learned: the app blocks screenshots, but a photo of the screen taken with another device shows the member number. The volunteers' guide says to share the result text only, never a picture of the screen.
+
