@@ -137,3 +137,17 @@ Rehearsed on a local chain with deployments 1 and 2 replayed first (`node test/p
 Expected result when poll 4 closes on 24 November: 2 · 1 · 0 · 0 (the thief's ballot replaced).
 
 Note on the deployer's nonce: the test wallet was upgraded to MetaMask's EIP-7702 smart account (MetaMask's EIP7702StatelessDeleGator), and the explorer's list of the account's own transactions shows only the contract creations and the funding transfer. The nonce matched the count of those creations plus one (the upgrade); the plans were made for it and the page's nonce check passed. Our reading, not confirmed by MetaMask: the calls were sent through the smart account without raising the account's own nonce.
+
+## Deployment 4: π_doc's verifier for the pilot's enrolment service (21 November 2026)
+
+One contract, `DocVerifier` (`reference/contracts/src/DocVerifier.sol`), generated with snarkjs's template from the verifying key of the TEST-ONLY suite-2 proving key that the app uses (`reference/enrol-service/keys/doc_s2_vkey.json`, SHA-256 `ba10096069…`; reproducible with `prove-mem`, seed 1; the Android workflow checks that the app's key gives exactly this one). The enrolment service only reads it with `eth_call`; it holds no state. Plan `web/plan5.json` (`plan5.js`), start nonce 18.
+
+| Contract | Address |
+|---|---|
+| DocVerifier | `0x78657778ee5C48Fd4FB792884b9C660D48D31de8` |
+
+| Time (UTC+4) | Event |
+|---|---|
+| 09:35 | Step 1 sent from `web/plan5.json` (deployer nonce 18): DocVerifier deployed at the planned address |
+
+Checked before deployment: on a local chain it accepts a real π_doc of a synthetic passport and refuses changed signals or proofs (`reference/contracts/test/doc-verifier.test.js`); `verifyProof` costs 375,678 gas, paid by nobody since it is called with `eth_call`.
