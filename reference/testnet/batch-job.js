@@ -34,7 +34,7 @@ const KEYSET_FILE = process.env.KEYSET_FILE || path.join(WEB, "keyset.json");
 const SETUP = path.join(__dirname, "..", "enrolment-circuit", "setup");
 const B = 4;                                   // the registry's BATCH (reference parameters)
 const WAIT_MS = Number(process.env.FILLER_WAIT_HOURS ?? 48) * 3600 * 1000;   // a batch incomplete this long gets fillers
-const CHUNK = 5000;                            // blocks per eth_getLogs request
+const CHUNK = 1900;                            // blocks per eth_getLogs request (the public node allows 2,000)
 const DEPTH = 32;
 // Fillers carry ICAO's code for an unspecified nationality, XXX, so they belong to no region.
 const FILLER_ATTRS = { birthDay: A.dayNumber(1990, 1, 1), natCode: 0x585858, sexCode: 1, expiryMonth: 2030 * 12 + 1 };
@@ -102,12 +102,18 @@ async function main() {
 
   // 1. new registrations since the last run
   const latest = await provider.getBlockNumber();
-  // First run: start about 2.3 days back, before the key set was set (the job is first run
+  // First run: start about 28 hours back, before the key set was set (the job is first run
   // by hand right after that transaction); no pilot registration can be older.
-  if (state.lastBlock == null) state.lastBlock = latest - 100000;
+  if (state.lastBlock == null) state.lastBlock = latest - 50000;
   for (let from = state.lastBlock + 1; from <= latest; from += CHUNK) {
     const to = Math.min(from + CHUNK - 1, latest);
-    const evs = await reg.queryFilter(reg.filters.Registered(), from, to);
+    let evs;
+    for (let attempt = 1; ; attempt++) {
+      try { evs = await reg.queryFilter(reg.filters.Registered(), from, to); break; } catch (e) {
+        if (attempt >= 4) throw e;
+        await new Promise((r) => setTimeout(r, 2000 * attempt));   // the public node limits request rates
+      }
+    }
     for (const ev of evs) {
       const i = Number(ev.args.index);
       if (i < state.leaves.length) continue;   // already known
