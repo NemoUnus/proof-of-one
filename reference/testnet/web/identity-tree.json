@@ -2,7 +2,7 @@
  "note": "The identity registry's leaves, in order, as the batch job reads them from the chain (Decision #61). Published so that phones can find their path. fillers: leaves of filler members.",
  "chainId": "84532",
  "registry": "0xcb01c33b24b4CAC194B6eE6a649Aef413c307091",
- "lastBlock": null,
+ "lastBlock": 62240320,
  "leaves": [
   "17041173375179953165375966175489271672104982831442526611760781266179303147431",
   "1367492996388735618317612666114232008498995246784194166932190188105137000630",
@@ -33,6 +33,6 @@
  ],
  "fillers": [],
  "leafCount": 12,
- "root": null,
- "updated": null
+ "root": "8426915058637982745845061735238663631063830076681373676091882075560611675857",
+ "updated": "2026-11-22T17:52Z"
 }
