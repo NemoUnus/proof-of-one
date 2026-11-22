@@ -254,5 +254,48 @@ object L10n {
             "La preuve n'a pas pu être créée sur ce téléphone. Partagez le résultat avec l'organisateur.",
             "No se pudo generar la prueba en este teléfono. Comparta el resultado con el organizador.",
             "Der Nachweis konnte auf diesem Telefon nicht erstellt werden. Bitte das Ergebnis an den Organisator senden."),
+        // registration on the public ledger (v0.11, Decision #61)
+        "regWaiting" to listOf(
+            "Registration on the public ledger: automatic, the first time you open the app after %s. Nothing to do until then.",
+            "ثبت روی دفتر کل عمومی: خودکار، اولین باری که پس از %s برنامه را باز کنید. تا آن وقت کاری لازم نیست.",
+            "التسجيل في السجل العام: تلقائي، في أول مرة تفتح فيها التطبيق بعد %s. لا حاجة لفعل شيء حتى ذلك الحين.",
+            "Inscription au registre public : automatique, à la première ouverture de l'application après le %s. Rien à faire d'ici là.",
+            "Registro en el libro público: automático, la primera vez que abra la aplicación después del %s. No hay nada que hacer hasta entonces.",
+            "Eintrag im öffentlichen Register: automatisch, beim ersten Öffnen der App nach dem %s. Bis dahin ist nichts zu tun."),
+        "regRunning" to listOf(
+            "Registering on the public ledger… (about a minute)",
+            "در حال ثبت روی دفتر کل عمومی… (حدود یک دقیقه)",
+            "جارٍ التسجيل في السجل العام… (نحو دقيقة)",
+            "Inscription au registre public… (environ une minute)",
+            "Registrando en el libro público… (alrededor de un minuto)",
+            "Eintrag im öffentlichen Register läuft… (etwa eine Minute)"),
+        "regDone" to listOf(
+            "Registered on the public ledger. You can take part in polls once your group of members is added (usually within two days).",
+            "روی دفتر کل عمومی ثبت شدید. وقتی گروه اعضای شما اضافه شود (معمولاً ظرف دو روز) می‌توانید در نظرسنجی‌ها شرکت کنید.",
+            "تم تسجيلك في السجل العام. يمكنك المشاركة في الاستطلاعات بعد إضافة مجموعة الأعضاء التي تنتمي إليها (عادةً خلال يومين).",
+            "Inscrit au registre public. Vous pourrez participer aux sondages dès que votre groupe de membres sera ajouté (en général sous deux jours).",
+            "Registrado en el libro público. Podrá participar en las encuestas cuando se añada su grupo de miembros (normalmente en dos días).",
+            "Im öffentlichen Register eingetragen. Sie können an Umfragen teilnehmen, sobald Ihre Mitgliedergruppe hinzugefügt ist (meist innerhalb von zwei Tagen)."),
+        "regNotReady" to listOf(
+            "Registration on the public ledger is not open yet. The app will try again the next time you open it.",
+            "ثبت روی دفتر کل عمومی هنوز باز نشده است. برنامه دفعه‌ی بعد که بازش کنید دوباره امتحان می‌کند.",
+            "التسجيل في السجل العام غير متاح بعد. سيحاول التطبيق مرة أخرى عند فتحه في المرة القادمة.",
+            "L'inscription au registre public n'est pas encore ouverte. L'application réessaiera à sa prochaine ouverture.",
+            "El registro en el libro público aún no está abierto. La aplicación lo intentará de nuevo la próxima vez que la abra.",
+            "Der Eintrag im öffentlichen Register ist noch nicht möglich. Die App versucht es beim nächsten Öffnen erneut."),
+        "regOffline" to listOf(
+            "Registration on the public ledger could not reach the network. Check the internet connection (or turn on a VPN); the app will try again the next time you open it.",
+            "ثبت روی دفتر کل عمومی به شبکه دسترسی پیدا نکرد. اتصال اینترنت را بررسی کنید (یا VPN را روشن کنید)؛ برنامه دفعه‌ی بعد که بازش کنید دوباره امتحان می‌کند.",
+            "تعذّر وصول التسجيل في السجل العام إلى الشبكة. تحقق من الاتصال بالإنترنت (أو شغّل VPN)؛ سيحاول التطبيق مرة أخرى عند فتحه في المرة القادمة.",
+            "L'inscription au registre public n'a pas pu joindre le réseau. Vérifiez la connexion Internet (ou activez un VPN) ; l'application réessaiera à sa prochaine ouverture.",
+            "El registro en el libro público no pudo conectar con la red. Compruebe la conexión a Internet (o active una VPN); la aplicación lo intentará de nuevo la próxima vez que la abra.",
+            "Der Eintrag im öffentlichen Register konnte das Netz nicht erreichen. Internetverbindung prüfen (oder ein VPN einschalten); die App versucht es beim nächsten Öffnen erneut."),
+        "regFailed" to listOf(
+            "Registration on the public ledger failed: %s. The app will try again the next time you open it; please share the result with the organiser.",
+            "ثبت روی دفتر کل عمومی ناموفق بود: %s. برنامه دفعه‌ی بعد که بازش کنید دوباره امتحان می‌کند؛ لطفاً نتیجه را برای هماهنگ‌کننده بفرستید.",
+            "فشل التسجيل في السجل العام: %s. سيحاول التطبيق مرة أخرى عند فتحه في المرة القادمة؛ يُرجى مشاركة النتيجة مع المنظِّم.",
+            "L'inscription au registre public a échoué : %s. L'application réessaiera à sa prochaine ouverture ; partagez le résultat avec l'organisateur.",
+            "El registro en el libro público falló: %s. La aplicación lo intentará de nuevo la próxima vez que la abra; comparta el resultado con el organizador.",
+            "Der Eintrag im öffentlichen Register ist fehlgeschlagen: %s. Die App versucht es beim nächsten Öffnen erneut; bitte das Ergebnis an den Organisator senden."),
     )
 }

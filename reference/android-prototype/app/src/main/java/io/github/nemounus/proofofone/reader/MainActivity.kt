@@ -43,6 +43,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
     private lateinit var faceBtn: Button
     private lateinit var docBtn: Button
     private lateinit var enrolBtn: Button
+    private lateinit var regStatus: TextView
     private var key: BACKey? = null
     private var shareText = ""
 
@@ -99,6 +100,8 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             setOnClickListener { startActivity(Intent(this@MainActivity, EnrolActivity::class.java)) }
         }
         col.addView(enrolBtn)
+        regStatus = TextView(this).apply { textSize = 15f; visibility = View.GONE; setPadding(0, 16, 0, 16) }
+        col.addView(regStatus)
         // Technical test tools (English), folded away so that volunteers do not meet them.
         val tests = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; visibility = View.GONE }
         col.addView(Button(this).apply {
@@ -165,8 +168,44 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
 
     override fun onResume() {
         super.onResume()
+        checkRegistration()
         nfc?.enableReaderMode(this, this,
             NfcAdapter.FLAG_READER_NFC_A or NfcAdapter.FLAG_READER_NFC_B or NfcAdapter.FLAG_READER_SKIP_NDEF_CHECK, null)
+    }
+
+    // Decision #61: registration on the public ledger, once the random delay has passed.
+    @Volatile private var registering = false
+    private fun checkRegistration() {
+        Registration.ensureTime(this)
+        fun show(s: String) = runOnUiThread { regStatus.text = s; regStatus.visibility = View.VISIBLE }
+        when (val st = Registration.state(this)) {
+            is Registration.State.None -> regStatus.visibility = View.GONE
+            is Registration.State.Done -> show(L10n.t("regDone"))
+            is Registration.State.Waiting -> {
+                if (System.currentTimeMillis() < st.after) {
+                    val at = java.time.Instant.ofEpochMilli(st.after).atZone(java.time.ZoneId.systemDefault())
+                    show(L10n.t("regWaiting", at.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))))
+                    return
+                }
+                if (registering) return
+                registering = true
+                show(L10n.t("regRunning"))
+                Thread {
+                    try {
+                        val line = Registration.run(this)
+                        show(L10n.t("regDone"))
+                        runOnUiThread { report.text = "Proof of One registration\n$line"; shareText = report.text.toString(); share.visibility = View.VISIBLE }
+                    } catch (e: Registration.NotReady) {
+                        show(L10n.t("regNotReady"))
+                    } catch (e: java.io.IOException) {
+                        show(L10n.t("regOffline"))
+                    } catch (e: Throwable) {
+                        show(L10n.t("regFailed", e.message ?: e.javaClass.simpleName))
+                        runOnUiThread { report.text = "Proof of One registration\nFAILED: ${e.javaClass.simpleName}: ${e.message}"; shareText = report.text.toString(); share.visibility = View.VISIBLE }
+                    } finally { registering = false }
+                }.start()
+            }
+        }
     }
 
     override fun onPause() {

@@ -109,7 +109,19 @@ async function info(env, deps) {
   const db = env.DB;
   return { service: "Proof of One pilot enrolment service (TEST)", K: pub.K, A: pub.A, keyLeaf: pub.keyLeaf, epoch: String(env.EPOCH ?? "0"),
     dscRoot: await currentRoot(env, deps), signers: await signerCount(env), docVerifier: env.DOC_VERIFIER || null,
-    evaluations: await counter(db, "evaluations"), enrolments: await counter(db, "enrolments") };
+    evaluations: await counter(db, "evaluations"), enrolments: await counter(db, "enrolments"), keySet: keySet(env, pub.keyLeaf) };
+}
+
+// Decision #61: the registry's key set as the phone needs it for π_reg, from the public
+// variable KEY_SET ({root, leaves}, made by testnet/plan6.js), with this service's key's path.
+// null until the key set is published; the phone then waits and tries again later.
+export function keySet(env, keyLeaf) {
+  if (!env.KEY_SET) return null;
+  let ks;
+  try { ks = typeof env.KEY_SET === "string" ? JSON.parse(env.KEY_SET) : env.KEY_SET; } catch { return null; }
+  const i = (ks.leaves || []).indexOf(keyLeaf);
+  if (i < 0 || !ks.paths || !ks.paths[i]) return null;
+  return { root: ks.root, siblings: ks.paths[i].siblings, pathIndex: ks.paths[i].pathIndex };
 }
 
 async function session(env, deps, body, now) {

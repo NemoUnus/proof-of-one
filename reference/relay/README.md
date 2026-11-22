@@ -12,6 +12,14 @@ A phone sends its ballot to the relay instead of to the network, and the relay s
    - It simulates `vote()` with `eth_call`. The contract verifies the proof there, so a ballot that would fail is refused and costs nothing.
    - It submits the ballot and returns the transaction hash. The page then waits for the transaction and checks the recorded answer itself.
 
+## Registrations (Decision #61)
+
+**POST `/register`** takes a phone's registration on the identity registry: `leaf`, `cn` and the π_reg proof `a`, `b`, `c`. The phone sends it after its random delay (2–26 hours after enrolment). The relay asks the registry whether the credential `cn` is already used (then it answers 409 with `alreadyRegistered`, so that a phone restored from a backup knows it is done), simulates `register()` (the registry checks the proof there), submits it under a gas cap, and waits up to 20 seconds for the block so that the phone learns its position in the registry. Accepted only when the variable `REGISTRY` is set.
+
+**POST `/batch`** takes `newRoot` and a batch-insertion proof from the repository's hourly job (`../testnet/batch-job.js`) and submits `insertBatch()` the same way, under a gas cap. Anyone may insert a batch: the registry checks that the proof writes exactly the registered leaves, in order.
+
+The relay sees a registration's network address, as it does for ballots. In the pilot the same operator also runs the enrolment service; the delay and the batches of 4 make linking a person to their registry entry harder for that operator, not impossible (Decision #61, point 3).
+
 ## What the relay can and cannot do
 
 | | |
@@ -31,7 +39,7 @@ The project's relay runs at `https://proof-of-one-relay.nemounus.workers.dev` (s
 3. Send the account a little test ETH. One ballot costs about 0.00001 test ETH on Base Sepolia.
 4. Put the Worker's address in [`../app/web/config.json`](../app/web/config.json).
 
-The other settings are in `wrangler.toml`: `RPC_URL`, `CHAIN_ID`, `POLLS` and `POLL_IDS`.
+The other settings are in `wrangler.toml`: `RPC_URL`, `CHAIN_ID`, `POLLS`, `POLL_IDS` and `REGISTRY`.
 
 ## Tests
 
@@ -40,6 +48,13 @@ npm install
 node test/relay.test.mjs ../testnet/web/plan.json ../testnet/web/plan2.json
 # local chain: a valid ballot is submitted and recorded; a malformed ballot, a ballot for another
 # poll and a ballot whose proof does not match are refused, and a refused ballot costs nothing
+```
+
+```bash
+node test/register.test.mjs ../testnet/web/plan.json
+# local chain with plan 1's contracts: a valid π_reg is registered and its position returned;
+# the same credential again is answered "already registered"; a malformed request and a proof
+# that does not match are refused, and a refused registration costs nothing
 ```
 
 The voting page's end-to-end test ([`../app/test/e2e-vote.js`](../app/test/e2e-vote.js), with `RELAY=src/index.js`) also votes and re-votes through the relay from a browser with no wallet.

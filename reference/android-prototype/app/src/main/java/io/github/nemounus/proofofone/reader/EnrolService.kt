@@ -36,6 +36,8 @@ class EnrolService(private val base: String = BASE) {
     fun signer(dscBase64: String, suite: Int) = call("POST", "/signer", JSONObject().put("dsc", dscBase64).put("suite", suite))
     fun path(leaf: String) = call("GET", "/path?leaf=$leaf")
     fun evaluate(session: String, pB: Any, dB: Any) = call("POST", "/evaluate", JSONObject().put("session", session).put("pB", pB).put("dB", dB))
+    /** On the relay (Decision #61): a registration on the identity registry. */
+    fun register(body: JSONObject) = call("POST", "/register", body)
     fun backup(session: String, blob: String) = call("POST", "/backup", JSONObject().put("session", session).put("backup", blob))
     fun enrol(session: String, proof: JSONObject, publicSignals: Any) =
         call("POST", "/enrol", JSONObject().put("session", session).put("proof", proof).put("publicSignals", publicSignals))

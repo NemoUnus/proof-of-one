@@ -52,6 +52,56 @@ pub fn new_member(rand: &[u8]) -> Result<serde_json::Value, Error> {
     Ok(serde_json::json!({ "s": dec(&s), "salt": dec(&salt), "rho": dec(&rho), "idc": dec(&idc), "cm": dec(&cm), "cn": dec(&cn) }))
 }
 
+/// The inputs of the registration proof π_reg (Decision #61), as `buildRegistration` in
+/// enrolment.js, from what the phone kept at enrolment (member.json) and the published key
+/// set. `v` holds:
+///   member     {s, salt, rho, idc, cn}            the secrets made by new_member
+///   attrs      {birthDay, sexCode, natCode, expMonth}   the signed attributes (one document)
+///   credential {rn, epoch, A: [x, y], R8: [x, y], S}    the service's signature
+///   keySet     {root, siblings[8], pathIndex[8]}  the signing key's path in the key set
+/// Returns {"input": the circuit's inputs, "leaf", "cn"}. Only leaf and cn are made public,
+/// by the proof, on the ledger.
+pub fn registration_input(v: &serde_json::Value) -> Result<serde_json::Value, Error> {
+    fn get<'a>(v: &'a serde_json::Value, k: &str) -> Result<&'a serde_json::Value, Error> {
+        v.get(k).ok_or_else(|| format!("{} missing", k).into())
+    }
+    fn num(v: &serde_json::Value, k: &str) -> Result<Fr, Error> {
+        let x = get(v, k)?;
+        let t = x.as_str().map(|s| s.to_string()).or_else(|| x.as_u64().map(|n| n.to_string())).ok_or(format!("{}: decimal expected", k))?;
+        use std::str::FromStr;
+        Fr::from_str(&t).map_err(|_| format!("{}: not a field element", k).into())
+    }
+    fn pair(v: &serde_json::Value, k: &str) -> Result<[String; 2], Error> {
+        let a = get(v, k)?.as_array().filter(|a| a.len() == 2).ok_or(format!("{}: [x, y] expected", k))?;
+        let f = |i: usize| a[i].as_str().map(|s| s.to_string()).ok_or_else(|| Error::from(format!("{}: decimal strings expected", k)));
+        Ok([f(0)?, f(1)?])
+    }
+    let m = get(v, "member")?; let at = get(v, "attrs")?; let c = get(v, "credential")?; let ks = get(v, "keySet")?;
+    let (salt, rho, idc, cn, rn) = (num(m, "salt")?, num(m, "rho")?, num(m, "idc")?, num(m, "cn")?, num(c, "rn")?);
+    if h(&[Fr::from(TAG_CREDENTIAL), rho])? != cn { return Err("cn does not match rho".into()); }
+    let (bd, sx, nat, exp) = (num(at, "birthDay")?, num(at, "sexCode")?, num(at, "natCode")?, num(at, "expMonth")?);
+    let z = Fr::zero();
+    // attrHash: birthDay, sexCode, (nat, expiry) for three document slots, salt
+    let attr_hash = h(&[bd, sx, nat, exp, z, z, z, z, salt])?;
+    let leaf = h(&[idc, attr_hash, rn])?;
+    let arr = |k: &str| -> Result<Vec<String>, Error> {
+        let a = get(ks, k)?.as_array().filter(|a| a.len() == 8).ok_or(format!("keySet.{}: 8 entries expected", k))?;
+        a.iter().map(|x| x.as_str().map(|s| s.to_string()).or_else(|| x.as_u64().map(|n| n.to_string()))
+            .ok_or_else(|| Error::from(format!("keySet.{}: decimal strings expected", k)))).collect()
+    };
+    let (a, r8) = (pair(c, "A")?, pair(c, "R8")?);
+    let input = serde_json::json!({
+        "leaf": dec(&leaf), "cn": dec(&cn), "keySetRoot": dec(&num(ks, "root")?),
+        "s": get(m, "s")?.as_str().ok_or("s: decimal expected")?,
+        "birthDay": dec(&bd), "sexCode": dec(&sx),
+        "nat": [dec(&nat), "0", "0"], "exp": [dec(&exp), "0", "0"],
+        "salt": dec(&salt), "rho": dec(&rho), "rn": dec(&rn), "epoch": dec(&num(c, "epoch")?),
+        "Ax": a[0], "Ay": a[1], "R8x": r8[0], "R8y": r8[1], "S": dec(&num(c, "S")?),
+        "keySiblings": arr("siblings")?, "keyPathIndex": arr("pathIndex")?,
+    });
+    Ok(serde_json::json!({ "input": input, "leaf": dec(&leaf), "cn": dec(&cn) }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

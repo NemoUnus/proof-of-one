@@ -34,6 +34,9 @@ object NativeProver {
     // Decision #59, after fpComplete: {"numberSeed","backupSeed","memberNumber"} from the
     // person key's OPRF value, which only the phone obtains.
     external fun fpMember(prep: String, answer: String): String
+    // Decision #61: π_reg's inputs from member.json's member, attrs and credential and the
+    // published key set: {"input", "leaf", "cn"}. Then prove(registration.graph, its key, input).
+    external fun regInput(data: String): String
     // TEST ONLY: the answer of a synthetic service holding key k, until the real service exists.
     external fun fpTestService(helperGraphPath: String, k: String, pB: String, dB: String): String
 }

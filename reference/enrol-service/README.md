@@ -4,7 +4,7 @@ The only server of the pilot that learns anything about a member's document ([de
 
 | Path | |
 |---|---|
-| `GET /info` | OPRF public key `K`, credential key `A`, accepted signer-tree roots, verifier address, running counts of evaluations and enrolments (Decision #53) |
+| `GET /info` | OPRF public key `K`, credential key `A`, accepted signer-tree roots, verifier address, running counts of evaluations and enrolments (Decision #53), and `keySet`: the registry's key-set root and this service's key's path in it, for the phone's π_reg (Decision #61), or `null` until published |
 | `POST /session {issuer}` | a session (10 minutes) with a fresh challenge, the issuing state's rule (path, `pnSrc`, `pnTag`), `today` and `currentYear` for π_doc; at most `DAILY_SESSIONS` a day |
 | `POST /evaluate {session, pB, dB}` | the OPRF answers with DLEQ proofs; once per session |
 | `POST /enrol {session, proof, publicSignals}` | checks that the proof is for this session, date, signer tree and rule; verifies π_doc with the contract `DocVerifier` by `eth_call`; reserves person key and document key (unique: a known document or a known person is refused); signs the credential |
@@ -34,6 +34,7 @@ Tests: `test/core.test.mjs` (the core against the JavaScript references), `test/
 | `CSCA_CERTS` | text | the CSCA certificates (base64 DER, separated by commas or line breaks) that signers are checked against; from the master lists, never committed here |
 | `DSC_ROOTS` | text | optional extra accepted roots, for tests; the tree's own roots are always accepted |
 | `DOC_VERIFIER` | text | address of `DocVerifier` on the test network |
+| `KEY_SET` | text | the registry's key set as JSON (`testnet/web/keyset.json`, made by `testnet/plan6.js`); public |
 | `DB` | D1 binding | the database, with `schema.sql` applied |
 
 No request logs. NOT reviewed outside the project.

@@ -13,7 +13,7 @@ import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { makeCore, randomHex } from "../src/core.js";
-import { handle, SIGNALS, natCode, dayNumber, verifyCalldata } from "../src/service.js";
+import { handle, SIGNALS, natCode, dayNumber, verifyCalldata, keySet } from "../src/service.js";
 
 const require = createRequire(import.meta.url);
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -238,4 +238,12 @@ test("backup: stored once after enrolment, returned when the same person enrols 
   const bad = await (await phone()).enrol();
   assert.strictEqual(bad.status, 403);
   assert.ok(!("backup" in bad.body));
+});
+
+test("key set (Decision #61): this service's path, or null until it is published", () => {
+  const ks = { root: "9", leaves: ["5", "7"], paths: [{ siblings: Array(8).fill("1"), pathIndex: Array(8).fill("0") }, { siblings: Array(8).fill("2"), pathIndex: ["1", ...Array(7).fill("0")] }] };
+  assert.deepStrictEqual(keySet({ KEY_SET: JSON.stringify(ks) }, "7"), { root: "9", siblings: ks.paths[1].siblings, pathIndex: ks.paths[1].pathIndex });
+  assert.strictEqual(keySet({}, "7"), null);
+  assert.strictEqual(keySet({ KEY_SET: JSON.stringify(ks) }, "8"), null, "a key not in the set");
+  assert.strictEqual(keySet({ KEY_SET: "not json" }, "7"), null);
 });

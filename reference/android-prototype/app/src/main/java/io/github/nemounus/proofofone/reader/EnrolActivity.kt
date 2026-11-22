@@ -212,6 +212,10 @@ class EnrolActivity : Activity() {
     }
 
     private fun memberFile() = File(filesDir, "member.json")
+    // A restored membership registers again after its own random delay; if the old phone
+    // had already registered it, the relay answers "already registered" and nothing is sent.
+    private fun restored(plain: String, day: LocalDate): String =
+        JSONObject(plain).put("restoredDay", day.toString()).put("registerAfter", Registration.pickTime()).toString()
     private fun saveMember(j: String) { val tmp = File(filesDir, "member.json.part"); tmp.writeText(j); tmp.renameTo(memberFile()) }
 
     private fun showNumber(n: String?) {
@@ -245,7 +249,7 @@ class EnrolActivity : Activity() {
                     shareText += "\nretry $restoreTries: backup not opened (password)"; report.text = shareText
                     return@runOnUiThread
                 }
-                saveMember(JSONObject(plain).put("restoredDay", LocalDate.now().toString()).toString())
+                saveMember(restored(plain, LocalDate.now()))
                 shareText += "\nretry $restoreTries: RESTORED with the password"; report.text = shareText
                 pendingBackup = null; pendingSeed = null
                 pw1.text.clear(); pw2.text.clear()
@@ -338,7 +342,7 @@ class EnrolActivity : Activity() {
                         log += "ALREADY ENROLLED: the service recognised this person" + if (b.isNull("backup")) " (no backup kept)" else " (encrypted backup returned)"
                         val blob = if (b.isNull("backup")) null else b.getString("backup")
                         val plain = blob?.let { Backup.open(it, password, backupSeed) }
-                        if (plain != null) saveMember(JSONObject(plain).put("restoredDay", today.toString()).toString())
+                        if (plain != null) saveMember(restored(plain, today))
                         log += if (plain != null) "RESTORED with the password" else if (blob != null) "backup not opened (password)" else "nothing to restore"
                         shareText = log.joinToString("\n")
                         runOnUiThread {
@@ -365,6 +369,7 @@ class EnrolActivity : Activity() {
                         .put("natCode", e.natCode.toString()).put("expMonth", e.expMonth.toString()))
                     .put("credential", cred).put("msg", res.getString("msg"))
                     .put("serviceKeys", JSONObject().put("K", info.getJSONArray("K")).put("A", info.getJSONArray("A")).put("keyLeaf", info.getString("keyLeaf")))
+                    .put("registerAfter", Registration.pickTime())
                 saveMember(saved.toString())
                 log += "ENROLLED: credential signed by the service and kept on this phone (member.json)"
                 log += "credential key equals the published key: ${if (cred.getJSONArray("A").toString() == info.getJSONArray("A").toString()) "yes" else "NO"}"
@@ -373,6 +378,7 @@ class EnrolActivity : Activity() {
                 val backedUp = try { svc.backup(ses.getString("session"), Backup.seal(saved.toString(), password, backupSeed)); true }
                     catch (x: Exception) { log += "backup NOT stored: ${x.message}"; false }
                 if (backedUp) log += "backup: stored, encrypted (Argon2id + AES-GCM)"
+                log += "registration on the ledger: automatic, at the first opening of the app after a random delay of 2-26 h (Decision #61)"
                 log += "total time: ${(System.currentTimeMillis() - t0) / 1000} s (after the files)"
                 shareText = log.joinToString("\n")
                 runOnUiThread {

@@ -24,6 +24,16 @@
 //   CHAIN_ID            e.g. 84532
 //   POLLS               the ProofOfOnePolls address
 //   POLL_IDS            comma-separated poll ids the relay accepts, e.g. "2"
+//   REGISTRY            the IdentityRegistry address; POST /register is accepted only if set
+//
+// BATCHES (Decision #61): POST /batch takes {newRoot, a, b, c}, the batch-insertion proof made
+// by the repository's scheduled job, and submits insertBatch() the same way. Anyone may
+// insert a batch; the registry checks that the proof writes exactly the registered leaves.
+//
+// REGISTRATIONS (Decision #61): POST /register takes {leaf, cn, a, b, c}, a phone's π_reg after
+// its random delay, and submits register() the same way: simulated first (the registry checks
+// the proof there), a gas cap, and nothing else. A credential already used is answered with
+// 409 and alreadyRegistered, so that a phone restored from a backup knows it is done.
 import { ethers } from "ethers";
 
 const ABI = [
@@ -31,6 +41,16 @@ const ABI = [
   // the contract's errors that a ballot can meet, so that a refusal can say why
   "error InvalidProof()", "error PollNotOpen()", "error RevoteCapReached()", "error BadPrevious()", "error NotInvited()",
 ];
+const REGISTRY_ABI = [
+  "function register(uint256 leaf, uint256 cn, uint256[2] a, uint256[2][2] b, uint256[2] c)",
+  "event Registered(uint256 indexed leaf, uint256 indexed cn, uint256 index)",
+  "function credentialUsed(uint256 cn) view returns (bool)",
+  "function insertBatch(uint256 newRoot, uint256[2] a, uint256[2][2] b, uint256[2] c)",
+  "event BatchInserted(uint256 start, uint256 count, uint256 root)",
+  "error CredentialUsed()", "error InvalidProof()", "error BatchNotReady()",
+];
+const BATCH_GAS_CAP = 600000n; // a batch of 4 uses about 276,000 gas
+const REG_GAS_CAP = 500000n; // a registration uses about 300,000–320,000 gas
 const GAS_CAP = 900000n; // a single ballot uses about 520,000 gas in the reference tests
 const CORS = { "access-control-allow-origin": "*", "access-control-allow-methods": "POST, GET, OPTIONS", "access-control-allow-headers": "content-type" };
 const reply = (status, body) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", ...CORS } });
@@ -45,6 +65,63 @@ export function parseBallot(body, allowedPolls) {
   if (!isUint(nf) || !uints(ct, 16) || !uints(prev, 16) || !uints(a, 2) || !uints(c, 2) || !Array.isArray(b) || b.length !== 2 || !b.every((r) => uints(r, 2)))
     throw new Error("malformed ballot");
   return [pollId, nf, ct, prev, a, b, c];
+}
+
+// Checks the shape of a registration request; returns the register() arguments or throws.
+export function parseRegistration(body) {
+  const { leaf, cn, a, b, c } = body || {};
+  if (!isUint(leaf) || !isUint(cn) || !uints(a, 2) || !uints(c, 2) || !Array.isArray(b) || b.length !== 2 || !b.every((r) => uints(r, 2)))
+    throw new Error("malformed registration");
+  return [leaf, cn, a, b, c];
+}
+
+async function register(request, env, wallet, provider) {
+  if (!env.REGISTRY) return reply(404, { error: "this relay does not accept registrations" });
+  let args;
+  try { args = parseRegistration(await request.json()); } catch (e) { return reply(400, { error: e.message }); }
+  const reg = new ethers.Contract(env.REGISTRY, REGISTRY_ABI, wallet);
+  // Asked first, since some nodes give no revert reason when a simulation fails.
+  if (await reg.credentialUsed(args[1])) return reply(409, { error: "this credential is already registered", alreadyRegistered: true });
+  let gas;
+  try {
+    gas = await reg.register.estimateGas(...args);   // eth_call: the registry checks the proof
+  } catch (e) {
+    const why = e.revert ? e.revert.name : e.shortMessage || "rejected";
+    if (why === "CredentialUsed") return reply(409, { error: "this credential is already registered", alreadyRegistered: true });
+    return reply(400, { error: "the network would reject this registration: " + why });
+  }
+  if (gas > REG_GAS_CAP) return reply(400, { error: "registration needs too much gas" });
+  let tx;
+  for (let attempt = 0; ; attempt++) {
+    try { tx = await reg.register(...args, { gasLimit: gas + gas / 5n }); break; } catch (e) {
+      if (attempt === 0 && /nonce|replacement/i.test(e.shortMessage || e.message || "")) continue;
+      throw e;
+    }
+  }
+  // Wait briefly for the block, so that the phone learns its position in the registry.
+  const rc = await provider.waitForTransaction(tx.hash, 1, 20000).catch(() => null);
+  if (!rc) return reply(202, { tx: tx.hash });
+  if (rc.status !== 1) return reply(400, { error: "the registration failed on the network", tx: tx.hash });
+  const ev = rc.logs.map((l) => { try { return reg.interface.parseLog(l); } catch { return null; } }).find((x) => x && x.name === "Registered");
+  return reply(200, { tx: tx.hash, index: ev ? ev.args.index.toString() : null, block: rc.blockNumber });
+}
+
+async function batch(request, env, wallet, provider) {
+  if (!env.REGISTRY) return reply(404, { error: "this relay does not accept batches" });
+  const { newRoot, a, b, c } = await request.json().catch(() => ({}));
+  if (!isUint(newRoot) || !uints(a, 2) || !uints(c, 2) || !Array.isArray(b) || b.length !== 2 || !b.every((r) => uints(r, 2)))
+    return reply(400, { error: "malformed batch" });
+  const reg = new ethers.Contract(env.REGISTRY, REGISTRY_ABI, wallet);
+  let gas;
+  try { gas = await reg.insertBatch.estimateGas(newRoot, a, b, c); } catch (e) {
+    return reply(400, { error: "the network would reject this batch: " + (e.revert ? e.revert.name : e.shortMessage || "rejected") });
+  }
+  if (gas > BATCH_GAS_CAP) return reply(400, { error: "batch needs too much gas" });
+  const tx = await reg.insertBatch(newRoot, a, b, c, { gasLimit: gas + gas / 5n });
+  const rc = await provider.waitForTransaction(tx.hash, 1, 20000).catch(() => null);
+  if (!rc) return reply(202, { tx: tx.hash });
+  if (rc.status !== 1) return reply(400, { error: "the batch failed on the network", tx: tx.hash });
+  return reply(200, { tx: tx.hash, block: rc.blockNumber });
 }
 
 export async function handle(request, env, deps = {}) {
@@ -62,9 +139,12 @@ export async function handle(request, env, deps = {}) {
   if (request.method === "GET") {
     // Status, so the page can tell whether the relay is up and still has coins.
     const bal = await provider.getBalance(wallet.address);
-    return reply(200, { relay: wallet.address, chainId: String(env.CHAIN_ID), polls: env.POLLS, pollIds: allowed, balance: ethers.formatEther(bal) });
+    return reply(200, { relay: wallet.address, chainId: String(env.CHAIN_ID), polls: env.POLLS, pollIds: allowed, registry: env.REGISTRY || null, balance: ethers.formatEther(bal) });
   }
   if (request.method !== "POST") return reply(405, { error: "use POST" });
+  const route = new URL(request.url).pathname;
+  if (route === "/register") return register(request, env, wallet, provider);
+  if (route === "/batch") return batch(request, env, wallet, provider);
   let args;
   try { args = parseBallot(await request.json(), allowed); } catch (e) { return reply(400, { error: e.message }); }
   const polls = new ethers.Contract(env.POLLS, ABI, wallet);

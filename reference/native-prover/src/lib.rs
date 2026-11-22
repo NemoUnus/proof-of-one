@@ -413,6 +413,18 @@ mod android {
         env.new_string(json_or_error(r)).map(|x| x.into_raw()).unwrap_or(std::ptr::null_mut())
     }
 
+    /// The inputs of π_reg (member.rs registration_input), from member.json and the key set.
+    #[no_mangle]
+    pub extern "system" fn Java_io_github_nemounus_proofofone_reader_NativeProver_regInput<'l>(
+        mut env: JNIEnv<'l>, _c: JClass<'l>, data: JString<'l>,
+    ) -> jstring {
+        let r = (|| -> Result<serde_json::Value, super::Error> {
+            let v: serde_json::Value = serde_json::from_str(&s(&mut env, &data)?)?;
+            super::member::registration_input(&v)
+        })();
+        env.new_string(json_or_error(r)).map(|x| x.into_raw()).unwrap_or(std::ptr::null_mut())
+    }
+
     /// TEST ONLY: a synthetic service's answer, for the test screen before the real service.
     #[no_mangle]
     pub extern "system" fn Java_io_github_nemounus_proofofone_reader_NativeProver_fpTestService<'l>(
