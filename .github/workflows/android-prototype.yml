@@ -7,6 +7,8 @@
 # Since v0.5 it also makes the enrolment proof π_doc (suite 2) from a real passport's chip
 # data: the circuit's witness graph, a random TEST-ONLY key and the one-signer test tree are
 # made here from the repository's sources.
+# Since v0.11 it also makes the registration proof π_reg (Decision #61), with the witness
+# graph made here and the repository's TEST-ONLY key.
 name: Android chip reader (test build)
 
 on:
@@ -16,6 +18,7 @@ on:
       - "reference/native-prover/**"
       - "reference/prove-bench/**"
       - "reference/document-circuit/**"
+      - "reference/enrolment-circuit/**"
       - ".github/workflows/android-prototype.yml"
   workflow_dispatch:
 
@@ -94,6 +97,20 @@ jobs:
           (cd ../native-prover && cargo build --release --locked --bin doc-vkey && ./target/release/doc-vkey $D/pk_c.bin > $RUNNER_TEMP/doc_s2_vkey.json)
           cmp $RUNNER_TEMP/doc_s2_vkey.json ../enrol-service/keys/doc_s2_vkey.json && echo "verifying key matches the enrolment service's verifier"
           ls -la $D ../document-circuit/build
+      # Registration proof π_reg (Decision #61): its witness graph, made here, and the TEST-ONLY
+      # key of the repository, whose verifying key the identity registry's RegistrationVerifier
+      # holds. The phone's input builder (native-prover member.rs) must give exactly the
+      # reference's inputs (enrolment.js buildRegistration), and the proof must verify.
+      - name: Registration proof files (π_reg, TEST-ONLY key)
+        run: |
+          CW=$RUNNER_TEMP/cw/target/release
+          (cd reference/tally && npm ci --no-audit --no-fund)
+          cd reference/enrolment-circuit && npm ci --no-audit --no-fund
+          mkdir -p build
+          $CW/build-circuit circuits/registration.circom build/registration.graph -l node_modules -l node_modules/circomlib/circuits -l circuits
+          node scripts/reg-vector.js > $RUNNER_TEMP/reg-vector.json
+          cd ../native-prover && cargo build --release --locked --bin reg-check
+          ./target/release/reg-check $RUNNER_TEMP/reg-vector.json ../enrolment-circuit/build/registration.graph ../enrolment-circuit/setup/registration_test.zkey
       # The phone's input builder (DocInput.kt) must build exactly the reference input
       # (document-circuit/src/document.js) on synthetic passports of both suites.
       - name: Check the phone's enrolment input builder
@@ -116,6 +133,7 @@ jobs:
           cp $RUNNER_TEMP/doc/doc_matrices.gz $A/doc_s2_matrices.gzdata
           cp reference/document-circuit/build/document_s2.graph reference/document-circuit/build/dsc_test_tree_s2.graph reference/document-circuit/build/fp_helper.graph $A/
           cp reference/document-circuit/build/bench_s2.input.json $A/doc_s2_input.json
+          cp reference/enrolment-circuit/build/registration.graph reference/enrolment-circuit/setup/registration_test.zkey $A/
           sha256sum $A/* reference/android-prototype/app/src/main/jniLibs/arm64-v8a/*.so
       # Face check test (v0.4, Decision Log #57): InsightFace "buffalo_sc" models, SCRFD-500M
       # detector and ArcFace MobileFaceNet (pretrained models for non-commercial research use
