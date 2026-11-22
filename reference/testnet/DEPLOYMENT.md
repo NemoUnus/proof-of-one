@@ -185,3 +185,14 @@ The app was uninstalled and v0.10 installed; the same passport was read again.
 - Found and fixed (v0.10.1): a retried restore was not added to the shared result; each retry now adds a line.
 - Learned: the app blocks screenshots, but a photo of the screen taken with another device shows the member number. The volunteers' guide says to share the result text only, never a picture of the screen.
 
+
+## The pilot's key set: registration on the ledger opens (Decision #61)
+
+One transaction from the test wallet (the identity registry's governance), from `web/plan6.json` (`plan6.js`): `setKeySetRoot` on the IdentityRegistry of deployment 1 (`0xcb01c33b24b4CAC194B6eE6a649Aef413c307091`). From then on, only credentials signed by these two keys can register, and those signed by the earlier synthetic keys no longer can.
+
+| Index | Key | Leaf |
+|---|---|---|
+| 0 | the pilot's enrolment service (credential key `A`) | `9973527310186799711322196578667569713052864781320094708470015773211842834432` |
+| 1 | TEST-ONLY filler key (repository secret `FILLER_KEY`, made in the browser with `web/enrol-secrets.html`; public leaf printed by the workflow "Registry batches" in mode `key-leaf`) | `9459323648882575124428597641484282618789115045989124024858543596374578381006` |
+
+Key-set root: `3472063742960412377469484366739866747510628411572475512648978653190708911550` (`web/keyset.json`; also the enrolment service's `KEY_SET`, so that phones get their path from `/info`). The identity tree's 12 leaves registered so far (plans 1, 2 and 4) are in `web/identity-tree.json`; the batch job checks them against the registry's root on its first run and keeps the file up to date.
