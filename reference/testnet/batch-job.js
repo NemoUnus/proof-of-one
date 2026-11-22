@@ -34,7 +34,8 @@ const KEYSET_FILE = process.env.KEYSET_FILE || path.join(WEB, "keyset.json");
 const SETUP = path.join(__dirname, "..", "enrolment-circuit", "setup");
 const B = 4;                                   // the registry's BATCH (reference parameters)
 const WAIT_MS = Number(process.env.FILLER_WAIT_HOURS ?? 48) * 3600 * 1000;   // a batch incomplete this long gets fillers
-const CHUNK = 1900;                            // blocks per eth_getLogs request (the public node allows 2,000)
+const CHUNK = 190;                             // blocks per eth_getLogs request (the public node allows 200)
+const MAX_LOOKBACK = 400000;                   // about 9 days of blocks
 const DEPTH = 32;
 // Fillers carry ICAO's code for an unspecified nationality, XXX, so they belong to no region.
 const FILLER_ATTRS = { birthDay: A.dayNumber(1990, 1, 1), natCode: 0x585858, sexCode: 1, expiryMonth: 2030 * 12 + 1 };
@@ -100,32 +101,38 @@ async function main() {
   const H = P.hash.H;
   const before = { leaves: state.leaves.length, leafCount: state.leafCount, lastBlock: state.lastBlock ?? 0, root: state.root, fillers: state.fillers.length };
 
-  // 1. new registrations since the last run
-  const latest = await provider.getBlockNumber();
-  // First run: start about 28 hours back, before the key set was set (the job is first run
-  // by hand right after that transaction); no pilot registration can be older.
-  if (state.lastBlock == null) state.lastBlock = latest - 50000;
-  for (let from = state.lastBlock + 1; from <= latest; from += CHUNK) {
-    const to = Math.min(from + CHUNK - 1, latest);
-    let evs;
-    for (let attempt = 1; ; attempt++) {
-      try { evs = await reg.queryFilter(reg.filters.Registered(), from, to); break; } catch (e) {
-        if (attempt >= 4) throw e;
-        await new Promise((r) => setTimeout(r, 2000 * attempt));   // the public node limits request rates
+  // 1. new registrations. The public node answers eth_getLogs for at most 200 blocks, so
+  // the job asks the registry how many registrations it holds and, only if some are not in
+  // the published tree, reads backwards from the newest block until it has found them all.
+  // The hourly runs keep that window short (about 1,800 blocks an hour).
+  const [count, leafCount, root, onChainKeySet, latest] = await Promise.all([reg.registeredCount(), reg.leafCount(), reg.root(), reg.keySetRoot(), provider.getBlockNumber()]);
+  const known = state.leaves.length;
+  if (Number(count) < known) throw new Error(`the registry has ${count} registrations, the published tree ${known}`);
+  if (Number(count) > known) {
+    const found = new Map();
+    for (let to = latest; found.size < Number(count) - known; to -= CHUNK) {
+      if (latest - to > MAX_LOOKBACK) throw new Error(`registrations ${known}–${Number(count) - 1} not found in the last ${MAX_LOOKBACK} blocks`);
+      const from = Math.max(0, to - CHUNK + 1);
+      let evs;
+      for (let attempt = 1; ; attempt++) {
+        try { evs = await reg.queryFilter(reg.filters.Registered(), from, to); break; } catch (e) {
+          if (attempt >= 4) throw e;
+          await new Promise((r) => setTimeout(r, 2000 * attempt));   // the public node limits request rates
+        }
       }
+      for (const ev of evs) {
+        const i = Number(ev.args.index);
+        if (i >= known && !found.has(i)) found.set(i, { leaf: ev.args.leaf.toString(), ts: (await ev.getBlock()).timestamp });
+      }
+      if (from === 0) break;
     }
-    for (const ev of evs) {
-      const i = Number(ev.args.index);
-      if (i < state.leaves.length) continue;   // already known
-      if (i !== state.leaves.length) throw new Error(`registration ${i} out of order (expected ${state.leaves.length})`);
-      const blk = await ev.getBlock();
-      state.leaves.push(ev.args.leaf.toString());
-      state.registeredAt.push(blk.timestamp);
+    for (let i = known; i < Number(count); i++) {
+      const f = found.get(i);
+      if (!f) throw new Error(`registration ${i} not found`);
+      state.leaves.push(f.leaf); state.registeredAt.push(f.ts);
     }
-    state.lastBlock = to;
   }
-  const [count, leafCount, root, onChainKeySet] = await Promise.all([reg.registeredCount(), reg.leafCount(), reg.root(), reg.keySetRoot()]);
-  if (Number(count) !== state.leaves.length) throw new Error(`the registry has ${count} registrations, the events gave ${state.leaves.length}`);
+  state.lastBlock = latest;
   const treeOf = (n) => { const t = new IncrementalTree(H, DEPTH); for (const l of state.leaves.slice(0, n)) t.insert(BigInt(l)); return t; };
   let inserted = Number(leafCount);
   if (treeOf(inserted).root !== root) throw new Error("the published leaves do not give the registry's root");
@@ -159,7 +166,7 @@ async function main() {
 
   // Written (and committed by the workflow) only when something changed, or when the block
   // reached has moved far enough to be worth keeping, so that the file is not rewritten hourly.
-  const changed = before.root == null || state.fillers.length !== before.fillers || state.leaves.length !== before.leaves || inserted !== before.leafCount || state.lastBlock - before.lastBlock > 200000;
+  const changed = before.root == null || state.fillers.length !== before.fillers || state.leaves.length !== before.leaves || inserted !== before.leafCount;
   if (!changed) { log("nothing new"); return; }
   state.leafCount = inserted;
   state.root = treeOf(inserted).root.toString();
