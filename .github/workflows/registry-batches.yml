@@ -9,7 +9,7 @@ name: Registry batches
 
 on:
   schedule:
-    - cron: "41 * * * *"
+    - cron: "11,41 * * * *"
   workflow_dispatch:
     inputs:
       mode:
