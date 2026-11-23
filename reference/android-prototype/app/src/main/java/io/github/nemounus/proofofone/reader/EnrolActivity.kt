@@ -269,7 +269,7 @@ class EnrolActivity : Activity() {
         if (password != pw2.text.toString()) { status.text = t("pwDiffer"); return }
         start.isEnabled = false; share.visibility = View.GONE; report.text = ""
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        val log = mutableListOf("Proof of One pilot enrolment v0.10",
+        val log = mutableListOf("Proof of One pilot enrolment v0.11",
             "face check: passed on the phone (similarity %.2f, threshold %.2f, %d selfie%s); no face data sent".format(
                 java.util.Locale.ROOT, faceSim, FaceMatcher.THRESHOLD, faceTries, if (faceTries == 1) "" else "s"))
         fun step(s: String) = runOnUiThread { status.text = s }
