@@ -48,6 +48,10 @@ The secrets and the credential stay in the app's private storage (`member.json`,
 - **What it is not.** A check made on the phone can be bypassed by a modified app, and it does not detect a printed photo or a screen held to the camera. In the pilot it stops honest mistakes (someone else's passport picked up at home) and gives the measurements; the design's defences (the attested enclave's face comparison, Decision #33) are not in the pilot.
 - **Translated.** The face check's texts are in the six languages. The technical test tools (face check test, enrolment proof test, ballot proof benchmark) stay in English and are folded under **▸ Test tools (English)** on the first screen, so that volunteers do not meet them.
 
+### v0.11.1: the pilot's information and consent (Decision #57, point 4)
+
+The enrolment screen now begins with a short summary of the pilot's information text (`docs/pilot/consent-v0.2.md`, Persian `consent-v0.2-fa.md`), a button that opens the full text, and a box to tick: "I am 18 or older, the passport is my own, and I have read and agree to the information text." The selfie and enrolment stay disabled until it is ticked. The shared result records that the consent was given (`consent: information text v0.2 read and agreed`).
+
 ### v0.11: registration on the public ledger (Decision #61)
 
 - **When.** At enrolment (and after a restore) the phone picks a random moment 2 to 26 hours later. The first time the app is opened after it, the phone registers on its own and says so on the first screen; until then it shows when.

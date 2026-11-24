@@ -1,6 +1,6 @@
 # Proof of One pilot — information for volunteers and consent
 
-*Draft v0.2, 23 November 2026. To be read in full before installing the app. The app shows a short summary of it and asks for your agreement before enrolment.*
+*Version 0.2, approved by the organiser on 24 November 2026. To be read in full before installing the app. The app shows a short summary of it and asks for your agreement before enrolment.*
 
 ## 1. Why this project exists
 

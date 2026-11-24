@@ -297,5 +297,41 @@ object L10n {
             "L'inscription au registre public a échoué : %s. L'application réessaiera à sa prochaine ouverture ; partagez le résultat avec l'organisateur.",
             "El registro en el libro público falló: %s. La aplicación lo intentará de nuevo la próxima vez que la abra; comparta el resultado con el organizador.",
             "Der Eintrag im öffentlichen Register ist fehlgeschlagen: %s. Die App versucht es beim nächsten Öffnen erneut; bitte das Ergebnis an den Organisator senden."),
+        // the pilot's information and consent (v0.11.1, Decision #57 (4))
+        "consentStep" to listOf(
+            "Before you start: the pilot's information",
+            "پیش از شروع: اطلاعات آزمایش",
+            "قبل أن تبدأ: معلومات التجربة",
+            "Avant de commencer : informations sur le pilote",
+            "Antes de empezar: información del piloto",
+            "Bevor Sie beginnen: Informationen zum Pilotversuch"),
+        "consentSummary" to listOf(
+            "Please read the full information text first (button below). In short:\n• The software has not been reviewed by independent experts and may contain mistakes.\n• Your passport data and your selfie never leave this phone; nothing that identifies you is published.\n• Do not talk about the pilot outside the group, do not take screenshots, and keep your member number private.\n• The enrolment service's data is deleted at the latest 30 days after the pilot's last poll closes.\n• You can stop at any time by removing the app.",
+            "لطفاً اول متن کامل اطلاعات را بخوانید (دکمه‌ی زیر). به طور خلاصه:\n• نرم‌افزار هنوز توسط کارشناسان مستقل بازبینی نشده و ممکن است اشتباه داشته باشد.\n• داده‌های پاسپورت و سلفی شما هرگز از این گوشی بیرون نمی‌روند؛ هیچ چیزی که شما را بشناساند منتشر نمی‌شود.\n• بیرون از گروه درباره‌ی آزمایش صحبت نکنید، اسکرین‌شات نگیرید و شماره‌ی عضویت‌تان را خصوصی نگه دارید.\n• داده‌های سرویس ثبت‌نام حداکثر ۳۰ روز پس از بسته شدن آخرین نظرسنجی آزمایش پاک می‌شود.\n• هر وقت خواستید می‌توانید با پاک کردن برنامه کنار بکشید.",
+            "يُرجى قراءة نص المعلومات كاملاً أولاً (الزر أدناه). باختصار:\n• لم يراجع خبراء مستقلون البرنامج بعد، وقد يحتوي على أخطاء.\n• بيانات جوازك وصورتك الذاتية لا تغادر هذا الهاتف أبداً؛ ولا يُنشر أي شيء يدل على هويتك.\n• لا تتحدث عن التجربة خارج المجموعة، ولا تلتقط صوراً للشاشة، واحتفظ برقم عضويتك لنفسك.\n• تُحذف بيانات خدمة التسجيل خلال 30 يوماً على الأكثر من إغلاق آخر استطلاع في التجربة.\n• يمكنك التوقف في أي وقت بحذف التطبيق.",
+            "Lisez d'abord le texte d'information complet (bouton ci-dessous). En bref :\n• Le logiciel n'a pas encore été examiné par des experts indépendants et peut contenir des erreurs.\n• Les données de votre passeport et votre selfie ne quittent jamais ce téléphone ; rien qui vous identifie n'est publié.\n• Ne parlez pas du pilote en dehors du groupe, ne faites pas de captures d'écran et gardez votre numéro de membre pour vous.\n• Les données du service d'inscription sont effacées au plus tard 30 jours après la clôture du dernier sondage du pilote.\n• Vous pouvez arrêter à tout moment en supprimant l'application.",
+            "Lea primero el texto informativo completo (botón de abajo). En resumen:\n• Ningún experto independiente ha revisado todavía el software, y puede contener errores.\n• Los datos de su pasaporte y su selfi nunca salen de este teléfono; no se publica nada que le identifique.\n• No hable del piloto fuera del grupo, no haga capturas de pantalla y guarde en privado su número de miembro.\n• Los datos del servicio de inscripción se borran a más tardar 30 días después de cerrarse la última encuesta del piloto.\n• Puede dejarlo en cualquier momento borrando la aplicación.",
+            "Bitte lesen Sie zuerst den vollständigen Informationstext (Schaltfläche unten). Kurz gesagt:\n• Die Software wurde noch nicht von unabhängigen Fachleuten geprüft und kann Fehler enthalten.\n• Ihre Passdaten und Ihr Selfie verlassen dieses Telefon nie; nichts, was Sie identifiziert, wird veröffentlicht.\n• Sprechen Sie außerhalb der Gruppe nicht über den Pilotversuch, machen Sie keine Bildschirmfotos und behalten Sie Ihre Mitgliedsnummer für sich.\n• Die Daten des Registrierungsdienstes werden spätestens 30 Tage nach Ende der letzten Umfrage des Pilotversuchs gelöscht.\n• Sie können jederzeit aufhören, indem Sie die App löschen."),
+        "consentRead" to listOf(
+            "Read the full text",
+            "خواندن متن کامل",
+            "قراءة النص الكامل",
+            "Lire le texte complet",
+            "Leer el texto completo",
+            "Vollständigen Text lesen"),
+        "consentAgree" to listOf(
+            "I am 18 or older, the passport is my own, and I have read and agree to the information text.",
+            "۱۸ سال یا بیشتر دارم، پاسپورت مال خودم است، و متن اطلاعات را خوانده‌ام و با آن موافقم.",
+            "عمري 18 عاماً أو أكثر، والجواز جوازي، وقد قرأت نص المعلومات وأوافق عليه.",
+            "J'ai 18 ans ou plus, le passeport est le mien, et j'ai lu le texte d'information et l'accepte.",
+            "Tengo 18 años o más, el pasaporte es mío, y he leído el texto informativo y estoy de acuerdo.",
+            "Ich bin 18 Jahre oder älter, der Pass gehört mir, und ich habe den Informationstext gelesen und stimme zu."),
+        "consentFirst" to listOf(
+            "Please read the information and tick the box first.",
+            "لطفاً اول اطلاعات را بخوانید و تیک موافقت را بزنید.",
+            "يُرجى قراءة المعلومات ووضع علامة الموافقة أولاً.",
+            "Lisez d'abord les informations et cochez la case.",
+            "Lea primero la información y marque la casilla.",
+            "Bitte zuerst die Informationen lesen und das Kästchen ankreuzen."),
     )
 }

@@ -29,7 +29,9 @@ import android.text.InputType
 import android.util.Base64
 import android.view.View
 import android.view.WindowManager
+import android.net.Uri
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -62,6 +64,7 @@ class EnrolActivity : Activity() {
     private var matcher: FaceMatcher? = null
     private var chipFace: FaceMatcher.Face? = null
     private var faceOk = false
+    @Volatile private var consentOk = false
     private var faceSim = 0f
     private var faceTries = 0
     private val selfie by lazy { File(cacheDir, "enrol_selfie.jpg") }
@@ -79,6 +82,24 @@ class EnrolActivity : Activity() {
         if (t("draft").isNotEmpty()) col.addView(TextView(this).apply { text = t("draft"); textSize = 12f })
         col.addView(TextView(this).apply { text = t("enrolIntro"); setPadding(0, pad / 2, 0, 0) })
         fun heading(k: String) = TextView(this).apply { text = t(k); textSize = 17f; setTypeface(null, Typeface.BOLD); setPadding(0, pad, 0, 0) }
+        // The pilot's information and consent (docs/pilot/consent-v0.2*.md; Decision #57, point 4)
+        col.addView(heading("consentStep"))
+        col.addView(TextView(this).apply { text = t("consentSummary"); setPadding(0, pad / 2, 0, 0) })
+        col.addView(Button(this).apply {
+            text = t("consentRead")
+            setOnClickListener {
+                val f = if (L10n.lang == "fa") "consent-v0.2-fa.md" else "consent-v0.2.md"
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/NemoUnus/proof-of-one/blob/main/docs/pilot/$f")))
+            }
+        })
+        col.addView(CheckBox(this).apply {
+            text = t("consentAgree")
+            setOnCheckedChangeListener { _, on ->
+                consentOk = on
+                selfieBtn.isEnabled = on && chipFace != null && !faceOk
+                start.isEnabled = on && faceOk && !memberFile().exists() && DocStore.chip?.dscDer != null
+            }
+        })
         col.addView(heading("faceStep"))
         col.addView(TextView(this).apply { text = t("faceIntro"); setPadding(0, pad / 2, 0, 0) })
         selfieBtn = Button(this).apply { text = t("takeSelfie"); isEnabled = false; setOnClickListener { takeSelfie() } }
@@ -155,7 +176,7 @@ class EnrolActivity : Activity() {
             chipFace = f
             runOnUiThread {
                 if (f == null) faceStatus.text = L10n.t("faceNoChipFace")
-                else if (!faceOk) { faceStatus.text = L10n.t("faceReady"); selfieBtn.isEnabled = true }
+                else if (!faceOk) { faceStatus.text = L10n.t("faceReady"); selfieBtn.isEnabled = consentOk }
             }
             f != null
         } catch (e: Throwable) {
@@ -196,7 +217,7 @@ class EnrolActivity : Activity() {
                         sim >= FaceMatcher.THRESHOLD -> {
                             faceOk = true; faceSim = sim
                             faceStatus.text = L10n.t("facePass"); selfieBtn.isEnabled = false
-                            start.isEnabled = !memberFile().exists() && DocStore.chip?.dscDer != null
+                            start.isEnabled = consentOk && !memberFile().exists() && DocStore.chip?.dscDer != null
                         }
                         else -> faceStatus.text = L10n.t("faceFail")
                     }
@@ -263,13 +284,14 @@ class EnrolActivity : Activity() {
     private fun run() {
         val chip = DocStore.chip ?: return
         fun t(k: String, vararg a: Any) = L10n.t(k, *a)
+        if (!consentOk) { status.text = t("consentFirst"); return }
         if (!faceOk) { status.text = t("faceFirst"); return }
         val password = pw1.text.toString()
         if (password.length < 8) { status.text = t("pwShort"); return }
         if (password != pw2.text.toString()) { status.text = t("pwDiffer"); return }
         start.isEnabled = false; share.visibility = View.GONE; report.text = ""
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        val log = mutableListOf("Proof of One pilot enrolment v0.11",
+        val log = mutableListOf("Proof of One pilot enrolment v0.11", "consent: information text v0.2 read and agreed",
             "face check: passed on the phone (similarity %.2f, threshold %.2f, %d selfie%s); no face data sent".format(
                 java.util.Locale.ROOT, faceSim, FaceMatcher.THRESHOLD, faceTries, if (faceTries == 1) "" else "s"))
         fun step(s: String) = runOnUiThread { status.text = s }
