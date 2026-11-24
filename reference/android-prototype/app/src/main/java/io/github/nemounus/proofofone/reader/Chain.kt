@@ -30,7 +30,7 @@ class Chain(private val rpc: String = RPC, private val transport: ((String) -> S
         const val RPC = "https://sepolia.base.org"
         const val CHAIN_ID = 84532L
         /** The polls contract of deployment 6 (reference/testnet/web/plan8.json). */
-        const val POLLS = "0x5DcBFaA0111d75047AACa970bbb429e2e6fD396d"
+        const val POLLS = "0x50Bd199Ff42FaBa4b4Bf5C545a84E91003D51F5F"
 
         fun selector(sig: String) = hex(Keccak.k256(sig.toByteArray(Charsets.UTF_8))).substring(0, 8)
         fun word(x: BigInteger) = x.toString(16).padStart(64, '0')

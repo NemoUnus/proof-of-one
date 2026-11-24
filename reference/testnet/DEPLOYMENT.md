@@ -224,13 +224,13 @@ The poll: *"Pilot test poll: which part of the app should we improve first?"* (t
 
 ## Deployment 6: fixes from the review of deployment 5 (Decision #65)
 
-Deployment 5 was sent on 24 November 2026: all 8 steps of `web/plan7.json` (start nonce 19) are done, at the planned addresses above. Its poll (poll 1 of `0xaD174b869FD926c249AE6e9516e58D0901b9aD6E`) is not used for the pilot: the two reviews of deployment 5 (`docs/review/`) found flaws to fix first.
+Deployment 5 was sent on 24 November 2026: all 8 steps of `web/plan7.json` (start nonce 19) are done, at the planned addresses above. The wallet's nonce afterwards was 26, not 27: as with plan 6's call, the poll's creation did not raise it. Its poll (poll 1 of `0xaD174b869FD926c249AE6e9516e58D0901b9aD6E`) is not used for the pilot: the two reviews of deployment 5 (`docs/review/`) found flaws to fix first.
 
-Prepared by `plan8.js` (`web/plan8.json`, start nonce 27):
+Prepared by `plan8.js` (`web/plan8.json`, start nonce 26):
 
 | Step | What | Planned address |
 |---|---|---|
-| 1 | ProofOfOnePolls (review fixes B2, C5; registries and verifiers of deployment 5) | `0x5DcBFaA0111d75047AACa970bbb429e2e6fD396d` |
-| 2 | Create the pilot's poll (poll id 1 of deployment 6; 4 options, open for 14 days, text in eight languages) | `0x5DcBFaA0111d75047AACa970bbb429e2e6fD396d` |
+| 1 | ProofOfOnePolls (review fixes B2, C5; registries and verifiers of deployment 5) | `0x50Bd199Ff42FaBa4b4Bf5C545a84E91003D51F5F` |
+| 2 | Create the pilot's poll (poll id 1 of deployment 6; 4 options, open for 14 days, text in eight languages) | `0x50Bd199Ff42FaBa4b4Bf5C545a84E91003D51F5F` |
 
 Reused from deployment 5: IdentityRegistry, RevocationRegistry, RegistrationVerifier, Groth16Verifier, BallotBatchVerifier, RecoveryVerifier; and Poseidon, RevokeVerifier, TallyVerifier from earlier deployments. The relay (`wrangler.toml`) and app v0.14 (`Chain.kt`) point at the new polls contract. Not yet sent.
