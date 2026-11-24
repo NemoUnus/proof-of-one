@@ -23,7 +23,7 @@ const RB = require("../../ballot-circuit/src/recovery");
 const BALLOT_ZKEY = path.join(__dirname, "..", "..", "ballot-circuit", "setup", "ballot_test.zkey");
 const REG_ZKEY = path.join(__dirname, "..", "..", "enrolment-circuit", "setup", "registration_test.zkey");
 const REVOKE_ZKEY = path.join(__dirname, "..", "..", "enrolment-circuit", "setup", "revoke_test.zkey");
-const RECOVERY_ZKEY = path.join(__dirname, "..", "..", "ballot-circuit", "setup", "recovery_test.zkey");
+const RECOVERY_ZKEY = require("../../ballot-circuit/src/zkey").zkey("recovery_test.zkey");
 const Z2 = [0n, 0n], Z22 = [[0n, 0n], [0n, 0n]];
 const art = (n) => JSON.parse(fs.readFileSync(path.join(__dirname, "..", "build", n + ".json"), "utf8"));
 const A = require("../../ballot-circuit/src/attrs");

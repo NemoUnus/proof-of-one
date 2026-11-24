@@ -16,7 +16,7 @@ const { makePublish } = require("../publish.js");
 const WASM = path.join(__dirname, "..", "..", "ballot-circuit", "build", "ballot_js", "ballot.wasm");
 const ZKEY = path.join(__dirname, "..", "..", "ballot-circuit", "setup", "ballot_test.zkey");
 const RWASM = path.join(__dirname, "..", "..", "ballot-circuit", "build", "recovery_js", "recovery.wasm");
-const RZKEY = path.join(__dirname, "..", "..", "ballot-circuit", "setup", "recovery_test.zkey");
+const RZKEY = require("../../ballot-circuit/src/zkey").zkey("recovery_test.zkey");
 const os = require("os");
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "plan4-"));
 process.env.POLL3_SECRETS = path.join(TMP, "poll3.json"); process.env.POLL4_SECRETS = path.join(TMP, "poll4.json");

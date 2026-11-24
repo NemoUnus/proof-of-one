@@ -21,3 +21,5 @@ npx snarkjs zkey export verificationkey recovery_test.zkey vkey_recovery_test.js
 rm -f recovery_0.zkey
 npx snarkjs zkey export solidityverifier recovery_test.zkey ../../contracts/src/RecoveryVerifier.sol
 sed -i 's/contract Groth16Verifier/contract RecoveryVerifier/' ../../contracts/src/RecoveryVerifier.sol
+# kept gzipped in the repository (GitHub's web upload takes files up to 25 MB); src/zkey.js unpacks it
+gzip -9 -k -f recovery_test.zkey

@@ -19,7 +19,7 @@ const R = require("../src/recovery");
 const A = require("../src/attrs");
 const { IncrementalTree, RevocationTree } = require("../src/trees");
 
-const ZKEY = path.join(__dirname, "..", "setup", "recovery_test.zkey");
+const ZKEY = require("../src/zkey").zkey("recovery_test.zkey");
 const VKEY = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "setup", "vkey_recovery_test.json"), "utf8"));
 const POLICY = { ...A.ageRange([2026, 11, 14], { minAge: 18 }), minExpiryMonth: 24330, requiredNat: 0 };
 const POLL = 3003n, CTX = 999n, OPEN = 1795000000n;
