@@ -87,13 +87,15 @@ function createEnclave(P, { epochs = 4 } = {}) {
   // `replaces` (a revocation handle) is for a test enclave that did not issue the identity
   // being replaced, such as a new synthetic key set on the test network: the new handle is
   // linked to it as for a re-enrolment.
-  function issue({ fingerprint, attrs, cm, epoch = 0, reenrol = false, docId = fingerprint, replaces }) {
+  // `now` (unix seconds) is the issue time a re-issued identity carries as notBefore
+  // (Decision #62); a first identity carries 0.
+  function issue({ fingerprint, attrs, cm, epoch = 0, reenrol = false, docId = fingerprint, replaces, now }) {
     const prev = enrolled.get(fingerprint) || (replaces !== undefined ? { generation: 0n, rn: BigInt(replaces), attrs } : undefined);
     if (prev && !reenrol && replaces === undefined) throw new Error("already enrolled");
     if (!prev && usedDocs.has(docId)) throw new Error("document already used");
     A.docsOf(attrs);
     usedDocs.add(docId);
-    return sign(fingerprint, prev, attrs, cm, epoch);
+    return sign(fingerprint, prev, attrs, cm, epoch, now);
   }
 
   // Decision #30: a person who is already enrolled adds a further genuine document
@@ -101,22 +103,24 @@ function createEnclave(P, { epochs = 4 } = {}) {
   // In the real enclave: the document passes the validity checks, is not used by anyone,
   // and its chip photo and the live face match THIS person's existing face template.
   // Here the caller states the person (`fingerprint`) and the face check result.
-  function addDocument({ fingerprint, docId, doc, cm, epoch = 0, faceMatches = true }) {
+  function addDocument({ fingerprint, docId, doc, cm, epoch = 0, faceMatches = true, now }) {
     const prev = enrolled.get(fingerprint);
     if (!prev) throw new Error("not enrolled");
     if (!faceMatches) throw new Error("document holder is not this member");
     if (usedDocs.has(docId)) throw new Error("document already used");
     const attrs = A.withDocument(prev.attrs, doc);
     usedDocs.add(docId);
-    return { ...sign(fingerprint, prev, attrs, cm, epoch), attrs };
+    return sign(fingerprint, prev, attrs, cm, epoch, now);
   }
 
   // A reissued identity (after a lost phone, or with a further document) is linked to the
   // one it replaces through its handle: rn = Poseidon(14, rn_old, link), retried below 2^252.
   // `link` (ρ in the design) goes only to the member, who needs it for recovery ballots in
   // polls still open (docs/specs/recovery-ballots-and-oprf-key-v0.1.md §1.5).
-  function sign(fingerprint, prev, attrs, cm, epoch) {
+  function sign(fingerprint, prev, attrs0, cm, epoch, now) {
     const generation = prev ? prev.generation + 1n : 0n;
+    // a re-issued identity answers only polls opened after it was issued (Decision #62)
+    const attrs = { ...attrs0, notBefore: prev ? BigInt(now ?? Math.floor(Date.now() / 1000)) : 0n };
     let rn = handle(fingerprint, generation), link = null;
     if (prev) do { link = P.curve.randScalar(); rn = H([TAG.REPLACES, prev.rn, link]); } while (rn >= RN_LIMIT);
     const k = keys[epoch];
@@ -127,6 +131,7 @@ function createEnclave(P, { epochs = 4 } = {}) {
     return {
       credential: { rn, link, epoch: k.epoch, A: k.A, R8: [F.toObject(sig.R8[0]), F.toObject(sig.R8[1])], S: sig.S, keyIndex: k.index },
       revokeOld: prev ? prev.rn : null,
+      attrs,
     };
   }
   return { issue, addDocument, keyTree, get keySetRoot() { return keyTree.root; }, issuedLog };
@@ -140,7 +145,7 @@ function buildRegistration(P, enclave, member, credential) {
   const input = {
     leaf: leaf.toString(), cn: m.cn.toString(), keySetRoot: enclave.keySetRoot.toString(),
     s: m.s.toString(), birthDay: String(m.birthDay), sexCode: String(m.sexCode),
-    nat: A.slots(m).map((d) => d.nat.toString()), exp: A.slots(m).map((d) => d.expiry.toString()), salt: m.salt.toString(), rho: m.rho.toString(), rn: m.rn.toString(),
+    nat: A.slots(m).map((d) => d.nat.toString()), exp: A.slots(m).map((d) => d.expiry.toString()), notBefore: String(m.notBefore ?? 0), salt: m.salt.toString(), rho: m.rho.toString(), rn: m.rn.toString(),
     epoch: credential.epoch.toString(), Ax: credential.A[0].toString(), Ay: credential.A[1].toString(),
     R8x: credential.R8[0].toString(), R8y: credential.R8[1].toString(), S: credential.S.toString(),
     keySiblings: kp.siblings.map(String), keyPathIndex: kp.pathIndex.map(String),

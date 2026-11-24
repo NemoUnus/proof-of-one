@@ -22,7 +22,7 @@ const { IncrementalTree, RevocationTree } = require("../src/trees");
 const ZKEY = path.join(__dirname, "..", "setup", "recovery_test.zkey");
 const VKEY = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "setup", "vkey_recovery_test.json"), "utf8"));
 const POLICY = { ...A.ageRange([2026, 11, 14], { minAge: 18 }), minExpiryMonth: 24330, requiredNat: 0 };
-const POLL = 3003n, CTX = 999n;
+const POLL = 3003n, CTX = 999n, OPEN = 1795000000n;
 const handle = () => BigInt("0x" + crypto.randomBytes(31).toString("hex"));
 const witnessFails = (input) => assert.rejects(snarkjs.wtns.calculate(input, R.WASM, { type: "mem" }));
 
@@ -47,7 +47,7 @@ test.before(async () => {
   // Bob enrols a new identity of his own (random handle, no link) to try to replace Alice's ballot
   bobNew = { ...member(), link: C.randScalar() };
   bobNew.index = ids.insert(B.memberLeaf(P, bobNew));
-  args = { pollId: POLL, PK: keys.PK, policy: POLICY, ctxHash: CTX, oldMember: alice, oldIndex: alice.index, snapTree, newMember: aliceNew, newIndex: aliceNew.index, curTree: ids, revTree, choice: 2 };
+  args = { pollId: POLL, PK: keys.PK, policy: POLICY, ctxHash: CTX, openTime: OPEN, oldMember: alice, oldIndex: alice.index, snapTree, newMember: aliceNew, newIndex: aliceNew.index, curTree: ids, revTree, choice: 2 };
 });
 
 test("the link: the new handle is below 2^252 and does not equal the old one", () => {
@@ -60,13 +60,13 @@ test("Alice's recovery ballot proves and verifies, under her OLD nullifier", asy
   const b = R.buildRecovery(P, args);
   assert.equal(b.nf, P.nullifier(POLL, alice.s));
   const { proof, publicSignals } = await R.prove(b.input, ZKEY);
-  const expected = R.publicSignals(P, { idRoot: snapTree.root, revRoot: revTree.root, idRootNow: ids.root, pollId: POLL, nf: b.nf, PK: keys.PK, policy: POLICY, ctxHash: CTX, C: b.C });
+  const expected = R.publicSignals(P, { idRoot: snapTree.root, revRoot: revTree.root, idRootNow: ids.root, pollId: POLL, nf: b.nf, PK: keys.PK, policy: POLICY, ctxHash: CTX, openTime: OPEN, C: b.C });
   assert.deepEqual(publicSignals, expected);
   assert.equal(await R.verify(VKEY, expected, proof), true);
   // the same proof does not verify for another poll or another current identity root
-  const other = R.publicSignals(P, { idRoot: snapTree.root, revRoot: revTree.root, idRootNow: ids.root, pollId: POLL + 1n, nf: b.nf, PK: keys.PK, policy: POLICY, ctxHash: CTX, C: b.C });
+  const other = R.publicSignals(P, { idRoot: snapTree.root, revRoot: revTree.root, idRootNow: ids.root, pollId: POLL + 1n, nf: b.nf, PK: keys.PK, policy: POLICY, ctxHash: CTX, openTime: OPEN, C: b.C });
   assert.equal(await R.verify(VKEY, other, proof), false);
-  const stale = [...expected.slice(0, -1), snapTree.root.toString()];
+  const stale = [...expected.slice(0, -2), snapTree.root.toString(), expected[expected.length - 1]]; // another idRootNow
   assert.equal(await R.verify(VKEY, stale, proof), false);
 });
 
@@ -98,7 +98,7 @@ test("a revoked new identity cannot make recovery ballots", async () => {
   await witnessFails(forged);
 });
 
-test("the old identity must be in the poll's snapshot", async () => {
+test("the old identity must be in the root the proof names", async () => {
   // Alice's NEW identity was not a member when X opened: it cannot pose as the old one
   await witnessFails(R.buildRecovery(P, { ...args, oldMember: { ...aliceNew }, oldIndex: aliceNew.index }).input);
 });

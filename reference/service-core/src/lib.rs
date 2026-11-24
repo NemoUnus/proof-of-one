@@ -181,13 +181,14 @@ pub fn verify_answer(kp: &Pt, b: &Pt, z: &Pt, c: &Sc, s: &Sc) -> Result<bool, Er
     Ok(dleq_hash(kp, b, z, &t1, &t2)? == *c)
 }
 
-/// The credential (enrolment.js, sign()): {"fp": person key, "attrs": the 8 attribute
-/// fields [birthDay, sexCode, nat_0, exp_0, nat_1, exp_1, nat_2, exp_2], "cm", "epoch",
+/// The credential (enrolment.js, sign()): {"fp": person key, "attrs": the 9 attribute
+/// fields [birthDay, sexCode, nat_0, exp_0, nat_1, exp_1, nat_2, exp_2, notBefore], "cm", "epoch",
+/// (notBefore: 0 for a first identity, the issue time for a re-issued one; Decision #62)
 /// "generation" (0 for a first identity), "rand": 64 random bytes hex} ->
 /// {"rn", "msg", "A", "R8", "S"}. rn = H(6, kR, fp, generation) mod 2^252.
 pub fn sign(s: &Secrets, v: &Value) -> Result<Value, Error> {
     let fp = fr(str_of(v, "fp")?)?;
-    let attrs = v["attrs"].as_array().filter(|a| a.len() == 8).ok_or("8 attribute fields expected")?;
+    let attrs = v["attrs"].as_array().filter(|a| a.len() == 9).ok_or("9 attribute fields expected")?;
     let attrs = attrs.iter().map(|x| fr(x.as_str().ok_or("decimal string expected")?)).collect::<Result<Vec<_>, _>>()?;
     let cm = fr(str_of(v, "cm")?)?;
     let epoch = fr(str_of(v, "epoch")?)?;

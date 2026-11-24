@@ -15,7 +15,7 @@ const crypto = require("crypto"), fs = require("fs");
   m.index = ids.insert(B.memberLeaf(P, m));
   rev.revoke(h()); rev.revoke(h());
   const policy = { ...A.ageRange([2026, 10, 23], { minAge: 18 }), minExpiryMonth: 24330, requiredNat: 124 };
-  const b = B.buildBallot(P, { pollId: 2026n, PK: keys.PK, policy, ctxHash: 99n, member: m, leafIndex: m.index, idTree: ids, revTree: rev, choice: 2 });
+  const b = B.buildBallot(P, { pollId: 2026n, PK: keys.PK, policy, ctxHash: 99n, openTime: 1795000000n, member: m, leafIndex: m.index, idTree: ids, revTree: rev, choice: 2 });
   fs.writeFileSync(__dirname + "/input.json", JSON.stringify(b.input));
   console.log("ok");
   process.exit(0);

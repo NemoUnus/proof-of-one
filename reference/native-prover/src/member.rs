@@ -56,7 +56,8 @@ pub fn new_member(rand: &[u8]) -> Result<serde_json::Value, Error> {
 /// enrolment.js, from what the phone kept at enrolment (member.json) and the published key
 /// set. `v` holds:
 ///   member     {s, salt, rho, idc, cn}            the secrets made by new_member
-///   attrs      {birthDay, sexCode, natCode, expMonth}   the signed attributes (one document)
+///   attrs      {birthDay, sexCode, natCode, expMonth, notBefore?}   the signed attributes
+///              (one document; notBefore 0 when absent, Decision #62)
 ///   credential {rn, epoch, A: [x, y], R8: [x, y], S}    the service's signature
 ///   keySet     {root, siblings[8], pathIndex[8]}  the signing key's path in the key set
 /// Returns {"input": the circuit's inputs, "leaf", "cn"}. Only leaf and cn are made public,
@@ -80,9 +81,10 @@ pub fn registration_input(v: &serde_json::Value) -> Result<serde_json::Value, Er
     let (salt, rho, idc, cn, rn) = (num(m, "salt")?, num(m, "rho")?, num(m, "idc")?, num(m, "cn")?, num(c, "rn")?);
     if h(&[Fr::from(TAG_CREDENTIAL), rho])? != cn { return Err("cn does not match rho".into()); }
     let (bd, sx, nat, exp) = (num(at, "birthDay")?, num(at, "sexCode")?, num(at, "natCode")?, num(at, "expMonth")?);
+    let nb = if at.get("notBefore").is_some() { num(at, "notBefore")? } else { Fr::zero() };
     let z = Fr::zero();
-    // attrHash: birthDay, sexCode, (nat, expiry) for three document slots, salt
-    let attr_hash = h(&[bd, sx, nat, exp, z, z, z, z, salt])?;
+    // attrHash: birthDay, sexCode, (nat, expiry) for three document slots, notBefore, salt
+    let attr_hash = h(&[bd, sx, nat, exp, z, z, z, z, nb, salt])?;
     let leaf = h(&[idc, attr_hash, rn])?;
     let arr = |k: &str| -> Result<Vec<String>, Error> {
         let a = get(ks, k)?.as_array().filter(|a| a.len() == 8).ok_or(format!("keySet.{}: 8 entries expected", k))?;
@@ -94,7 +96,7 @@ pub fn registration_input(v: &serde_json::Value) -> Result<serde_json::Value, Er
         "leaf": dec(&leaf), "cn": dec(&cn), "keySetRoot": dec(&num(ks, "root")?),
         "s": get(m, "s")?.as_str().ok_or("s: decimal expected")?,
         "birthDay": dec(&bd), "sexCode": dec(&sx),
-        "nat": [dec(&nat), "0", "0"], "exp": [dec(&exp), "0", "0"],
+        "nat": [dec(&nat), "0", "0"], "exp": [dec(&exp), "0", "0"], "notBefore": dec(&nb),
         "salt": dec(&salt), "rho": dec(&rho), "rn": dec(&rn), "epoch": dec(&num(c, "epoch")?),
         "Ax": a[0], "Ay": a[1], "R8x": r8[0], "R8y": r8[1], "S": dec(&num(c, "S")?),
         "keySiblings": arr("siblings")?, "keyPathIndex": arr("pathIndex")?,

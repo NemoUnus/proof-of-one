@@ -9,6 +9,7 @@ interface IPoseidon5 { function poseidon(uint256[5] calldata input) external pur
 interface IIdentityRegistry {
     function root() external view returns (uint256);
     function leafCount() external view returns (uint256);
+    function isHistoricalRoot(uint256 root) external view returns (bool);
 }
 
 interface IRevocationRegistry {
@@ -24,7 +25,7 @@ interface IBallotVerifier {
         uint256[2] calldata a,
         uint256[2][2] calldata b,
         uint256[2] calldata c,
-        uint256[18] calldata pub
+        uint256[19] calldata pub
     ) external view returns (bool);
 }
 
@@ -44,7 +45,7 @@ interface IRecoveryVerifier {
         uint256[2] calldata a,
         uint256[2][2] calldata b,
         uint256[2] calldata c,
-        uint256[19] calldata pub
+        uint256[20] calldata pub
     ) external view returns (bool);
 }
 
@@ -54,6 +55,7 @@ interface IBallotBatchVerifier {
     function verifyBallots(
         uint256 pollHash,
         uint256[] calldata nfs,
+        uint256[] calldata idRoots,
         uint256[16][] calldata cts,
         Proof[] calldata proofs
     ) external view returns (bool);
@@ -200,6 +202,7 @@ contract ProofOfOnePolls {
     error SeedTooEarly();
     error RevoteCapReached();
     error InvalidProof();
+    error UnknownRoot();
     error NotClosed();
     error BadState();
     error ChainMismatch();
@@ -247,7 +250,9 @@ contract ProofOfOnePolls {
         pollId = ++pollCount;
         Poll storage s = _polls[pollId];
         s.creator = msg.sender;
-        // Membership snapshot: fixed for the life of the poll (spec §3, contracts §6).
+        // Roots at creation. Ballots may prove membership in any root the identity registry
+        // has held, so a member registered after the poll opened can answer it (Decision #62);
+        // only a sampled poll keeps this snapshot, since its sample is drawn from it.
         s.idRoot = identity.root();
         s.revRoot = revocation.root();
         s.eligible = identity.leafCount() - revocation.revokedCount();
@@ -272,9 +277,11 @@ contract ProofOfOnePolls {
         }
         uint256[16] storage g = _agg[pollId];
         for (uint256 q = 0; q < 8; q++) { g[2 * q] = 1; g[2 * q + 1] = 2; } // identity (0, 1), offset by one
-        // pollHash = Poseidon(7, Poseidon(idRoot, revRoot, pollId, PK.x, PK.y),
+        // pollHash = Poseidon(7, Poseidon(revRoot, pollId, PK.x, PK.y, openTime),
         //                       Poseidon(maxBirthDay, minBirthDay, minExpiryMonth, requiredNat, contextHash))
-        uint256 h1 = poseidon5.poseidon([s.idRoot, s.revRoot, pollId, p.tallyPK[0], p.tallyPK[1]]);
+        // (the identity root is a public input of each ballot; the opening time is bound so
+        // that a re-issued identity answers only polls opened after it was issued, #62)
+        uint256 h1 = poseidon5.poseidon([s.revRoot, pollId, p.tallyPK[0], p.tallyPK[1], uint256(p.openTime)]);
         uint256 h2 = poseidon5.poseidon([uint256(p.maxBirthDay), uint256(p.minBirthDay), uint256(p.minExpiryMonth), uint256(p.requiredNat), contextHash(pollId)]);
         s.pollHash = poseidon3.poseidon([uint256(7), h1, h2]);
         _policyHash[pollId] = h2;
@@ -320,11 +327,14 @@ contract ProofOfOnePolls {
 
     /// @notice Submit one ballot directly. Always available, so no aggregator can censor.
     /// @param ct ciphertexts in circuit order: A_0..A_3 (x, y) then B_0..B_3 (x, y)
+    /// @param idRoot the identity root the proof uses: any root the registry has held
+    ///        (Decision #62), or the creation-time root for a sampled poll
     /// @param prev for a re-vote, the ballot it replaces (as in its Ballot event), so the
     ///        contract can subtract it from the running sum; ignored for a first ballot
     function vote(
         uint256 pollId,
         uint256 nf,
+        uint256 idRoot,
         uint256[16] calldata ct,
         uint256[16] calldata prev,
         uint256[2] calldata pa,
@@ -332,12 +342,14 @@ contract ProofOfOnePolls {
         uint256[2] calldata pc
     ) external {
         Poll storage p = _openPoll(pollId);
-        // Public inputs: the poll's own pollHash, the nullifier and the ciphertexts.
-        uint256[18] memory pub;
+        _checkIdRoot(pollId, p, idRoot);
+        // Public inputs: the poll's own pollHash, the nullifier, the identity root and the ciphertexts.
+        uint256[19] memory pub;
         (uint256 cur, uint256 prv) = _pollHashes(pollId, p);
         pub[0] = cur;
         pub[1] = nf;
-        for (uint256 i = 0; i < 16; i++) pub[2 + i] = ct[i];
+        pub[2] = idRoot;
+        for (uint256 i = 0; i < 16; i++) pub[3 + i] = ct[i];
         if (!verifier.verifyProof(pa, pb, pc, pub)) {
             pub[0] = prv;
             if (prv == 0 || !verifier.verifyProof(pa, pb, pc, pub)) revert InvalidProof();
@@ -358,10 +370,14 @@ contract ProofOfOnePolls {
     ///         identity last recorded (perhaps a thief's ballot). The proof π_recover shows that
     ///         the old identity (nullifier `nf`) was in the poll's snapshot and that the caller
     ///         holds the new identity linked to it, current and not revoked; it reveals neither.
+    /// @param idRootNow a root holding the new identity, idRoot one holding the old identity
+    ///        (both roots the registry has held; Decision #62)
     /// @param prev the ballot it replaces, if the old identity had voted (as in its Ballot event)
     function recoveryVote(
         uint256 pollId,
         uint256 nf,
+        uint256 idRootNow,
+        uint256 idRoot,
         uint256[16] calldata ct,
         uint256[16] calldata prev,
         uint256[2] calldata pa,
@@ -369,13 +385,16 @@ contract ProofOfOnePolls {
         uint256[2] calldata pc
     ) external {
         Poll storage p = _openPoll(pollId);
-        // Public inputs: pollHash, nf, ciphertexts, and the identity registry's current root.
-        uint256[19] memory pub;
+        _checkIdRoot(pollId, p, idRoot);
+        if (!identity.isHistoricalRoot(idRootNow)) revert UnknownRoot();
+        // Public inputs: pollHash, nf, ciphertexts, then the two identity roots.
+        uint256[20] memory pub;
         (uint256 cur, uint256 prv) = _pollHashes(pollId, p);
         pub[0] = cur;
         pub[1] = nf;
         for (uint256 i = 0; i < 16; i++) pub[2 + i] = ct[i];
-        pub[18] = identity.root();
+        pub[18] = idRootNow;
+        pub[19] = idRoot;
         if (!recoveryVerifier.verifyProof(pa, pb, pc, pub)) {
             pub[0] = prv;
             if (prv == 0 || !recoveryVerifier.verifyProof(pa, pb, pc, pub)) revert InvalidProof();
@@ -402,18 +421,20 @@ contract ProofOfOnePolls {
     function voteBatch(
         uint256 pollId,
         uint256[] calldata nfs,
+        uint256[] calldata idRoots,
         uint256[16][] calldata cts,
         IBallotBatchVerifier.Proof[] calldata proofs,
         uint256[16][] calldata prevs
     ) external {
         Poll storage p = _openPoll(pollId);
-        if (nfs.length == 0 || nfs.length != cts.length || nfs.length != proofs.length) revert BadBatch();
+        if (nfs.length == 0 || nfs.length != cts.length || nfs.length != proofs.length || nfs.length != idRoots.length) revert BadBatch();
         // Nullifiers must be strictly increasing: no nullifier twice in one batch, so a relay
         // cannot choose which of a member's answers counts (whitepaper v0.9, 8.5). Re-votes go
         // in separate transactions, ordered by the ledger. One comparison per ballot.
         for (uint256 i = 1; i < nfs.length; i++) if (nfs[i] <= nfs[i - 1]) revert BadBatch();
+        for (uint256 i = 0; i < nfs.length; i++) _checkIdRoot(pollId, p, idRoots[i]);
         (uint256 cur, uint256 prv) = _pollHashes(pollId, p);
-        if (!batchVerifier.verifyBallots(cur, nfs, cts, proofs) && (prv == 0 || !batchVerifier.verifyBallots(prv, nfs, cts, proofs))) revert InvalidProof();
+        if (!batchVerifier.verifyBallots(cur, nfs, idRoots, cts, proofs) && (prv == 0 || !batchVerifier.verifyBallots(prv, nfs, idRoots, cts, proofs))) revert InvalidProof();
         if (sampling[pollId].threshold != 0) for (uint256 i = 0; i < nfs.length; i++) if (!invited(pollId, nfs[i])) revert NotInvited();
 
         Counters memory cnt = _counters[pollId];
@@ -449,11 +470,18 @@ contract ProofOfOnePolls {
     function _pollHashFor(uint256 pollId, Poll storage p, uint256 revRoot) internal returns (uint256 h) {
         h = pollHashAt[pollId][revRoot];
         if (h == 0) {
-            uint256 h1 = poseidon5.poseidon([p.idRoot, revRoot, pollId, p.tallyPK[0], p.tallyPK[1]]);
+            uint256 h1 = poseidon5.poseidon([revRoot, pollId, p.tallyPK[0], p.tallyPK[1], uint256(p.openTime)]);
             h = poseidon3.poseidon([uint256(7), h1, _policyHash[pollId]]);
             pollHashAt[pollId][revRoot] = h;
             emit PollRevocationRoot(pollId, revRoot, h);
         }
+    }
+
+    /// @dev Decision #62: any root the identity registry has held; a sampled poll only its
+    ///      creation-time root, since the sample is drawn from that population.
+    function _checkIdRoot(uint256 pollId, Poll storage p, uint256 idRoot) internal view {
+        if (sampling[pollId].threshold != 0) { if (idRoot != p.idRoot) revert UnknownRoot(); }
+        else if (!identity.isHistoricalRoot(idRoot)) revert UnknownRoot();
     }
 
     function _openPoll(uint256 pollId) internal view returns (Poll storage p) {
@@ -597,7 +625,11 @@ contract ProofOfOnePolls {
         uint256 sum;
         for (uint256 j = 0; j < K; j++) sum += r.counts[j];
         if (sum != distinctVoters(pollId)) revert CountsMismatch();      // one-hot ballots
-        if (distinctVoters(pollId) > p.eligible) revert TooManyVoters(); // bound check (C5)
+        // bound check (C5): members who joined while the poll was open may answer it
+        // (Decision #62), so the bound is the membership when the result is published;
+        // a sampled poll keeps its creation-time population.
+        uint256 eligibleNow = sampling[pollId].threshold != 0 ? p.eligible : identity.leafCount() - revocation.revokedCount();
+        if (distinctVoters(pollId) > eligibleNow) revert TooManyVoters();
         if (keccak256(abi.encode(keys)) != p.trusteeKeysHash) revert BadTrustees();
         if (trustees.length != TALLY_T) revert BadPartials();
         uint256[] memory idx = new uint256[](TALLY_T);

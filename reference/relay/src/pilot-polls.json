@@ -1,0 +1,67 @@
+{
+ "note": "The pilot's polls as the app shows them (written by reference/testnet/plan7.js). metadataHash = keccak256 of JSON.stringify(text), as the poll holds it.",
+ "polls": [
+  {
+   "chainId": "84532",
+   "polls": "0xaD174b869FD926c249AE6e9516e58D0901b9aD6E",
+   "pollId": "1",
+   "metadataHash": "0x673e2ca335838ce326b00e864b849633785a29e54768ea7036700bb39aa35cab",
+   "text": {
+    "en": {
+     "question": "Pilot test poll: which part of the app should we improve first?",
+     "options": [
+      "Reading the passport",
+      "The face check",
+      "Answering a poll",
+      "Messages and languages"
+     ]
+    },
+    "fa": {
+     "question": "نظرسنجی آزمایشی: کدام بخش برنامه را اول بهتر کنیم؟",
+     "options": [
+      "خواندن گذرنامه",
+      "بررسی چهره",
+      "پاسخ دادن به نظرسنجی",
+      "پیام‌ها و زبان‌ها"
+     ]
+    },
+    "ar": {
+     "question": "استطلاع تجريبي: أي جزء من التطبيق نحسّنه أولاً؟",
+     "options": [
+      "قراءة جواز السفر",
+      "التحقق من الوجه",
+      "الإجابة عن استطلاع",
+      "الرسائل واللغات"
+     ]
+    },
+    "fr": {
+     "question": "Sondage d'essai : quelle partie de l'application améliorer en premier ?",
+     "options": [
+      "La lecture du passeport",
+      "La vérification du visage",
+      "La réponse à un sondage",
+      "Les messages et les langues"
+     ]
+    },
+    "es": {
+     "question": "Encuesta de prueba: ¿qué parte de la aplicación mejoramos primero?",
+     "options": [
+      "La lectura del pasaporte",
+      "La comprobación del rostro",
+      "Responder a una encuesta",
+      "Los mensajes y los idiomas"
+     ]
+    },
+    "de": {
+     "question": "Testumfrage: Welchen Teil der App sollen wir zuerst verbessern?",
+     "options": [
+      "Das Lesen des Passes",
+      "Die Gesichtsprüfung",
+      "Das Beantworten einer Umfrage",
+      "Die Meldungen und Sprachen"
+     ]
+    }
+   }
+  }
+ ]
+}

@@ -7,8 +7,9 @@
     <queries>
         <intent><action android:name="android.media.action.IMAGE_CAPTURE" /></intent>
     </queries>
-    <!-- Internet (v0.8): only for the enrolment screen, which talks to the pilot's enrolment
-         service alone (EnrolService.kt). The other screens send nothing. -->
+    <!-- Internet: the enrolment screen talks to the pilot's enrolment service; the registration
+         and the poll screen talk to the pilot's relay (EnrolService.kt). The passport reading
+         and face check screens send nothing. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <application
         android:supportsRtl="true"
@@ -26,6 +27,7 @@
         <activity android:name=".FaceActivity" android:exported="false" />
         <activity android:name=".DocProofActivity" android:exported="false" />
         <activity android:name=".EnrolActivity" android:exported="false" />
+        <activity android:name=".VoteActivity" android:exported="false" />
         <!-- Lets the camera app write the selfie into this app's cache; deleted once read. -->
         <provider android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.files" android:exported="false"

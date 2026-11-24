@@ -19,10 +19,11 @@
 // even after both are published by revocations.
 //
 // STATEMENT (all private values stay on the phone)
-//   old identity, in poll X's membership snapshot:
+//   old identity, in a root the identity registry has held (Decision #62):
 //   1. P_old = s_old·G, idc_old = Poseidon(P_old.x, P_old.y)
 //   2. leaf_old = Poseidon(idc_old, Poseidon(birthDay, sexCode, nat_0, exp_0, nat_1, exp_1,
-//                                            nat_2, exp_2, salt), rn_old)  ∈ tree(idRoot)
+//                                            nat_2, exp_2, notBefore, salt), rn_old)  ∈ tree(idRoot)
+//      and notBefore ≤ openTime, as in π_vote
 //   3. nf = Poseidon(1, pollId, s_old)          the ballot replaces the old identity's
 //   4. eligibility of the old identity, exactly as in π_vote (age range, one document)
 //   new identity, current and not revoked:
@@ -32,16 +33,16 @@
 //   8. rn_new = Poseidon(14, rn_old, ρ)          the new identity replaces the old one
 //   the ballot:
 //   9. one-hot v, A_j = r_j·G, B_j = v_j·G + r_j·PK    as in π_vote
-//  10. pollHash = Poseidon(7, Poseidon(idRoot, revRoot, pollId, PK.x, PK.y),
+//  10. pollHash = Poseidon(7, Poseidon(revRoot, pollId, PK.x, PK.y, openTime),
 //                         Poseidon(maxBirthDay, minBirthDay, minExpiryMonth, requiredNat, ctxHash))
 //      — the same pollHash as π_vote for poll X and the current revocation root
 //
 // The old identity is NOT checked against the revocation tree: it has been revoked.
 // The new identity's non-revocation stands in for it.
 //
-// PUBLIC INPUTS (19): pollHash, nf, the 16 ciphertext coordinates, idRootNow.
-// The contract supplies idRootNow from the identity registry (its current root), and
-// pollHash from the poll and the revocation root, as for π_vote.
+// PUBLIC INPUTS (20): pollHash, nf, the 16 ciphertext coordinates, idRootNow, idRoot.
+// The contract checks that idRootNow and idRoot are roots the identity registry has held,
+// and supplies pollHash from the poll and the revocation root, as for π_vote.
 //
 // Reference circuit for review. Not audited. TEST-ONLY setup.
 pragma circom 2.1.0;
@@ -55,8 +56,9 @@ template Recovery(depth, revDepth, k) {
     signal input CA[k][2];
     signal input CB[k][2];
     signal input idRootNow;
+    signal input idRoot;             // a root that held the old identity (public, Decision #62)
     // ------------------------------------------- per-poll values, bound by pollHash
-    signal input idRoot;             // poll X's membership snapshot
+    signal input openTime;           // poll X's opening time
     signal input revRoot;            // the current revocation root
     signal input pollId;
     signal input PK[2];
@@ -72,6 +74,7 @@ template Recovery(depth, revDepth, k) {
     signal input nat[3];
     signal input exp[3];
     signal input docSel[3];
+    signal input notBefore;          // the old identity's
     signal input salt;
     signal input rnOld;
     signal input idSiblings[depth];
@@ -96,14 +99,15 @@ template Recovery(depth, revDepth, k) {
     component idcOld = Poseidon(2);
     idcOld.inputs[0] <== PO.out[0];
     idcOld.inputs[1] <== PO.out[1];
-    component attr = Poseidon(9);
+    component attr = Poseidon(10);
     attr.inputs[0] <== birthDay;
     attr.inputs[1] <== sexCode;
     for (var d = 0; d < 3; d++) {
         attr.inputs[2 + 2 * d] <== nat[d];
         attr.inputs[3 + 2 * d] <== exp[d];
     }
-    attr.inputs[8] <== salt;
+    attr.inputs[8] <== notBefore;
+    attr.inputs[9] <== salt;
     component leafOld = Poseidon(3);
     leafOld.inputs[0] <== idcOld.out;
     leafOld.inputs[1] <== attr.out;
@@ -115,6 +119,10 @@ template Recovery(depth, revDepth, k) {
         oldTree.pathIndex[i] <== idPathIndex[i];
     }
     oldTree.root === idRoot;
+    component notTooNew = LessEqThan(40);
+    notTooNew.in[0] <== notBefore;
+    notTooNew.in[1] <== openTime;
+    notTooNew.out === 1;
 
     // 3. the old identity's nullifier in this poll
     component nfH = Poseidon(3);
@@ -239,11 +247,11 @@ template Recovery(depth, revDepth, k) {
 
     // 10. bind the per-poll values to pollHash
     component ph1 = Poseidon(5);
-    ph1.inputs[0] <== idRoot;
-    ph1.inputs[1] <== revRoot;
-    ph1.inputs[2] <== pollId;
-    ph1.inputs[3] <== PK[0];
-    ph1.inputs[4] <== PK[1];
+    ph1.inputs[0] <== revRoot;
+    ph1.inputs[1] <== pollId;
+    ph1.inputs[2] <== PK[0];
+    ph1.inputs[3] <== PK[1];
+    ph1.inputs[4] <== openTime;
     component ph2 = Poseidon(5);
     ph2.inputs[0] <== maxBirthDay;
     ph2.inputs[1] <== minBirthDay;
@@ -257,4 +265,4 @@ template Recovery(depth, revDepth, k) {
     ph.out === pollHash;
 }
 
-component main {public [pollHash, nf, CA, CB, idRootNow]} = Recovery(32, 32, 4);
+component main {public [pollHash, nf, CA, CB, idRootNow, idRoot]} = Recovery(32, 32, 4);

@@ -44,6 +44,8 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
     private lateinit var docBtn: Button
     private lateinit var enrolBtn: Button
     private lateinit var regStatus: TextView
+    private lateinit var pollsBtn: Button
+    private val timer = android.os.Handler(android.os.Looper.getMainLooper())
     private var key: BACKey? = null
     private var shareText = ""
 
@@ -102,6 +104,11 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         col.addView(enrolBtn)
         regStatus = TextView(this).apply { textSize = 15f; visibility = View.GONE; setPadding(0, 16, 0, 16) }
         col.addView(regStatus)
+        pollsBtn = Button(this).apply {
+            text = t("pollsBtn"); visibility = View.GONE
+            setOnClickListener { startActivity(Intent(this@MainActivity, VoteActivity::class.java)) }
+        }
+        col.addView(pollsBtn)
         // Technical test tools (English), folded away so that volunteers do not meet them.
         val tests = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; visibility = View.GONE }
         col.addView(Button(this).apply {
@@ -173,18 +180,34 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             NfcAdapter.FLAG_READER_NFC_A or NfcAdapter.FLAG_READER_NFC_B or NfcAdapter.FLAG_READER_SKIP_NDEF_CHECK, null)
     }
 
-    // Decision #61: registration on the public ledger, once the random delay has passed.
+    // Decisions #61 and #62: registration on the public ledger, a few minutes after enrolment.
     @Volatile private var registering = false
+    @Volatile private var registryChecked = false
     private fun checkRegistration() {
-        Registration.ensureTime(this)
+        timer.removeCallbacksAndMessages(null)
         fun show(s: String) = runOnUiThread { regStatus.text = s; regStatus.visibility = View.VISIBLE }
+        fun polls(on: Boolean) = runOnUiThread { pollsBtn.visibility = if (on) View.VISIBLE else View.GONE }
         when (val st = Registration.state(this)) {
-            is Registration.State.None -> regStatus.visibility = View.GONE
-            is Registration.State.Done -> show(L10n.t("regDone"))
+            is Registration.State.None -> { regStatus.visibility = View.GONE; polls(false) }
+            is Registration.State.Old -> { show(L10n.t("regOld")); polls(false) }
+            is Registration.State.Done -> {
+                show(L10n.t("regDone")); polls(true)
+                // A new deployment names another registry: register there too (once per start).
+                if (!registryChecked) Thread {
+                    try {
+                        val now = EnrolService(Registration.RELAY).status().optString("registry").lowercase()
+                        registryChecked = true
+                        if (now.isNotEmpty() && now != st.registry) { Registration.registryChanged(this); runOnUiThread { checkRegistration() } }
+                    } catch (e: Exception) { /* offline: checked again next time */ }
+                }.start()
+            }
             is Registration.State.Waiting -> {
-                if (System.currentTimeMillis() < st.after) {
+                polls(false)
+                val wait = st.after - System.currentTimeMillis()
+                if (wait > 0) {
                     val at = java.time.Instant.ofEpochMilli(st.after).atZone(java.time.ZoneId.systemDefault())
-                    show(L10n.t("regWaiting", at.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))))
+                    show(L10n.t("regWaiting", at.format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))))
+                    timer.postDelayed({ checkRegistration() }, wait + 500)   // registers while the app stays open
                     return
                 }
                 if (registering) return
@@ -193,15 +216,16 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
                 Thread {
                     try {
                         val line = Registration.run(this)
-                        show(L10n.t("regDone"))
-                        runOnUiThread { report.text = "Proof of One registration\n$line"; shareText = report.text.toString(); share.visibility = View.VISIBLE }
+                        runOnUiThread { report.text = "Proof of One registration (app v0.12)\n$line"; shareText = report.text.toString(); share.visibility = View.VISIBLE }
+                        registryChecked = true
+                        runOnUiThread { checkRegistration() }
                     } catch (e: Registration.NotReady) {
                         show(L10n.t("regNotReady"))
                     } catch (e: java.io.IOException) {
                         show(L10n.t("regOffline"))
                     } catch (e: Throwable) {
                         show(L10n.t("regFailed", e.message ?: e.javaClass.simpleName))
-                        runOnUiThread { report.text = "Proof of One registration\nFAILED: ${e.javaClass.simpleName}: ${e.message}"; shareText = report.text.toString(); share.visibility = View.VISIBLE }
+                        runOnUiThread { report.text = "Proof of One registration (app v0.12)\nFAILED: ${e.javaClass.simpleName}: ${e.message}"; shareText = report.text.toString(); share.visibility = View.VISIBLE }
                     } finally { registering = false }
                 }.start()
             }
@@ -210,6 +234,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
 
     override fun onPause() {
         super.onPause()
+        timer.removeCallbacksAndMessages(null)
         nfc?.disableReaderMode(this)
     }
 

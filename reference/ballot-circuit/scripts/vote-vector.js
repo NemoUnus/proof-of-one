@@ -25,21 +25,23 @@ const { IncrementalTree, RevocationTree } = require("../src/trees");
   const revoked = [handle(), members[3].rn, handle()];
   const rev = new RevocationTree(H, B.REV_DEPTH); revoked.forEach((x) => rev.revoke(x));
   const POLICY = { maxBirthDay: A.dayNumber(2008, 11, 24), minBirthDay: 0, minExpiryMonth: 2026 * 12 + 11, requiredNat: 0 };
-  const pollId = 42n, ctxHash = 777n, m = members[5], choice = 2;
-  const { input, nf, r } = B.buildBallot(P, { pollId, PK: keys.PK, policy: POLICY, ctxHash, member: m, leafIndex: 5, idTree: snapshot, revTree: rev, choice });
+  const pollId = 42n, ctxHash = 777n, openTime = 1795000000n, m = members[5], choice = 2;
+  const { input, nf, C: Cs } = B.buildBallot(P, { pollId, PK: keys.PK, policy: POLICY, ctxHash, openTime, member: m, leafIndex: 5, idTree: snapshot, revTree: rev, choice, revision: 3 });
   const s = (x) => x.toString();
   const data = {
     member: { s: s(m.s), salt: s(m.salt) },
     attrs: { birthDay: s(m.birthDay), sexCode: s(m.sexCode), natCode: s(m.natCode), expMonth: s(m.expiryMonth) },
     credential: { rn: s(m.rn) },
-    poll: { pollId: s(pollId), PK: C.coords(keys.PK).map(s), idRoot: s(snapshot.root), revRoot: s(rev.root), ctxHash: s(ctxHash),
+    poll: { pollId: s(pollId), PK: C.coords(keys.PK).map(s), idRoot: s(snapshot.root), revRoot: s(rev.root), ctxHash: s(ctxHash), openTime: s(openTime),
       policy: { maxBirthDay: s(POLICY.maxBirthDay), minBirthDay: "0", minExpiryMonth: s(POLICY.minExpiryMonth), requiredNat: "0" } },
-    choice, r: r.map(s),
+    choice, revision: 3,
   };
   const tree = { leaves: leaves.map(s), leaf: s(leaves[5]), idRoot: s(snapshot.root) };
   const revocation = { revoked: revoked.map(s), rn: s(m.rn), revRoot: s(rev.root) };
   const revokedMember = { revoked: revoked.map(s), rn: s(members[3].rn), revRoot: s(rev.root) };
   const late = { leaves: leaves.map(s), leaf: s(leaves[8]), idRoot: s(snapshot.root) };
-  process.stdout.write(JSON.stringify({ data, tree, revocation, revokedMember, late, input, nf: s(nf) }) + "\n");
+  // the contract keeps the first 28 bytes of the ballot's Keccak-256 hash; the 4th ballot (revision 3)
+  const recorded = { member: { s: s(m.s) }, poll: { pollId: s(pollId), PK: C.coords(keys.PK).map(s) }, count: 4, ballotHash: P.ballotHash(Cs).slice(2, 58) };
+  process.stdout.write(JSON.stringify({ data, tree, revocation, revokedMember, late, recorded, input, nf: s(nf) }) + "\n");
   if (globalThis.curve_bn128) await globalThis.curve_bn128.terminate();
 })().catch((e) => { console.error(e); process.exit(1); });

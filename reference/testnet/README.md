@@ -49,8 +49,14 @@ The plan also publishes the receipts of the four synthetic voters. With them, an
 ## The pilot's registrations (Decision #61)
 
 - `plan6.js` makes the one transaction that sets the identity registry's key set for the pilot (the enrolment service's key and a TEST-ONLY filler key), and writes `web/keyset.json` (published to the phone through the enrolment service's `KEY_SET`) and `web/identity-tree.json` (the 12 leaves registered so far).
-- `batch-job.js`, run every hour by the workflow "Registry batches", reads new registrations, inserts each full batch of 4 through the relay with a batch-insertion proof, completes a batch left incomplete for 48 hours with filler members, and commits the updated `web/identity-tree.json`, from which phones find their path in the tree.
-- `node test/batch-job.e2e.js web/plan.json` runs the whole path on a local chain: phones register through the relay, the full batch is inserted, an incomplete batch gets its fillers once its wait is over and is inserted, and the published tree gives the registry's root throughout.
+- `batch-job.js` (**not used since deployment 5**, whose registry inserts each registration at once; kept for the record, and it needs the relay's `/batch`, which was removed) ran every hour in the workflow "Registry batches": it read new registrations, inserts each full batch of 4 through the relay with a batch-insertion proof, completes a batch left incomplete for 48 hours with filler members, and commits the updated `web/identity-tree.json`, from which phones find their path in the tree.
+- `node test/batch-job.e2e.js web/plan.json` ran the whole path on a local chain: phones register through the relay, the full batch is inserted, an incomplete batch gets its fillers once its wait is over and is inserted, and the published tree gives the registry's root throughout.
+
+## Deployment 5: every member answers every open poll (Decision #62)
+
+- **`plan7.js`** prepares deployment 5 and the pilot's first poll: a new RegistrationVerifier (π_reg with the identity's `notBefore`), an IdentityRegistry that inserts each registration into the tree at once and keeps its leaves and every root it has held, a RevocationRegistry whose revoked handles are readable, the ballot, batch and recovery verifiers with the identity root public, and a ProofOfOnePolls that accepts any root the registry has held; then the poll (4 options, 14 days). Poseidon, RevokeVerifier and the TallyVerifier of deployment 3 are reused (the same bytecode). It also writes the poll's text in six languages to [`../relay/src/pilot-polls.json`](../relay/src/pilot-polls.json) (the poll holds its Keccak-256 as `metadataHash`) and the poll's synthetic trustee shares to a private file.
+- Phones read everything they need from the relay's `GET /state` (leaves, revoked handles, roots, the poll and its text, the ballot recorded for their nullifier); no published tree file and no batch job.
+- `node ../relay/test/pilot.test.mjs web/plan7.json` replays the plan on a local chain at the planned addresses and runs registration, answering, finding the recorded answer and changing it through the relay.
 
 ## Limits
 

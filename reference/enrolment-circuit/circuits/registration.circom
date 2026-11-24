@@ -6,7 +6,8 @@
 // CONTEXT
 // At enrolment the enclave saw the person's document and face, checked uniqueness,
 // and signed  msg = Poseidon(5, birthDay, sexCode, nat_0, exp_0, nat_1, exp_1, nat_2, exp_2,
-//                             cm, rn, epoch)   (up to 3 documents; Decision #30)
+//                             notBefore, cm, rn, epoch)   (up to 3 documents; Decision #30;
+//                             notBefore: 0, or a re-issued identity's issue time, #62)
 // where cm = Poseidon(4, idc, salt, ρ) HIDES the identity commitment idc.
 // Later, in a separate session, the phone registers (leaf, cn) on the ledger with
 // this proof. The enclave knows cm, rn and the attributes, but not idc, salt or ρ,
@@ -15,7 +16,7 @@
 // STATEMENT
 //   1. P = s·G and idc = Poseidon(P.x, P.y)
 //   2. leaf = Poseidon(idc, Poseidon(birthDay, sexCode, nat_0, exp_0, nat_1, exp_1,
-//                                    nat_2, exp_2, salt), rn)
+//                                    nat_2, exp_2, notBefore, salt), rn)
 //      — the same leaf format the ballot circuit proves membership of
 //   3. cm = Poseidon(4, idc, salt, ρ) and cn = Poseidon(3, ρ)
 //   4. (R8, S) is a valid EdDSA-Poseidon signature on msg under enclave key A
@@ -66,6 +67,7 @@ template Registration(keyDepth) {
     signal input sexCode;
     signal input nat[3];
     signal input exp[3];
+    signal input notBefore;          // 0, or a re-issued identity's issue time (Decision #62)
     signal input salt;
     signal input rho;
     signal input rn;
@@ -86,14 +88,15 @@ template Registration(keyDepth) {
     idc.inputs[1] <== P.Ay;
 
     // 2. leaf
-    component attr = Poseidon(9);
+    component attr = Poseidon(10);
     attr.inputs[0] <== birthDay;
     attr.inputs[1] <== sexCode;
     for (var d = 0; d < 3; d++) {
         attr.inputs[2 + 2 * d] <== nat[d];
         attr.inputs[3 + 2 * d] <== exp[d];
     }
-    attr.inputs[8] <== salt;
+    attr.inputs[8] <== notBefore;
+    attr.inputs[9] <== salt;
     component lf = Poseidon(3);
     lf.inputs[0] <== idc.out;
     lf.inputs[1] <== attr.out;
@@ -112,7 +115,7 @@ template Registration(keyDepth) {
     cnH.out === cn;
 
     // 4. enclave signature on the credential message
-    component msg = Poseidon(12);
+    component msg = Poseidon(13);
     msg.inputs[0] <== 5;             // domain tag TAG.CREDENTIAL_MSG
     msg.inputs[1] <== birthDay;
     msg.inputs[2] <== sexCode;
@@ -120,9 +123,10 @@ template Registration(keyDepth) {
         msg.inputs[3 + 2 * d] <== nat[d];
         msg.inputs[4 + 2 * d] <== exp[d];
     }
-    msg.inputs[9] <== cm.out;
-    msg.inputs[10] <== rn;
-    msg.inputs[11] <== epoch;
+    msg.inputs[9] <== notBefore;
+    msg.inputs[10] <== cm.out;
+    msg.inputs[11] <== rn;
+    msg.inputs[12] <== epoch;
     component sig = EdDSAPoseidonVerifier();
     sig.enabled <== 1;
     sig.Ax <== Ax;

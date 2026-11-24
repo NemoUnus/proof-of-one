@@ -9,8 +9,11 @@
 // The same field order is used by the enclave's credential message, the
 // registration proof π_reg and the ballot proof π_vote:
 //
-//   fields = [birthDay, sexCode, nat_0, exp_0, nat_1, exp_1, nat_2, exp_2]
+//   fields = [birthDay, sexCode, nat_0, exp_0, nat_1, exp_1, nat_2, exp_2, notBefore]
 //   attr   = Poseidon(...fields, salt)
+//
+// notBefore (Decision #62) is 0 for a first identity and the issue time (unix seconds) for
+// a re-issued one; a ballot proves notBefore ≤ the poll's opening time.
 //
 // Nationality codes are the three ICAO letters packed as one number,
 // 65536·c1 + 256·c2 + c3 (natCode("FRA")), exactly as the document-validity proof
@@ -62,7 +65,7 @@ function slots(a) {
 }
 
 function attrFields(a) {
-  return [BigInt(a.birthDay), BigInt(a.sexCode), ...slots(a).flatMap((d) => [d.nat, d.expiry])];
+  return [BigInt(a.birthDay), BigInt(a.sexCode), ...slots(a).flatMap((d) => [d.nat, d.expiry]), BigInt(a.notBefore ?? 0)];
 }
 
 function attrHash(H, a, salt) {

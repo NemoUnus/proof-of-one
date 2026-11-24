@@ -22,7 +22,6 @@ const RB = require("../../ballot-circuit/src/recovery");
 
 const BALLOT_ZKEY = path.join(__dirname, "..", "..", "ballot-circuit", "setup", "ballot_test.zkey");
 const REG_ZKEY = path.join(__dirname, "..", "..", "enrolment-circuit", "setup", "registration_test.zkey");
-const BATCH_ZKEY = path.join(__dirname, "..", "..", "enrolment-circuit", "setup", "batch_test.zkey");
 const REVOKE_ZKEY = path.join(__dirname, "..", "..", "enrolment-circuit", "setup", "revoke_test.zkey");
 const RECOVERY_ZKEY = path.join(__dirname, "..", "..", "ballot-circuit", "setup", "recovery_test.zkey");
 const Z2 = [0n, 0n], Z22 = [[0n, 0n], [0n, 0n]];
@@ -63,8 +62,8 @@ function assertAgg(agg, onchain) {
 // --- the phone: enrol through the enclave, then register on-chain with π_reg
 async function enrol({ fingerprint = fp(), reenrol = false } = {}) {
   const m = E.newMember(P, ATTRS);
-  const { credential, revokeOld } = enclave.issue({ fingerprint, attrs: ATTRS, cm: m.cm, epoch: 2, reenrol });
-  const { input, leaf, member } = E.buildRegistration(P, enclave, m, credential);
+  const { credential, revokeOld, attrs } = enclave.issue({ fingerprint, attrs: ATTRS, cm: m.cm, epoch: 2, reenrol, now: await now() });
+  const { input, leaf, member } = E.buildRegistration(P, enclave, { ...m, notBefore: attrs.notBefore }, credential);
   const { proof } = await E.prove(input, REG_ZKEY);
   const p = sp(proof);
   const g = await used(identity.register(leaf, member.cn, p.a, p.b, p.c));
@@ -72,34 +71,27 @@ async function enrol({ fingerprint = fp(), reenrol = false } = {}) {
   return { member, leaf, fingerprint, revokeOld, link: credential.link, proof: p };
 }
 
-// --- the phone's local view of both registries, rebuilt from events only
+// --- the phone's local view of both registries, read from the contracts' own lists
+// (getLeaves, getRevoked; Decision #62), with no other service
 async function syncTrees() {
   const H = P.hash.H;
-  const inserted = Number(await identity.leafCount());
-  const regs = (await identity.queryFilter(identity.filters.Registered())).sort((x, y) => Number(x.args.index - y.args.index));
+  const n = Number(await identity.leafCount());
+  const leaves = n ? await identity.getLeaves(0, n) : [];
   const ids = new IncrementalTree(H, B.DEPTH);
-  regs.filter((e) => Number(e.args.index) < inserted).forEach((e) => ids.insert(e.args.leaf));
-  const pending = regs.filter((e) => Number(e.args.index) >= inserted).map((e) => e.args.leaf);
+  leaves.forEach((l) => ids.insert(l));
   const rev = new RevocationTree(H, B.REV_DEPTH);
-  for (const e of await revocation.queryFilter(revocation.filters.Revoked())) rev.revoke(e.args.rn);
-  const index = new Map(regs.map((e) => [e.args.leaf.toString(), Number(e.args.index)]));
-  return { ids, rev, index, pending };
-}
-
-// --- anyone: prove and submit the insertion of the next full batch
-async function insertNextBatch() {
-  const v = await syncTrees();
-  const { input, newRoot } = E.buildBatchInsert(P, v.ids, v.pending.slice(0, 4));
-  const { proof } = await E.proveBatch(input, BATCH_ZKEY);
-  const p = sp(proof);
-  return { tx: identity.insertBatch(newRoot, p.a, p.b, p.c), newRoot, p };
+  const nr = Number(await revocation.revokedCount());
+  for (const rn of nr ? await revocation.getRevoked(0, nr) : []) rev.revoke(rn);
+  const index = new Map(leaves.map((l, i) => [l.toString(), i]));
+  return { ids, rev, index };
 }
 
 async function makeBallot(person, choice, id, view) {
   const m = { ...person.member, index: view.index.get(person.leaf.toString()) };
-  const b = B.buildBallot(P, { pollId: BigInt(id), PK: keys.PK, policy: POLICY, ctxHash: await polls.contextHash(id), member: m, leafIndex: m.index, idTree: view.ids, revTree: view.rev, choice });
+  const openTime = (await polls.getPoll(id)).openTime;
+  const b = B.buildBallot(P, { pollId: BigInt(id), PK: keys.PK, policy: POLICY, ctxHash: await polls.contextHash(id), openTime, member: m, leafIndex: m.index, idTree: view.ids, revTree: view.rev, choice });
   const { proof } = await B.prove(b.input, BALLOT_ZKEY);
-  return { ...b, sp: sp(proof) };
+  return { ...b, idRoot: view.ids.root, sp: sp(proof) };
 }
 // The relay's (or phone's) record of each member's latest ballot, so that a re-vote can
 // hand the replaced ballot to the contract, which subtracts it from the running sum.
@@ -107,8 +99,8 @@ const ZERO16 = Array(16).fill(0n);
 const lastCt = new Map();
 const key = (id, nf) => `${BigInt(id)}:${BigInt(nf)}`;
 const prevOf = (id, nf) => lastCt.get(key(id, nf)) || ZERO16;
-const send = async (b, id) => { const tx = await polls.vote(id, b.nf, ctArray(b.C), prevOf(id, b.nf), b.sp.a, b.sp.b, b.sp.c); lastCt.set(key(id, b.nf), ctArray(b.C)); return tx; };
-const sendStatic = (b, id) => polls.vote.staticCall(id, b.nf, ctArray(b.C), prevOf(id, b.nf), b.sp.a, b.sp.b, b.sp.c);
+const send = async (b, id) => { const tx = await polls.vote(id, b.nf, b.idRoot, ctArray(b.C), prevOf(id, b.nf), b.sp.a, b.sp.b, b.sp.c); lastCt.set(key(id, b.nf), ctArray(b.C)); return tx; };
+const sendStatic = (b, id) => polls.vote.staticCall(id, b.nf, b.idRoot, ctArray(b.C), prevOf(id, b.nf), b.sp.a, b.sp.b, b.sp.c);
 const TALLY = path.join(__dirname, "..", "..", "tally-circuit");
 const { tallyInput } = require(path.join(TALLY, "src", "input"));
 const snarkjs = require("../../ballot-circuit/node_modules/snarkjs");
@@ -134,10 +126,9 @@ test.before(async () => {
   const deploy = async (abi, bytecode, ...args) => { const c = await new ethers.ContractFactory(abi, bytecode, signer).deploy(...args); await c.waitForDeployment(); return c; };
   poseidon = await deploy(poseidonContract.generateABI(2), poseidonContract.createCode(2));
   enclave = E.createEnclave(P, { epochs: 4 });
-  const BBV = art("BallotBatchVerifier"), RV = art("RegistrationVerifier"), BIV = art("BatchInsertVerifier"), RKV = art("RevokeVerifier"), BV = art("Groth16Verifier"), TV = art("TallyVerifier"), RCV = art("RecoveryVerifier"), IR = art("IdentityRegistry"), RR = art("RevocationRegistry"), PP = art("ProofOfOnePolls");
+  const BBV = art("BallotBatchVerifier"), RV = art("RegistrationVerifier"), RKV = art("RevokeVerifier"), BV = art("Groth16Verifier"), TV = art("TallyVerifier"), RCV = art("RecoveryVerifier"), IR = art("IdentityRegistry"), RR = art("RevocationRegistry"), PP = art("ProofOfOnePolls");
   const regVerifier = await deploy(RV.abi, RV.bytecode);
-  const batchVerifier = await deploy(BIV.abi, BIV.bytecode);
-  identity = await deploy(IR.abi, IR.bytecode, await poseidon.getAddress(), await regVerifier.getAddress(), await batchVerifier.getAddress(), 4, enclave.keySetRoot, await signer.getAddress());
+  identity = await deploy(IR.abi, IR.bytecode, await poseidon.getAddress(), await regVerifier.getAddress(), enclave.keySetRoot, await signer.getAddress());
   const revokeVerifier = await deploy(RKV.abi, RKV.bytecode);
   const emptyRevRoot = new RevocationTree(P.hash.H, B.REV_DEPTH).root;
   revocation = await deploy(RR.abi, RR.bytecode, await revokeVerifier.getAddress(), await signer.getAddress(), emptyRevRoot);
@@ -151,16 +142,20 @@ test.before(async () => {
 });
 test.after(async () => { if (globalThis.curve_bn128) await globalThis.curve_bn128.terminate(); });
 
-test("registration: valid π_reg accepted; reused credential rejected; incomplete batch refused", async () => {
-  people.push(await enrol(), await enrol());
-  await reverts(identity.insertBatch.staticCall(0n, Z2, Z22, Z2), identity, "BatchNotReady");
+test("registration: valid π_reg accepted and inserted at once; reused credential and forged proof rejected", async () => {
+  const empty = await identity.root();
+  people.push(await enrol());
+  assert.equal(await identity.leafCount(), 1n, "in the tree at once (Decision #62)");
+  const first = await identity.root();
+  people.push(await enrol());
   const a = people[0];
   await reverts(identity.register.staticCall(a.leaf, a.member.cn, a.proof.a, a.proof.b, a.proof.c), identity, "CredentialUsed");
+  await reverts(identity.register.staticCall(a.leaf + 1n, a.member.cn + 1n, a.proof.a, a.proof.b, a.proof.c), identity, "InvalidProof");
   people.push(await enrol(), await enrol());
-  const ins = await insertNextBatch();
-  await reverts(identity.insertBatch.staticCall(ins.newRoot + 1n, ins.p.a, ins.p.b, ins.p.c), identity, "InvalidProof");
-  gas.insertBatch4 = await used(ins.tx);
   assert.equal(await identity.leafCount(), 4n);
+  for (const r of [empty, first, await identity.root()]) assert.equal(await identity.isHistoricalRoot(r), true, "every past root stays valid");
+  assert.deepEqual((await identity.getLeaves(1, 2)).map(String), [people[1].leaf, people[2].leaf].map(String));
+  assert.deepEqual([...(await identity.getLeaves(9, 3))], []);
 });
 
 test("the phone's tree rebuilt from events matches the on-chain roots", async () => {
@@ -187,7 +182,7 @@ test("createPoll: rejects a bad tally key and short polls; snapshot comes from t
   assert.equal(poll.idRoot, await identity.root());
   assert.equal(poll.revRoot, await revocation.root());
   assert.equal(poll.eligible, 4n);
-  const expected = B.pollHashOf(P, { idRoot: poll.idRoot, revRoot: poll.revRoot, pollId, PK: keys.PK, policy: POLICY, ctxHash: await polls.contextHash(pollId) });
+  const expected = B.pollHashOf(P, { revRoot: poll.revRoot, pollId, PK: keys.PK, policy: POLICY, ctxHash: await polls.contextHash(pollId), openTime: poll.openTime });
   assert.equal(poll.pollHash, expected, "on-chain pollHash equals the phone's");
 });
 
@@ -206,7 +201,8 @@ test("ballots with valid proofs are accepted; a re-vote replaces the earlier bal
 test("forged or replayed ballots are rejected", async () => {
   const v = await syncTrees();
   const a = await makeBallot(people[0], 1, pollId, v), b = await makeBallot(people[0], 2, pollId, v);
-  await reverts(polls.vote.staticCall(pollId, a.nf, ctArray(b.C), prevOf(pollId, a.nf), a.sp.a, a.sp.b, a.sp.c), polls, "InvalidProof");
+  await reverts(polls.vote.staticCall(pollId, a.nf, a.idRoot, ctArray(b.C), prevOf(pollId, a.nf), a.sp.a, a.sp.b, a.sp.c), polls, "InvalidProof");
+  await reverts(polls.vote.staticCall(pollId, a.nf, a.idRoot + 1n, ctArray(a.C), prevOf(pollId, a.nf), a.sp.a, a.sp.b, a.sp.c), polls, "UnknownRoot");
   await used(polls.createPoll(await pollParams()));
   const other = await polls.pollCount();
   await reverts(sendStatic(a, other), polls, "InvalidProof");
@@ -214,6 +210,10 @@ test("forged or replayed ballots are rejected", async () => {
 
 test("re-enrolment: the old identity is revoked on-chain; it cannot vote in later polls, nor any longer in polls already open", async () => {
   const alice = people[0];
+  // Decision #62: a poll that opens now, before Alice is re-issued and before others join.
+  await used(polls.createPoll(await pollParams()));
+  const open62 = await polls.pollCount();
+  await increase(60);
   // Ballots for the open poll, proven against the revocation root before the revocation:
   // one by another member (sent during the revocation), one by the identity being revoked.
   const v0 = await syncTrees();
@@ -237,8 +237,13 @@ test("re-enrolment: the old identity is revoked on-chain; it cannot vote in late
   await reverts(sendStatic(stale, pollId), polls, "InvalidProof");
   await assert.rejects(makeBallot(alice, 0, pollId, { ...v0, rev: (await syncTrees()).rev }), /revoked/);
 
+  // Decision #62: members who join while open62 is open answer it at once; Alice's re-issued
+  // identity, issued after it opened, cannot.
   people.push(alice2, await enrol(), await enrol(), await enrol());
-  await used((await insertNextBatch()).tx);
+  const vj = await syncTrees();
+  await used(send(await makeBallot(people[5], 2, open62, vj), open62));
+  assert.equal(await polls.distinctVoters(open62), 1n, "a member registered after the poll opened has answered it");
+  await assert.rejects(makeBallot(alice2, 1, open62, vj), /issued after the poll opened/, "a re-issued identity cannot answer a poll already open");
   await used(polls.createPoll(await pollParams()));
   const later = await polls.pollCount();
   assert.equal((await polls.getPoll(later)).eligible, 7n); // 8 leaves − 1 revoked
@@ -263,7 +268,7 @@ test("recovery ballot: the recovered member replaces the old identity's ballot i
   const snap = new IncrementalTree(P.hash.H, B.DEPTH);
   for (let i = 0; i < Number(poll.eligible); i++) snap.insert(v.ids.leaves[i]);
   assert.equal(snap.root, poll.idRoot, "the poll's snapshot rebuilt from events");
-  const args = { pollId: BigInt(pollId), PK: keys.PK, policy: POLICY, ctxHash: await polls.contextHash(pollId),
+  const args = { pollId: BigInt(pollId), PK: keys.PK, policy: POLICY, ctxHash: await polls.contextHash(pollId), openTime: poll.openTime,
     oldMember: alice.member, oldIndex: v.index.get(alice.leaf.toString()), snapTree: snap,
     newMember: { ...alice2.member, link: alice2.link }, newIndex: v.index.get(alice2.leaf.toString()), curTree: v.ids, revTree: v.rev, choice: 3 };
   const rb = RB.buildRecovery(P, args);
@@ -273,13 +278,16 @@ test("recovery ballot: the recovered member replaces the old identity's ballot i
 
   // a recovery ballot against another poll, or with a proof for other ciphertexts, is refused
   const other = await makeBallot(people[1], 0, pollId, v);
-  await reverts(polls.recoveryVote.staticCall(pollId, rb.nf, ctArray(other.C), prevOf(pollId, rb.nf), pr.a, pr.b, pr.c), polls, "InvalidProof");
-  await reverts(polls.recoveryVote.staticCall(pollId, other.nf, ct, prevOf(pollId, other.nf), pr.a, pr.b, pr.c), polls, "InvalidProof");
+  const R2 = [v.ids.root, snap.root];   // the roots holding the new and the old identity
+  await reverts(polls.recoveryVote.staticCall(pollId, rb.nf, ...R2, ctArray(other.C), prevOf(pollId, rb.nf), pr.a, pr.b, pr.c), polls, "InvalidProof");
+  await reverts(polls.recoveryVote.staticCall(pollId, other.nf, ...R2, ct, prevOf(pollId, other.nf), pr.a, pr.b, pr.c), polls, "InvalidProof");
+  await reverts(polls.recoveryVote.staticCall(pollId, rb.nf, v.ids.root, v.ids.root, ct, prevOf(pollId, rb.nf), pr.a, pr.b, pr.c), polls, "InvalidProof");
+  await reverts(polls.recoveryVote.staticCall(pollId, rb.nf, v.ids.root + 1n, snap.root, ct, prevOf(pollId, rb.nf), pr.a, pr.b, pr.c), polls, "UnknownRoot");
   // the replaced ballot must be the one recorded
-  await reverts(polls.recoveryVote.staticCall(pollId, rb.nf, ct, ctArray(other.C), pr.a, pr.b, pr.c), polls, "BadPrevious");
+  await reverts(polls.recoveryVote.staticCall(pollId, rb.nf, ...R2, ct, ctArray(other.C), pr.a, pr.b, pr.c), polls, "BadPrevious");
 
   const before = await polls.distinctVoters(pollId);
-  const rc = await (await polls.recoveryVote(pollId, rb.nf, ct, prevOf(pollId, rb.nf), pr.a, pr.b, pr.c)).wait();
+  const rc = await (await polls.recoveryVote(pollId, rb.nf, ...R2, ct, prevOf(pollId, rb.nf), pr.a, pr.b, pr.c)).wait();
   gas.recoveryVote = rc.gasUsed;
   lastCt.set(key(pollId, rb.nf), ct);
   assert.deepEqual(rc.logs.map((l) => polls.interface.parseLog(l).name), ["Ballot", "RecoveryBallot"]);
@@ -288,8 +296,8 @@ test("recovery ballot: the recovered member replaces the old identity's ballot i
 
   // Alice's new identity cannot be used as the old one by a thief: the old secret alone does
   // not give a linked identity (tested in ballot-circuit/test/recovery.test.js). And no one can
-  // vote in this poll with the new identity directly: it is not in the poll's snapshot.
-  await assert.rejects(makeBallot(alice2, 1, pollId, { ...v, ids: snap }), /./);
+  // vote in this poll with the new identity directly: it was issued after the poll opened.
+  await assert.rejects(makeBallot(alice2, 1, pollId, v), /issued after the poll opened/);
 });
 
 // --- batched submission (voteBatch): one transaction, n + 3 pairings for n proofs
@@ -297,7 +305,7 @@ test("recovery ballot: the recovered member replaces the old identity's ballot i
 // The fifth argument lists the replaced ballots of the re-votes in the batch, in batch order.
 const asBatch = (bs0, id) => {
   const bs = [...bs0].sort((x, y) => (BigInt(x.nf) < BigInt(y.nf) ? -1 : 1));
-  return [bs.map((b) => b.nf), bs.map((b) => ctArray(b.C)), bs.map((b) => ({ a: b.sp.a, b: b.sp.b, c: b.sp.c })),
+  return [bs.map((b) => b.nf), bs.map((b) => b.idRoot), bs.map((b) => ctArray(b.C)), bs.map((b) => ({ a: b.sp.a, b: b.sp.b, c: b.sp.c })),
     bs.filter((b) => lastCt.has(key(id, b.nf))).map((b) => lastCt.get(key(id, b.nf)))];
 };
 const sendBatch = async (bs, id) => { const tx = await polls.voteBatch(id, ...asBatch(bs, id)); for (const b of bs) lastCt.set(key(id, b.nf), ctArray(b.C)); return tx; };
@@ -317,19 +325,20 @@ test("batched ballots: accepted together, one bad proof rejects the batch, same 
   for (let i = 0; i < 7; i++) bC.push(await makeBallot(voters[i], choices[i], pc, v));
 
   // Cost of verifying one proof on its own (snarkjs verifier), without the transaction overhead
-  const one = bB[0], pub = [(await polls.getPoll(pb)).pollHash, one.nf, ...ctArray(one.C)];
+  const one = bB[0], pub = [(await polls.getPoll(pb)).pollHash, one.nf, one.idRoot, ...ctArray(one.C)];
   const data = ballotVerifier.interface.encodeFunctionData("verifyProof", [one.sp.a, one.sp.b, one.sp.c, pub]);
   gas.verifySingle = (await ballotVerifier.verifyProof.estimateGas(one.sp.a, one.sp.b, one.sp.c, pub)) - intrinsic(data);
   assert.equal(await ballotVerifier.verifyProof(one.sp.a, one.sp.b, one.sp.c, pub), true);
 
   // Rejections: a swapped ciphertext, proofs in the wrong order, an empty batch, another poll
-  const [nfs, cts, prs] = asBatch(bB.slice(0, 3), pb);
-  await reverts(polls.voteBatch.staticCall(pb, nfs, [cts[0], cts[2], cts[1]], prs, []), polls, "InvalidProof");
-  await reverts(polls.voteBatch.staticCall(pb, nfs, cts, [prs[1], prs[0], prs[2]], []), polls, "InvalidProof");
-  await reverts(polls.voteBatch.staticCall(pb, [], [], [], []), polls, "BadBatch");
-  await reverts(polls.voteBatch.staticCall(pc, nfs, cts, prs, []), polls, "InvalidProof");
+  const [nfs, irs, cts, prs] = asBatch(bB.slice(0, 3), pb);
+  await reverts(polls.voteBatch.staticCall(pb, nfs, irs, [cts[0], cts[2], cts[1]], prs, []), polls, "InvalidProof");
+  await reverts(polls.voteBatch.staticCall(pb, nfs, irs, cts, [prs[1], prs[0], prs[2]], []), polls, "InvalidProof");
+  await reverts(polls.voteBatch.staticCall(pb, [], [], [], [], []), polls, "BadBatch");
+  await reverts(polls.voteBatch.staticCall(pc, nfs, irs, cts, prs, []), polls, "InvalidProof");
+  await reverts(polls.voteBatch.staticCall(pb, nfs, [irs[0], irs[1] + 1n, irs[2]], cts, prs, []), polls, "UnknownRoot");
   const forged = { ...prs[1], a: [prs[1].a[0], BigInt(prs[1].a[1]) + 1n] }; // not a curve point
-  await reverts(polls.voteBatch.staticCall(pb, nfs, cts, [prs[0], forged, prs[2]], []), polls, "InvalidProof");
+  await reverts(polls.voteBatch.staticCall(pb, nfs, irs, cts, [prs[0], forged, prs[2]], []), polls, "InvalidProof");
 
   // Gas for batches of 1, 2, 4 and 7 first ballots
   gas.batch1 = await used(sendBatch(bB.slice(0, 1), pb));
@@ -342,18 +351,18 @@ test("batched ballots: accepted together, one bad proof rejects the batch, same 
   // The same nullifier twice in one batch is refused, as are nullifiers out of order, so a relay
   // cannot pick which of a member's answers counts; re-votes go in separate transactions
   const r1 = await makeBallot(voters[1], 3, pc, v), r2 = await makeBallot(voters[1], 0, pc, v);
-  await reverts(polls.voteBatch.staticCall(pc, [r1.nf, r2.nf], [ctArray(r1.C), ctArray(r2.C)], [r1.sp, r2.sp].map((p) => ({ a: p.a, b: p.b, c: p.c })), []), polls, "BadBatch");
-  const [snf, sct, spr] = asBatch(bB.slice(0, 2), pb);
-  await reverts(polls.voteBatch.staticCall(pb, [snf[1], snf[0]], [sct[1], sct[0]], [spr[1], spr[0]], []), polls, "BadBatch");
+  await reverts(polls.voteBatch.staticCall(pc, [r1.nf, r2.nf], [r1.idRoot, r2.idRoot], [ctArray(r1.C), ctArray(r2.C)], [r1.sp, r2.sp].map((p) => ({ a: p.a, b: p.b, c: p.c })), []), polls, "BadBatch");
+  const [snf, sir, sct, spr] = asBatch(bB.slice(0, 2), pb);
+  await reverts(polls.voteBatch.staticCall(pb, [snf[1], snf[0]], [sir[1], sir[0]], [sct[1], sct[0]], [spr[1], spr[0]], []), polls, "BadBatch");
   await used(sendBatch([r1], pc));
   await used(sendBatch([r2], pc));
   assert.equal((await polls.ballots(pc, r1.nf)).count, 3n);
   assert.equal(await polls.distinctVoters(pc), 7n);
   // A re-vote must hand over exactly the ballot it replaces
   const r3 = await makeBallot(voters[2], 3, pc, v);
-  const [n3, c3, p3] = asBatch([r3], pc);
-  await reverts(polls.voteBatch.staticCall(pc, n3, c3, p3, []), polls, "BadPrevious");
-  await reverts(polls.voteBatch.staticCall(pc, n3, c3, p3, [ctArray(r1.C)]), polls, "BadPrevious");
+  const [n3, i3, c3, p3] = asBatch([r3], pc);
+  await reverts(polls.voteBatch.staticCall(pc, n3, i3, c3, p3, []), polls, "BadPrevious");
+  await reverts(polls.voteBatch.staticCall(pc, n3, i3, c3, p3, [ctArray(r1.C)]), polls, "BadPrevious");
   await reverts(polls.voteBatch.staticCall(pc, ...asBatch([await makeBallot(voters[1], 1, pc, v)], pc)), polls, "RevoteCapReached");
 
   // The chain and the counted ballots, rebuilt from events, match the contract and the choices

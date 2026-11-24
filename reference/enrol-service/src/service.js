@@ -182,7 +182,7 @@ async function enrol(env, deps, body, now) {
   if (claim.meta.changes !== 1) refuse(409, "this session has already been used; start again");
   if (!(await verifyOnChain(env, deps, verifyCalldata(body.proof, ps)))) refuse(403, "the enrolment proof does not verify");
   // the credential first (pure), then the reservation, which is the commitment point
-  const cred = getCore(deps).call("sign", { secrets: secrets(env), fp: v.personKey, attrs: [v.birthDay, v.sexCode, v.natCode, v.expMonth, "0", "0", "0", "0"],
+  const cred = getCore(deps).call("sign", { secrets: secrets(env), fp: v.personKey, attrs: [v.birthDay, v.sexCode, v.natCode, v.expMonth, "0", "0", "0", "0", "0"], // notBefore 0: the pilot issues first identities only (Decision #62)
     cm: v.cm, epoch: String(env.EPOCH ?? "0"), generation: "0", rand: randomHex(64) });
   try {
     await env.DB.prepare("INSERT INTO members (fp, fd, issuer, path, created) VALUES (?1, ?2, ?3, ?4, ?5)")

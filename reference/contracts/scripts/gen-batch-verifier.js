@@ -9,7 +9,7 @@ const path = require("path");
 const VK = path.join(__dirname, "..", "..", "ballot-circuit", "setup", "vkey_test.json");
 const OUT = path.join(__dirname, "..", "src", "BallotBatchVerifier.sol");
 const vk = JSON.parse(fs.readFileSync(VK, "utf8"));
-if (vk.protocol !== "groth16" || vk.curve !== "bn128" || vk.nPublic !== 18) throw new Error("unexpected verification key");
+if (vk.protocol !== "groth16" || vk.curve !== "bn128" || vk.nPublic !== 19) throw new Error("unexpected verification key");
 
 // Precompile order for G2: x_im, x_re, y_im, y_re
 const g2 = (p) => [p[0][1], p[0][0], p[1][1], p[1][0]];
@@ -30,9 +30,10 @@ pragma solidity ^0.8.24;
 ///         batch verification, Bellare–Garay–Rabin 1998). The weights are derived by
 ///         hashing the complete call data, so they are fixed only after every proof and
 ///         public input is.
-/// @dev Σ r_i·X_i is computed with scalar arithmetic first, so the 19 multiplications by
+/// @dev Σ r_i·X_i is computed with scalar arithmetic first, so the 20 multiplications by
 ///      IC points are paid once per batch, not once per proof. Public inputs per ballot:
-///      [pollHash, nf, A_0..A_3 (x, y), B_0..B_3 (x, y)], identical to Groth16Verifier.
+///      [pollHash, nf, idRoot, A_0..A_3 (x, y), B_0..B_3 (x, y)], identical to
+///      Groth16Verifier (idRoot public since Decision #62).
 contract BallotBatchVerifier {
     uint256 internal constant R = 21888242871839275222246405745257275088548364400416034343698204186575808495617;
     uint256 internal constant Q = 21888242871839275222246405745257275088696311157297823662689037894645226208583;
@@ -59,15 +60,16 @@ ${ic.map((v) => `            uint256(${v})`).join(",\n")}
     function verifyBallots(
         uint256 pollHash,
         uint256[] calldata nfs,
+        uint256[] calldata idRoots,
         uint256[16][] calldata cts,
         Proof[] calldata proofs
     ) external view returns (bool) {
         uint256 n = proofs.length;
-        if (n == 0 || n > MAX_BATCH || nfs.length != n || cts.length != n) return false;
+        if (n == 0 || n > MAX_BATCH || nfs.length != n || idRoots.length != n || cts.length != n) return false;
         if (pollHash >= R) return false;
 
         bytes32 seed = keccak256(msg.data);
-        uint256[18] memory s;          // Σ_i r_i · x_ij  for each public input j
+        uint256[19] memory s;          // Σ_i r_i · x_ij  for each public input j
         uint256 sumR;
         uint256[2] memory accC;        // Σ_i r_i · C_i
         bytes memory pairs = new bytes(192 * (n + 3));
@@ -79,10 +81,13 @@ ${ic.map((v) => `            uint256(${v})`).join(",\n")}
             uint256 nf = nfs[i];
             if (nf >= R) return false;
             s[1] = addmod(s[1], mulmod(r, nf, R), R);
+            uint256 ir = idRoots[i];
+            if (ir >= R) return false;
+            s[2] = addmod(s[2], mulmod(r, ir, R), R);
             for (uint256 k = 0; k < 16; k++) {
                 uint256 x = cts[i][k];
                 if (x >= R) return false;
-                s[2 + k] = addmod(s[2 + k], mulmod(r, x, R), R);
+                s[3 + k] = addmod(s[3 + k], mulmod(r, x, R), R);
             }
             Proof calldata p = proofs[i];
             (bool okA, uint256 ax, uint256 ay) = _mul(p.a[0], p.a[1], r);
@@ -109,7 +114,7 @@ ${ic.map((v) => `            uint256(${v})`).join(",\n")}
         // X = (Σ r_i)·IC_0 + Σ_j s_j·IC_{j+1}
         uint256[${ic.length}] memory ic = _ic();
         (bool okX, uint256 xx, uint256 xy) = _mul(ic[0], ic[1], sumR);
-        for (uint256 j = 0; j < 18; j++) {
+        for (uint256 j = 0; j < 19; j++) {
             (bool m1, uint256 px, uint256 py) = _mul(ic[2 * j + 2], ic[2 * j + 3], s[j]);
             bool m2;
             (m2, xx, xy) = _add(xx, xy, px, py);

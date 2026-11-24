@@ -33,8 +33,8 @@ test.after(async () => { if (globalThis.curve_bn128) await globalThis.curve_bn12
 
 async function enrol(registry, { fingerprint = fp(), attrs = ATTRS, epoch = 1, reenrol = false } = {}) {
   const m = E.newMember(P, attrs);
-  const { credential, revokeOld } = enclave.issue({ fingerprint, attrs, cm: m.cm, epoch, reenrol });
-  const { input, leaf, member } = E.buildRegistration(P, enclave, m, credential);
+  const { credential, revokeOld, attrs: signed } = enclave.issue({ fingerprint, attrs, cm: m.cm, epoch, reenrol });
+  const { input, leaf, member } = E.buildRegistration(P, enclave, { ...m, notBefore: signed.notBefore }, credential);
   const { proof } = await E.prove(input, ZKEY);
   await registry.register({ leaf, cn: member.cn, proof });
   return { member, leaf, proof, revokeOld, fingerprint };
@@ -106,11 +106,12 @@ test("end to end: register → batch → vote; re-enrolment revokes the old iden
   reg.insertBatch();
   const keys = P.dkg(3, 2);
   const policy = { ...A.ageRange([2026, 10, 23], { minAge: 18 }), minExpiryMonth: 24330, requiredNat: 0 };
-  const vote = async (who, pollId) => {
+  const LATER = BigInt(Math.floor(Date.now() / 1000)) + 3600n;   // polls opened after the re-enrolment
+  const vote = async (who, pollId, openTime = LATER) => {
     const m = { ...who.member, index: reg.indexOf(who.leaf) };
-    const b = B.buildBallot(P, { pollId, PK: keys.PK, policy, ctxHash: 1n, member: m, leafIndex: m.index, idTree: reg.idTree, revTree: reg.revTree, choice: 1 });
+    const b = B.buildBallot(P, { pollId, PK: keys.PK, policy, ctxHash: 1n, openTime, member: m, leafIndex: m.index, idTree: reg.idTree, revTree: reg.revTree, choice: 1 });
     const { proof } = await B.prove(b.input, BALLOT_ZKEY);
-    const signals = B.publicSignals(P, { idRoot: reg.idTree.root, revRoot: reg.revTree.root, pollId, nf: b.nf, PK: keys.PK, policy, ctxHash: 1n, C: b.C });
+    const signals = B.publicSignals(P, { idRoot: reg.idTree.root, revRoot: reg.revTree.root, pollId, nf: b.nf, PK: keys.PK, policy, ctxHash: 1n, openTime, C: b.C });
     return B.verify(BALLOT_VKEY, signals, proof);
   };
   assert.equal(await vote(alice, 501n), true, "registered member can vote");
@@ -122,8 +123,9 @@ test("end to end: register → batch → vote; re-enrolment revokes the old iden
   await enrol(reg); await enrol(reg); // other people's registrations fill the batch
   reg.insertBatch();
 
-  assert.throws(() => B.buildBallot(P, { pollId: 502n, PK: keys.PK, policy, ctxHash: 1n, member: { ...alice.member, index: reg.indexOf(alice.leaf) }, leafIndex: reg.indexOf(alice.leaf), idTree: reg.idTree, revTree: reg.revTree, choice: 0 }), /revoked/, "old identity can no longer vote");
-  assert.equal(await vote(alice2, 502n), true, "new identity can vote");
+  assert.throws(() => B.buildBallot(P, { pollId: 502n, PK: keys.PK, policy, ctxHash: 1n, openTime: LATER, member: { ...alice.member, index: reg.indexOf(alice.leaf) }, leafIndex: reg.indexOf(alice.leaf), idTree: reg.idTree, revTree: reg.revTree, choice: 0 }), /revoked/, "old identity can no longer vote");
+  assert.equal(await vote(alice2, 502n), true, "new identity can vote in a poll opened after it was issued");
+  await assert.rejects(vote(alice2, 503n, 1000n), /issued after the poll opened/, "but not in a poll that was already open (Decision #62)");
   assert.equal(await vote(bob, 502n), true, "others are unaffected");
   void carol;
 });

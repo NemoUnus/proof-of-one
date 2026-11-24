@@ -200,3 +200,23 @@ Key-set root: `34720637429604123774694843667398667475106284115724755126489786531
 ### The first real registration (23 November 2026, 23:26 UTC+4)
 
 After the key set was set (one transaction, checked on the plan page) and the batch job's first run had confirmed the 12 leaves registered so far against the registry's root, the founder installed app v0.11 and restored his membership (the enrolment service's eth_call to DocVerifier had first failed once with "the test network did not answer", HTTP 502, and passed on a retry a minute later). The app picked a random registration time about 8.5 hours later. The first time the app was opened after it, the phone built π_reg's inputs from `member.json` and the key set from `/info`, proved and verified π_reg in 920 ms, and sent it through the relay: **position 12** in the identity registry, the first membership from a real passport on the public ledger. It waits in the next batch of 4; if no one else registers within 48 hours, the batch job completes it with filler members.
+
+
+## Deployment 5: every member answers every open poll (Decision #62)
+
+Prepared by `plan7.js` (`web/plan7.json`, start nonce 19, deployer `0x6FbCf03F4b89715df2c8F9cC77AF0D0C5a4b79dB`): seven contracts and the pilot's first poll.
+
+| Step | What | Planned address |
+|---|---|---|
+| 1 | RegistrationVerifier (π_reg with notBefore; TEST-ONLY key) | `0xBddD70613128B2630Bb95F5Cb477adabF999700f` |
+| 2 | IdentityRegistry (insertion at once; Decision #62) | `0x945cBfd04c6Bda5E2eC3Ce48d0Ce52cDFbA3784b` |
+| 3 | RevocationRegistry (revoked handles readable) | `0xb89Eff017fd6d29276937546E91aa267D65250B5` |
+| 4 | Groth16Verifier (π_vote with the identity root public; TEST-ONLY key) | `0xBb9E341C50f5195b331E53887cF73aad0E82887d` |
+| 5 | BallotBatchVerifier (19 public inputs per ballot) | `0x24ac6065CdE8356b7095CD45a34c2db5214fAf8A` |
+| 6 | RecoveryVerifier (π_recover with both identity roots public; TEST-ONLY key) | `0x802Cc43CD7a9beD92F09C782dae7E78a0D1Dfda3` |
+| 7 | ProofOfOnePolls (any root the registry has held; Decision #62) | `0xaD174b869FD926c249AE6e9516e58D0901b9aD6E` |
+| 8 | Create the pilot's first poll (poll id 1 of deployment 5; 4 options, open for 14 days) | `0xaD174b869FD926c249AE6e9516e58D0901b9aD6E` |
+
+Reused: Poseidon(2), Poseidon(3), Poseidon(5), RevokeVerifier (deployment 1) and the TallyVerifier of deployment 3 (byte-for-byte the contracts the reference builds today). The identity registry starts empty, with the key set of plan 6; members enrol again with app v0.12, whose credentials carry `notBefore`, and register within minutes. The relay (`wrangler.toml`) points at the new polls contract and registry, and the workflow "Registry batches" is no longer needed.
+
+The poll: *"Pilot test poll: which part of the app should we improve first?"* (text in six languages in `../relay/src/pilot-polls.json`), adults on 24 November 2026, any document valid in November 2026 or later, up to 20 changes of answer, 3 of 5 synthetic trustees. Not yet sent.

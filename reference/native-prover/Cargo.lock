@@ -2449,6 +2449,7 @@ dependencies = [
  "circom-witnesscalc",
  "flate2",
  "jni",
+ "keccak",
  "rand 0.8.8",
  "serde_json",
 ]

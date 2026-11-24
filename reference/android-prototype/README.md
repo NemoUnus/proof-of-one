@@ -48,6 +48,14 @@ The secrets and the credential stay in the app's private storage (`member.json`,
 - **What it is not.** A check made on the phone can be bypassed by a modified app, and it does not detect a printed photo or a screen held to the camera. In the pilot it stops honest mistakes (someone else's passport picked up at home) and gives the measurements; the design's defences (the attested enclave's face comparison, Decision #33) are not in the pilot.
 - **Translated.** The face check's texts are in the six languages. The technical test tools (face check test, enrolment proof test, ballot proof benchmark) stay in English and are folded under **▸ Test tools (English)** on the first screen, so that volunteers do not meet them.
 
+### v0.12: answering polls (Decision #62)
+
+- **Registration within minutes.** After enrolment (and after a restore) the phone registers 1 to 10 minutes later, on its own: while the app stays open, or the next time it is opened. The registry of deployment 5 inserts the membership into the identity tree in the same transaction, so the member can answer every open poll at once. If the relay names another registry (a new deployment), the phone registers there too.
+- **Polls.** Once registered, the first screen shows **Polls**. The poll screen reads, from the relay's `GET /state`, the identity leaves and revoked handles (the phone rebuilds both trees and checks their roots), the poll and its text in the app's language, and the ballot recorded for the member's nullifier. The native prover finds the recorded answer from the contract's ballot hash alone (`ballot.rs` `recorded_answer`): a member who moved to a new phone with the password sees the answer recorded for them and may keep or change it. An answer recorded for the membership that this phone cannot open is reported, not overwritten. A new or changed answer is proved on the phone (π_vote, newest identity root, randomness from the secret and the revision; a changed answer hands the replaced ballot to the contract) and sent through the relay; the phone then reads the ballot back and checks that it opens to the chosen answer.
+- **Privacy on the screen and in the result.** The poll screen blocks screenshots. The shared result holds the proving time and the outcome, never the answer.
+- **Older memberships.** A membership made before v0.12 (credential without `notBefore`) is told to enrol again; it cannot register on deployment 5.
+- The pilot's information text is now version 0.3 (`docs/pilot/consent-v0.3.md`, Persian `consent-v0.3-fa.md`).
+
 ### v0.11.1: the pilot's information and consent (Decision #57, point 4)
 
 The enrolment screen now begins with a short summary of the pilot's information text (`docs/pilot/consent-v0.2.md`, Persian `consent-v0.2-fa.md`), a button that opens the full text, and a box to tick: "I am 18 or older, the passport is my own, and I have read and agree to the information text." The selfie and enrolment stay disabled until it is ticked. The shared result records that the consent was given (`consent: information text v0.2 read and agreed`).
@@ -57,7 +65,7 @@ The enrolment screen now begins with a short summary of the pilot's information 
 - **When.** At enrolment (and after a restore) the phone picks a random moment 2 to 26 hours later. The first time the app is opened after it, the phone registers on its own and says so on the first screen; until then it shows when.
 - **How.** From what it kept at enrolment (`member.json`) and the key set the enrolment service publishes in `/info`, the native prover builds π_reg's inputs (`native-prover` `member.rs` `registration_input`, checked in the build against `enrolment.js` `buildRegistration`), proves π_reg with the witness graph made in the build and the repository's TEST-ONLY key (the key of the registry's `RegistrationVerifier`), checks the proof on the phone, and sends only `leaf`, `cn` and the proof to the relay (`POST /register`). The relay answers with the position in the registry. A membership restored on a new phone whose credential was already registered is told so and nothing is sent again.
 - **Measured** on a server: π_reg in about 0.2 s (9,390 signals), including with a credential signed by the service's own core.
-- **Then.** The repository's hourly job (`testnet/batch-job.js`, workflow "Registry batches") inserts each full batch of 4 into the identity tree, and completes a batch left waiting for 48 hours with filler members. Voting from the app with the registered identity is the next step.
+- **Then.** The repository's hourly job (`testnet/batch-job.js`, workflow "Registry batches") inserted each full batch of 4 into the identity tree. Replaced in v0.12 by insertion at registration (Decision #62).
 
 ### v0.10.1: clear reasons
 

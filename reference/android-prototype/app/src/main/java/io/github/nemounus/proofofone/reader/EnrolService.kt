@@ -38,6 +38,12 @@ class EnrolService(private val base: String = BASE) {
     fun evaluate(session: String, pB: Any, dB: Any) = call("POST", "/evaluate", JSONObject().put("session", session).put("pB", pB).put("dB", dB))
     /** On the relay (Decision #61): a registration on the identity registry. */
     fun register(body: JSONObject) = call("POST", "/register", body)
+    /** On the relay: its configuration (the polls it accepts, the identity registry). */
+    fun status() = call("GET", "/")
+    /** On the relay (Decision #62): the registries, the poll and its text, and the ballot recorded for nf. */
+    fun state(pollId: String, nf: String?) = call("GET", "/state?poll=$pollId" + (nf?.let { "&nf=$it" } ?: ""))
+    /** On the relay: a ballot. */
+    fun vote(body: JSONObject) = call("POST", "/", body)
     fun backup(session: String, blob: String) = call("POST", "/backup", JSONObject().put("session", session).put("backup", blob))
     fun enrol(session: String, proof: JSONObject, publicSignals: Any) =
         call("POST", "/enrol", JSONObject().put("session", session).put("proof", proof).put("publicSignals", publicSignals))

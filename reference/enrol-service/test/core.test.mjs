@@ -85,7 +85,7 @@ test("evaluate refuses points outside the prime-order subgroup, the identity, ma
 });
 
 test("sign: circomlib verifies the credential; message and handle as enrolment.js", () => {
-  const attrs = ["32872", "2", "5592143", "202901", "0", "0", "0", "0"];
+  const attrs = ["32872", "2", "5592143", "202901", "0", "0", "0", "0", "0"]; // the ninth: notBefore (Decision #62)
   const fp = "123456789012345678901234567890", cm = "987654321", epoch = "0";
   const c = core.call("sign", { secrets, fp, attrs, cm, epoch, rand: randomHex(64) });
   const kR = big(secrets.revocation) % FP.P;
@@ -103,7 +103,7 @@ test("sign: circomlib verifies the credential; message and handle as enrolment.j
   const c2 = core.call("sign", { secrets, fp, attrs, cm: "5", epoch, rand: randomHex(64) });
   assert.strictEqual(c2.rn, c.rn);
   assert.notStrictEqual(core.call("sign", { secrets, fp: "7", attrs, cm, epoch, rand: randomHex(64) }).rn, c.rn);
-  assert.throws(() => core.call("sign", { secrets, fp, attrs: attrs.slice(1), cm, epoch, rand: randomHex(64) }), /8 attribute/);
+  assert.throws(() => core.call("sign", { secrets, fp, attrs: attrs.slice(1), cm, epoch, rand: randomHex(64) }), /9 attribute/);
 });
 
 test("poseidon equals circomlibjs for 1 to 16 inputs", () => {
@@ -134,6 +134,6 @@ test("time per call (the Worker's limit is about 10 ms of processor time per req
   const time = (f) => { f(); const t = performance.now(); for (let i = 0; i < 20; i++) f(); return (performance.now() - t) / 20; };
   const tPub = time(() => core.call("public", { secrets }));
   const tEval = time(() => core.call("evaluate", inp));
-  const tSign = time(() => core.call("sign", { secrets, fp: "1", attrs: ["1", "1", "1", "1", "0", "0", "0", "0"], cm: "1", epoch: "0", rand: randomHex(64) }));
+  const tSign = time(() => core.call("sign", { secrets, fp: "1", attrs: ["1", "1", "1", "1", "0", "0", "0", "0", "0"], cm: "1", epoch: "0", rand: randomHex(64) }));
   console.log(`# ms per call: public ${tPub.toFixed(2)}, evaluate ${tEval.toFixed(2)}, sign ${tSign.toFixed(2)}`);
 });

@@ -6,7 +6,7 @@
 // reference by the vote-check binary in the Android workflow.
 use crate::fingerprint::{add, dec, g8, mul, Pt};
 use ark_bn254::Fr;
-use ark_ff::{PrimeField, Zero};
+use ark_ff::{BigInteger, PrimeField, Zero};
 use ark_ed_on_bn254::Fr as Sc;
 use serde_json::{json, Value};
 use std::str::FromStr;
@@ -17,6 +17,7 @@ const K: usize = 4;
 const DEPTH: usize = 32;
 const TAG_NULLIFIER: u64 = 1;
 const TAG_POLL: u64 = 7;
+const TAG_BALLOT_RAND: u64 = 15;
 
 fn h(xs: &[Fr]) -> Result<Fr, Error> { crate::poseidon::hash(xs).map_err(|e| e.into()) }
 fn get<'a>(v: &'a Value, k: &str) -> Result<&'a Value, Error> { v.get(k).ok_or_else(|| format!("{} missing", k).into()) }
@@ -82,11 +83,9 @@ pub fn identity_path(v: &Value) -> Result<Value, Error> {
     let leaf = num(v, "leaf")?;
     let root = num(v, "idRoot")?;
     let index = leaves.iter().position(|l| *l == leaf).ok_or("this membership is not in the published identity tree yet")?;
-    // n runs over batch boundaries (multiples of 4) and the full length
-    let mut ns: Vec<usize> = (1..=leaves.len() / 4).map(|b| b * 4).collect();
-    ns.push(leaves.len());
-    for n in ns.into_iter().rev() {
-        if n <= index { break; }
+    // Decision #62: every registration enters the tree at once, so any prefix length can be
+    // a root the registry has held; the app normally passes the newest root (n = all leaves).
+    for n in (index + 1..=leaves.len()).rev() {
         let t = Tree::new(leaves[..n].to_vec())?;
         if t.root()? == root {
             let (s, p) = t.path(index)?;
@@ -122,12 +121,26 @@ pub fn revocation_witness(v: &Value) -> Result<Value, Error> {
     Ok(json!({ "lowValue": dec(&entries[li].0), "nextValue": dec(&entries[li].1), "siblings": strs(&s), "pathIndex": strs(&p) }))
 }
 
+/// The ballot's random values from the member's secret (Decision #62; ballotRandomness in
+/// ballot.js): r_j = H(15, s, pollId, revision, j) mod ℓ. A phone that restored the identity
+/// recomputes them to open the ballot recorded for it; every changed answer takes the next
+/// revision, so no two ballots share values.
+pub fn ballot_randomness(s: &Fr, poll_id: &Fr, revision: u64) -> Result<Vec<Sc>, Error> {
+    (0..K).map(|j| {
+        let x = h(&[Fr::from(TAG_BALLOT_RAND), *s, *poll_id, Fr::from(revision), Fr::from(j as u64)])?;
+        let r = Sc::from_le_bytes_mod_order(&x.into_bigint().to_bytes_le());
+        if r.is_zero() { return Err("zero ballot randomness".into()); }
+        Ok(r)
+    }).collect()
+}
+
 /// π_vote's inputs. `v` holds:
-///   member {s, salt}, attrs {birthDay, sexCode, natCode, expMonth}, credential {rn}
-///   poll {pollId, PK: [x, y], idRoot, revRoot, ctxHash,
+///   member {s, salt}, attrs {birthDay, sexCode, natCode, expMonth, notBefore?}, credential {rn}
+///   poll {pollId, PK: [x, y], idRoot, revRoot, ctxHash, openTime,
 ///         policy {maxBirthDay, minBirthDay, minExpiryMonth, requiredNat}}
+///   (idRoot: the root the path below leads to, any root the registry has held; Decision #62)
 ///   idPath {siblings, pathIndex}, rev {lowValue, nextValue, siblings, pathIndex}
-///   choice (0..3), and either rand (hex, at least 4 × 64 bytes) or r (4 decimal scalars, tests)
+///   choice (0..3), and revision (randomness from the secret), or r (4 decimal scalars, tests)
 /// Returns {input, nf, C: [{A, B}], r: [...]}; nf, C and r form the phone's receipt.
 pub fn ballot_input(v: &Value) -> Result<Value, Error> {
     let m = get(v, "member")?; let at = get(v, "attrs")?; let poll = get(v, "poll")?; let pol = get(poll, "policy")?;
@@ -141,15 +154,17 @@ pub fn ballot_input(v: &Value) -> Result<Value, Error> {
     let nat = big(at, "natCode")?;
     if bd > max_bd || bd < min_bd { return Err("outside this poll's age range".into()); }
     if !(req == 0 || nat == req) || exp < min_exp { return Err("no document satisfies this poll's policy".into()); }
+    let not_before = if at.get("notBefore").is_some() { big(at, "notBefore")? } else { 0 };
+    let open_time = big(poll, "openTime")?;
+    if not_before > open_time { return Err("this identity was issued after the poll opened".into()); }
 
+    let poll_id = num(poll, "pollId")?;
     let r: Vec<Sc> = if let Some(rs) = v.get("r") {
         rs.as_array().ok_or("r: array expected")?.iter()
             .map(|x| x.as_str().and_then(|t| Sc::from_str(t).ok()).ok_or_else(|| Error::from("r: scalar expected"))).collect::<Result<_, _>>()?
     } else {
-        let hex = get(v, "rand")?.as_str().ok_or("rand: hex expected")?;
-        let b: Vec<u8> = (0..hex.len() / 2).map(|i| u8::from_str_radix(&hex[2 * i..2 * i + 2], 16)).collect::<Result<_, _>>().map_err(|_| "rand: hex expected")?;
-        if b.len() < 64 * K { return Err("rand: too short".into()); }
-        (0..K).map(|j| Sc::from_le_bytes_mod_order(&b[64 * j..64 * (j + 1)])).collect()
+        let rev = get(v, "revision")?.as_u64().ok_or("revision: number expected")?;
+        ballot_randomness(&s_fr, &poll_id, rev)?
     };
     if r.len() != K || r.iter().any(|x| x.is_zero()) { return Err("r: four non-zero scalars expected".into()); }
 
@@ -162,20 +177,19 @@ pub fn ballot_input(v: &Value) -> Result<Value, Error> {
         let b = if j == choice { add(&g, &rp) } else { rp };
         ca.push(a); cb.push(b);
     }
-    let poll_id = num(poll, "pollId")?;
     let nf = h(&[Fr::from(TAG_NULLIFIER), poll_id, s_fr])?;
     let (id_root, rev_root, ctx) = (num(poll, "idRoot")?, num(poll, "revRoot")?, num(poll, "ctxHash")?);
-    let h1 = h(&[id_root, rev_root, poll_id, pk.0, pk.1])?;
+    let h1 = h(&[rev_root, poll_id, pk.0, pk.1, Fr::from(open_time as u64)])?;
     let h2 = h(&[Fr::from(max_bd as u64), Fr::from(min_bd as u64), Fr::from(min_exp as u64), Fr::from(req as u64), ctx])?;
     let poll_hash = h(&[Fr::from(TAG_POLL), h1, h2])?;
     let _ = s;
     let input = json!({
-        "pollHash": dec(&poll_hash), "idRoot": dec(&id_root), "revRoot": dec(&rev_root), "pollId": dec(&poll_id), "nf": dec(&nf),
+        "pollHash": dec(&poll_hash), "idRoot": dec(&id_root), "openTime": open_time.to_string(), "revRoot": dec(&rev_root), "pollId": dec(&poll_id), "nf": dec(&nf),
         "PK": pj(&pk), "maxBirthDay": max_bd.to_string(), "minBirthDay": min_bd.to_string(), "minExpiryMonth": min_exp.to_string(),
         "requiredNat": req.to_string(), "ctxHash": dec(&ctx),
         "CA": ca.iter().map(pj).collect::<Vec<_>>(), "CB": cb.iter().map(pj).collect::<Vec<_>>(),
         "s": dec(&s_fr), "birthDay": bd.to_string(), "sexCode": big(at, "sexCode")?.to_string(),
-        "nat": [nat.to_string(), "0", "0"], "exp": [exp.to_string(), "0", "0"], "docSel": ["1", "0", "0"],
+        "nat": [nat.to_string(), "0", "0"], "exp": [exp.to_string(), "0", "0"], "docSel": ["1", "0", "0"], "notBefore": not_before.to_string(),
         "salt": dec(&num(m, "salt")?), "rn": dec(&num(get(v, "credential")?, "rn")?),
         "idSiblings": strs(&frs(get(idp, "siblings")?)?), "idPathIndex": strs(&frs(get(idp, "pathIndex")?)?),
         "lowValue": dec(&num(rev, "lowValue")?), "nextValue": dec(&num(rev, "nextValue")?),
@@ -183,9 +197,81 @@ pub fn ballot_input(v: &Value) -> Result<Value, Error> {
         "v": (0..K).map(|j| if j == choice { "1" } else { "0" }).collect::<Vec<_>>(),
         "r": r.iter().map(|x| dec(x)).collect::<Vec<_>>(),
     });
+    let ct: Vec<String> = ca.iter().chain(cb.iter()).flat_map(|p| [dec(&p.0), dec(&p.1)]).collect();
     Ok(json!({
-        "input": input, "nf": dec(&nf),
+        "input": input, "nf": dec(&nf), "ct": ct,
         "C": (0..K).map(|j| json!({ "A": pj(&ca[j]), "B": pj(&cb[j]) })).collect::<Vec<_>>(),
         "r": r.iter().map(|x| dec(x)).collect::<Vec<_>>(),
     }))
 }
+
+/// The member's nullifier in a poll, nf = H(1, pollId, s): the key under which the contract
+/// keeps the member's ballot. `v`: {member {s}, pollId}. Returns {nf}.
+pub fn nullifier(v: &Value) -> Result<Value, Error> {
+    let nf = h(&[Fr::from(TAG_NULLIFIER), num(v, "pollId")?, num(get(v, "member")?, "s")?])?;
+    Ok(json!({ "nf": dec(&nf) }))
+}
+
+/// Keccak-256, as the polls contract hashes a ballot (`_ctHash`).
+fn keccak256(data: &[u8]) -> [u8; 32] {
+    const RATE: usize = 136;
+    let mut st = [0u64; 25];
+    let mut buf = data.to_vec();
+    buf.push(0x01);
+    while buf.len() % RATE != 0 { buf.push(0); }
+    let last = buf.len() - 1;
+    buf[last] |= 0x80;
+    for block in buf.chunks(RATE) {
+        for (i, lane) in block.chunks(8).enumerate() {
+            st[i] ^= u64::from_le_bytes(lane.try_into().unwrap());
+        }
+        keccak::f1600(&mut st);
+    }
+    let mut out = [0u8; 32];
+    for i in 0..4 { out[8 * i..8 * i + 8].copy_from_slice(&st[i].to_le_bytes()); }
+    out
+}
+
+fn be32(x: &Fr) -> [u8; 32] {
+    let mut b = x.into_bigint().to_bytes_be();
+    while b.len() < 32 { b.insert(0, 0); }
+    b.try_into().unwrap()
+}
+
+/// The ballot hash the contract keeps for a nullifier (`ballots(pollId, nf).ballotHash`):
+/// the first 28 bytes of Keccak-256 over A_j.x, A_j.y, B_j.x, B_j.y for each option j.
+pub fn ballot_hash(ca: &[Pt], cb: &[Pt]) -> String {
+    let mut data = Vec::with_capacity(32 * 4 * K);
+    for j in 0..K { for v in [ca[j].0, ca[j].1, cb[j].0, cb[j].1] { data.extend_from_slice(&be32(&v)); } }
+    let h = keccak256(&data);
+    h[..28].iter().map(|b| format!("{:02x}", b)).collect()
+}
+
+/// Decision #62, principle 2: the answer recorded for this member, found without a stored
+/// receipt. `v`: {member {s}, poll {pollId, PK}, count (ballots recorded for the nullifier),
+/// ballotHash (hex of the 28 bytes the contract keeps)}. Tries every answer with the
+/// randomness of each revision, newest first. Returns {choice, revision, ct} if this
+/// membership made the recorded ballot, or {choice: null} if it did not (for example a
+/// ballot made with another phone's random values, or by someone who took the phone).
+pub fn recorded_answer(v: &Value) -> Result<Value, Error> {
+    let m = get(v, "member")?; let poll = get(v, "poll")?;
+    let s = num(m, "s")?; let poll_id = num(poll, "pollId")?;
+    let pk = pt(get(poll, "PK")?)?;
+    let count = get(v, "count")?.as_u64().ok_or("count: number expected")?;
+    let want = get(v, "ballotHash")?.as_str().ok_or("ballotHash: hex expected")?.trim_start_matches("0x").to_lowercase();
+    let g = g8();
+    for rev in (0..count).rev() {
+        let r = ballot_randomness(&s, &poll_id, rev)?;
+        let ca: Vec<Pt> = r.iter().map(|x| mul(&g, x)).collect();
+        let rp: Vec<Pt> = r.iter().map(|x| mul(&pk, x)).collect();
+        for choice in 0..K {
+            let cb: Vec<Pt> = (0..K).map(|j| if j == choice { add(&g, &rp[j]) } else { rp[j] }).collect();
+            if ballot_hash(&ca, &cb) == want {
+                let ct: Vec<String> = ca.iter().chain(cb.iter()).flat_map(|p| [dec(&p.0), dec(&p.1)]).collect();
+                return Ok(json!({ "choice": choice, "revision": rev, "ct": ct }));
+            }
+        }
+    }
+    Ok(json!({ "choice": null }))
+}
+

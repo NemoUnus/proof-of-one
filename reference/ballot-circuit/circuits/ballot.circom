@@ -6,9 +6,13 @@
 // STATEMENT (all private values stay on the phone):
 //   1. P = s·G and idc = Poseidon(P.x, P.y)                     identity
 //   2. leaf = Poseidon(idc, Poseidon(birthDay, sexCode, nat_0, exp_0, nat_1, exp_1,
-//                                    nat_2, exp_2, salt), rn)
+//                                    nat_2, exp_2, notBefore, salt), rn)
 //      and leaf is in the identity tree with root `idRoot`       membership
-//      (up to 3 verified documents, each with nationality and expiry; Decision #30)
+//      (up to 3 verified documents, each with nationality and expiry; Decision #30).
+//      idRoot is public: the contract accepts any root the registry has held, so a
+//      member registered after the poll opened can answer it (Decision #62).
+//   2b. notBefore ≤ openTime: an identity re-issued after the poll opened cannot answer
+//      it (Decision #62, point 3); notBefore is 0 for a first identity
 //   3. rn is NOT in the revocation tree with root `revRoot`       not revoked
 //   4. nf = Poseidon(1, pollId, s)                               one ballot per poll
 //   5. minBirthDay ≤ birthDay ≤ maxBirthDay (the poll's age range as birth dates, so
@@ -20,12 +24,12 @@
 //   6. every v_j ∈ {0,1} and Σ v_j = 1                           well-formed one-hot
 //   7. A_j = r_j·G and B_j = v_j·G + r_j·PK for every j           encryption
 //   8. ctxHash is bound to the proof                              no replay elsewhere
-//   9. pollHash = Poseidon(7, Poseidon(idRoot, revRoot, pollId, PK.x, PK.y),
+//   9. pollHash = Poseidon(7, Poseidon(revRoot, pollId, PK.x, PK.y, openTime),
 //                         Poseidon(maxBirthDay, minBirthDay, minExpiryMonth, requiredNat, ctxHash))
 //
-// PUBLIC INPUTS (18): pollHash, nf, and the 16 ciphertext coordinates. The nine
-// per-poll values are private inputs bound by pollHash, which the contract computes
-// once when the poll is created. This saves about 50,000 gas per ballot compared
+// PUBLIC INPUTS (19): pollHash, nf, idRoot, and the 16 ciphertext coordinates. The
+// other per-poll values are private inputs bound by pollHash, which the contract
+// computes once when the poll is created. This saves about 50,000 gas per ballot compared
 // with making all nine public (docs/specs/implementation-notes-v0.1.md).
 //
 // SECURITY ASSUMPTIONS AND LIMITS
@@ -107,11 +111,12 @@ template Ballot(depth, revDepth, k) {
     // ------------------------------------------------------------ public inputs
     signal input pollHash;
     signal input nf;
+    signal input idRoot;             // any root the identity registry has held (Decision #62)
     signal input CA[k][2];           // A_j
     signal input CB[k][2];           // B_j
 
     // ------------------------------------------- per-poll values, bound by pollHash
-    signal input idRoot;
+    signal input openTime;           // the poll's opening time, unix seconds
     signal input revRoot;
     signal input pollId;
     signal input PK[2];
@@ -128,6 +133,7 @@ template Ballot(depth, revDepth, k) {
     signal input nat[3];             // nationality per document; 0 = empty slot
     signal input exp[3];             // expiry month per document
     signal input docSel[3];          // one-hot: the document used for this poll
+    signal input notBefore;          // 0, or a re-issued identity's issue time (Decision #62)
     signal input salt;
     signal input rn;
     signal input idSiblings[depth];
@@ -149,14 +155,15 @@ template Ballot(depth, revDepth, k) {
     idc.inputs[1] <== P.out[1];
 
     // 2. membership
-    component attr = Poseidon(9);
+    component attr = Poseidon(10);
     attr.inputs[0] <== birthDay;
     attr.inputs[1] <== sexCode;
     for (var d = 0; d < 3; d++) {
         attr.inputs[2 + 2 * d] <== nat[d];
         attr.inputs[3 + 2 * d] <== exp[d];
     }
-    attr.inputs[8] <== salt;
+    attr.inputs[8] <== notBefore;
+    attr.inputs[9] <== salt;
     component leaf = Poseidon(3);
     leaf.inputs[0] <== idc.out;
     leaf.inputs[1] <== attr.out;
@@ -198,6 +205,12 @@ template Ballot(depth, revDepth, k) {
     nfH.inputs[1] <== pollId;
     nfH.inputs[2] <== s;
     nfH.out === nf;
+
+    // 2b. a re-issued identity answers only polls opened after it was issued
+    component notTooNew = LessEqThan(40);
+    notTooNew.in[0] <== notBefore;
+    notTooNew.in[1] <== openTime;
+    notTooNew.out === 1;
 
     // 5. eligibility policy
     component oldEnough = LessEqThan(32);
@@ -271,11 +284,11 @@ template Ballot(depth, revDepth, k) {
 
     // 8–9. bind every per-poll value, including the submission context, to pollHash
     component ph1 = Poseidon(5);
-    ph1.inputs[0] <== idRoot;
-    ph1.inputs[1] <== revRoot;
-    ph1.inputs[2] <== pollId;
-    ph1.inputs[3] <== PK[0];
-    ph1.inputs[4] <== PK[1];
+    ph1.inputs[0] <== revRoot;
+    ph1.inputs[1] <== pollId;
+    ph1.inputs[2] <== PK[0];
+    ph1.inputs[3] <== PK[1];
+    ph1.inputs[4] <== openTime;
     component ph2 = Poseidon(5);
     ph2.inputs[0] <== maxBirthDay;
     ph2.inputs[1] <== minBirthDay;
@@ -289,4 +302,4 @@ template Ballot(depth, revDepth, k) {
     ph.out === pollHash;
 }
 
-component main {public [pollHash, nf, CA, CB]} = Ballot(32, 32, 4);
+component main {public [pollHash, nf, idRoot, CA, CB]} = Ballot(32, 32, 4);

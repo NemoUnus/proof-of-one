@@ -19,9 +19,11 @@ function memberLeaf(P, m) {
 }
 
 // pollHash binds the nine per-poll values (computed once by the contract at poll creation).
-function pollHashOf(P, { idRoot, revRoot, pollId, PK, policy, ctxHash }) {
+// Decision #62: the identity root is a public input of its own (any root the registry has
+// held), and the poll's opening time is bound instead.
+function pollHashOf(P, { revRoot, pollId, PK, policy, ctxHash, openTime }) {
   const H = P.hash.H, [px, py] = P.curve.coords(PK);
-  const h1 = H([idRoot, revRoot, pollId, px, py].map(BigInt));
+  const h1 = H([revRoot, pollId, px, py, openTime].map(BigInt));
   const h2 = H([policy.maxBirthDay, policy.minBirthDay ?? 0, policy.minExpiryMonth, policy.requiredNat, ctxHash].map(BigInt));
   return H([7n, h1, h2]); // domain tag TAG.POLL
 }
@@ -29,25 +31,42 @@ function pollHashOf(P, { idRoot, revRoot, pollId, PK, policy, ctxHash }) {
 // Everything the phone needs to submit one ballot.
 // `docIndex` (optional) chooses which of the member's documents is used for eligibility;
 // by default the first one that satisfies the poll's policy.
-function buildBallot(P, { pollId, PK, policy, ctxHash, member, leafIndex, idTree, revTree, choice, k = K, docIndex }) {
+// The ballot's random values come from the member's secret, the poll and a revision number
+// (Decision #62), so that a phone that restored the identity can open the recorded ballot
+// without a stored receipt. Each changed answer uses the next revision.
+function ballotRandomness(P, s, pollId, revision, k = K) {
+  const H = P.hash.H, L = P.curve.L;
+  return Array.from({ length: k }, (_, j) => {
+    const x = H([P.hash.TAG.BALLOT_RAND, BigInt(s), BigInt(pollId), BigInt(revision), BigInt(j)]) % L;
+    if (x === 0n) throw new Error("zero ballot randomness");
+    return x;
+  });
+}
+
+function buildBallot(P, { pollId, PK, policy, ctxHash, openTime, member, leafIndex, idTree, revTree, choice, k = K, docIndex, revision }) {
   const C = P.curve;
   const di = docIndex ?? A.selectDoc(member, policy);
   if (di < 0 && docIndex === undefined) throw new Error(A.inAgeRange(member, policy) ? "no document satisfies this poll's policy" : "outside this poll's age range");
   const sl = A.slots(member);
-  const enc = P.encryptBallot(PK, k, choice);
+  if (!Number.isInteger(choice) || choice < 0 || choice >= k) throw new Error("choice out of range");
+  if (BigInt(member.notBefore ?? 0) > BigInt(openTime)) throw new Error("this identity was issued after the poll opened");
+  const enc = revision === undefined ? P.encryptBallot(PK, k, choice) : (() => {
+    const r = ballotRandomness(P, member.s, pollId, revision, k);
+    return { C: P.reencrypt(PK, k, choice, r), r };
+  })();
   const nf = P.nullifier(pollId, member.s);
   const idp = idTree.path(leafIndex);
   const rev = revTree.nonMembership(member.rn);
   const pt = (X) => C.coords(X).map(String);
-  const pollHash = pollHashOf(P, { idRoot: idTree.root, revRoot: revTree.root, pollId, PK, policy, ctxHash });
+  const pollHash = pollHashOf(P, { revRoot: revTree.root, pollId, PK, policy, ctxHash, openTime });
   const input = {
-    pollHash: pollHash.toString(), idRoot: idTree.root.toString(), revRoot: revTree.root.toString(), pollId: pollId.toString(), nf: nf.toString(),
+    pollHash: pollHash.toString(), idRoot: idTree.root.toString(), openTime: String(openTime), revRoot: revTree.root.toString(), pollId: pollId.toString(), nf: nf.toString(),
     PK: pt(PK), maxBirthDay: String(policy.maxBirthDay), minBirthDay: String(policy.minBirthDay ?? 0), minExpiryMonth: String(policy.minExpiryMonth),
     requiredNat: String(policy.requiredNat), ctxHash: ctxHash.toString(),
     CA: enc.C.map((c) => pt(c.A)), CB: enc.C.map((c) => pt(c.B)),
     s: member.s.toString(), birthDay: String(member.birthDay), sexCode: String(member.sexCode),
     nat: sl.map((d) => d.nat.toString()), exp: sl.map((d) => d.expiry.toString()), docSel: sl.map((_, i) => (i === di ? "1" : "0")),
-    salt: member.salt.toString(), rn: member.rn.toString(),
+    notBefore: String(member.notBefore ?? 0), salt: member.salt.toString(), rn: member.rn.toString(),
     idSiblings: idp.siblings.map(String), idPathIndex: idp.pathIndex.map(String),
     lowValue: rev.lowValue.toString(), nextValue: rev.nextValue.toString(),
     revSiblings: rev.siblings.map(String), revPathIndex: rev.pathIndex.map(String),
@@ -62,17 +81,17 @@ async function prove(input, zkey) {
 }
 
 // The public inputs the verifier must use, in circuit declaration order: pollHash, nf,
-// then the ciphertexts. They are rebuilt from the poll's own parameters and the
+// idRoot, then the ciphertexts. They are rebuilt from the poll's own parameters and the
 // submitted ballot — never taken from the submitter — so a proof for one poll or ballot
 // cannot be reused for another.
-function publicSignals(P, { idRoot, revRoot, pollId, nf, PK, policy, ctxHash, C }) {
+function publicSignals(P, { idRoot, revRoot, pollId, nf, PK, policy, ctxHash, openTime, C }) {
   const pt = (X) => P.curve.coords(X).map(String);
-  const pollHash = pollHashOf(P, { idRoot, revRoot, pollId, PK, policy, ctxHash });
-  return [pollHash, nf, ...C.flatMap((c) => pt(c.A)), ...C.flatMap((c) => pt(c.B))].map(String);
+  const pollHash = pollHashOf(P, { revRoot, pollId, PK, policy, ctxHash, openTime });
+  return [pollHash, nf, idRoot, ...C.flatMap((c) => pt(c.A)), ...C.flatMap((c) => pt(c.B))].map(String);
 }
 
 async function verify(vkey, signals, proof) {
   return snarkjs.groth16.verify(vkey, signals, proof);
 }
 
-module.exports = { K, DEPTH, REV_DEPTH, WASM, memberLeaf, pollHashOf, buildBallot, prove, publicSignals, verify };
+module.exports = { K, DEPTH, REV_DEPTH, WASM, memberLeaf, pollHashOf, ballotRandomness, buildBallot, prove, publicSignals, verify };

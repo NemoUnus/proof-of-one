@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
-// Proof of One — registration on the public ledger (Decision #61). After enrolment the phone
-// picks a random moment 2–26 hours later; the first time the app is opened after it, the
-// phone proves π_reg (reference/enrolment-circuit, circuits/registration.circom) from what it
-// kept in member.json and sends only (leaf, cn, proof) through the relay to the identity
-// registry. The service that signed the credential cannot recognise leaf or cn; the delay
-// keeps it from linking them by time. In the pilot the same operator runs the service and the
-// relay, so this makes the link harder for that operator, not impossible (#61, point 3).
+// Proof of One — registration on the public ledger (Decisions #61 and #62). After enrolment the
+// phone picks a random moment 1–10 minutes later; when it has passed (while the app is open,
+// or the next time it is opened), the phone proves π_reg (reference/enrolment-circuit,
+// circuits/registration.circom) from what it kept in member.json and sends only (leaf, cn,
+// proof) through the relay to the identity registry, which inserts the membership into the
+// identity tree at once: from then on the member can answer every open poll (#62, principle 1).
+// The service that signed the credential cannot recognise leaf or cn. In the pilot the same
+// operator runs the service and the relay; with a delay of minutes it can more easily link a
+// person to their registry entry, never to their answers (#62).
 package io.github.nemounus.proofofone.reader
 
 import android.content.Context
@@ -17,15 +19,18 @@ import java.time.LocalDate
 
 object Registration {
     const val RELAY = "https://proof-of-one-relay.nemounus.workers.dev"
-    private const val HOUR = 3_600_000L
+    private const val MINUTE = 60_000L
+    /** member.json "version" from which credentials carry notBefore (Decision #62, app v0.12). */
+    const val FORMAT = 3
 
-    /** The moment after which the phone registers: now + 2 h + a uniform random part of 24 h. */
-    fun pickTime(): Long = System.currentTimeMillis() + 2 * HOUR + (SecureRandom().nextDouble() * 24 * HOUR).toLong()
+    /** The moment after which the phone registers: now + 1 min + a uniform random part of 9 min. */
+    fun pickTime(): Long = System.currentTimeMillis() + MINUTE + (SecureRandom().nextDouble() * 9 * MINUTE).toLong()
 
     sealed class State {
         object None : State()                                // no membership on this phone
+        object Old : State()                                 // made before Decision #62: enrol again
         class Waiting(val after: Long) : State()
-        class Done(val index: String?) : State()
+        class Done(val index: String?, val registry: String?) : State()
     }
 
     fun memberFile(ctx: Context) = File(ctx.filesDir, "member.json")
@@ -33,7 +38,8 @@ object Registration {
     fun state(ctx: Context): State {
         val f = memberFile(ctx); if (!f.exists()) return State.None
         val m = JSONObject(f.readText())
-        m.optJSONObject("registered")?.let { return State.Done(it.optString("index").ifEmpty { null }) }
+        if (m.optInt("version", 0) < FORMAT) return State.Old
+        m.optJSONObject("registered")?.let { return State.Done(it.optString("index").ifEmpty { null }, it.optString("registry").ifEmpty { null }) }
         return State.Waiting(m.optLong("registerAfter", 0L))
     }
 
@@ -42,12 +48,11 @@ object Registration {
         val tmp = File(ctx.filesDir, "member.json.part"); tmp.writeText(m.toString()); tmp.renameTo(memberFile(ctx))
     }
 
-    /** Older memberships (v0.9–v0.10) have no time yet: give them one. */
-    fun ensureTime(ctx: Context) {
+    /** The relay now names another identity registry (a new deployment): register there too. */
+    fun registryChanged(ctx: Context) {
         val f = memberFile(ctx); if (!f.exists()) return
         val m = JSONObject(f.readText())
-        if (m.has("registered") || m.has("registerAfter")) return
-        save(ctx, m.put("registerAfter", pickTime()))
+        m.remove("registered"); save(ctx, m.put("registerAfter", 0L))
     }
 
     class NotReady(message: String) : Exception(message)
@@ -60,6 +65,7 @@ object Registration {
     fun run(ctx: Context): String {
         val m = JSONObject(memberFile(ctx).readText())
         if (m.has("registered")) return "already registered"
+        val registry = EnrolService(RELAY).status().optString("registry").ifEmpty { throw NotReady("the relay accepts no registrations") }
         val keySet = EnrolService().info().optJSONObject("keySet") ?: throw NotReady("the key set is not published yet")
         val data = JSONObject().put("member", m.getJSONObject("member")).put("attrs", m.getJSONObject("attrs"))
             .put("credential", m.getJSONObject("credential")).put("keySet", keySet)
@@ -86,7 +92,7 @@ object Registration {
         val r = try { EnrolService(RELAY).register(body) } catch (e: EnrolService.Failure) {
             if (e.body?.optBoolean("alreadyRegistered") == true) JSONObject().put("already", true) else throw e
         }
-        val rec = JSONObject().put("leaf", leaf).put("day", LocalDate.now().toString())
+        val rec = JSONObject().put("leaf", leaf).put("day", LocalDate.now().toString()).put("registry", registry.lowercase())
             .put("tx", r.optString("tx")).put("index", r.optString("index"))
         save(ctx, m.put("registered", rec))
         return if (r.optBoolean("already")) "registration: this credential was already on the ledger (restored membership)"

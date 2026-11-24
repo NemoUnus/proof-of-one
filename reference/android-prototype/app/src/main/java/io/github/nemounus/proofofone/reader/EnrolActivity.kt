@@ -82,13 +82,13 @@ class EnrolActivity : Activity() {
         if (t("draft").isNotEmpty()) col.addView(TextView(this).apply { text = t("draft"); textSize = 12f })
         col.addView(TextView(this).apply { text = t("enrolIntro"); setPadding(0, pad / 2, 0, 0) })
         fun heading(k: String) = TextView(this).apply { text = t(k); textSize = 17f; setTypeface(null, Typeface.BOLD); setPadding(0, pad, 0, 0) }
-        // The pilot's information and consent (docs/pilot/consent-v0.2*.md; Decision #57, point 4)
+        // The pilot's information and consent (docs/pilot/consent-v0.3*.md; Decision #57, point 4)
         col.addView(heading("consentStep"))
         col.addView(TextView(this).apply { text = t("consentSummary"); setPadding(0, pad / 2, 0, 0) })
         col.addView(Button(this).apply {
             text = t("consentRead")
             setOnClickListener {
-                val f = if (L10n.lang == "fa") "consent-v0.2-fa.md" else "consent-v0.2.md"
+                val f = if (L10n.lang == "fa") "consent-v0.3-fa.md" else "consent-v0.3.md"
                 startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/NemoUnus/proof-of-one/blob/main/docs/pilot/$f")))
             }
         })
@@ -291,7 +291,7 @@ class EnrolActivity : Activity() {
         if (password != pw2.text.toString()) { status.text = t("pwDiffer"); return }
         start.isEnabled = false; share.visibility = View.GONE; report.text = ""
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        val log = mutableListOf("Proof of One pilot enrolment v0.11", "consent: information text v0.2 read and agreed",
+        val log = mutableListOf("Proof of One pilot enrolment v0.12", "consent: information text v0.3 read and agreed",
             "face check: passed on the phone (similarity %.2f, threshold %.2f, %d selfie%s); no face data sent".format(
                 java.util.Locale.ROOT, faceSim, FaceMatcher.THRESHOLD, faceTries, if (faceTries == 1) "" else "s"))
         fun step(s: String) = runOnUiThread { status.text = s }
@@ -384,7 +384,7 @@ class EnrolActivity : Activity() {
                 val cred = res.getJSONObject("credential")
                 val e = built.expected
                 val saved = JSONObject()
-                    .put("version", 2).put("service", EnrolService.BASE).put("enrolledDay", ses.getString("today"))
+                    .put("version", Registration.FORMAT).put("service", EnrolService.BASE).put("enrolledDay", ses.getString("today"))
                     .put("number", number)
                     .put("member", member).put("rFace", rFace.toString())
                     .put("attrs", JSONObject().put("birthDay", e.birthDay.toString()).put("sexCode", e.sexCode.toString())

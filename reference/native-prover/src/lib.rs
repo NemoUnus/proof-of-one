@@ -414,7 +414,7 @@ mod android {
         env.new_string(json_or_error(r)).map(|x| x.into_raw()).unwrap_or(std::ptr::null_mut())
     }
 
-    /// The ballot (ballot.rs): op "identityPath", "revocation" or "input", on a JSON argument.
+    /// The ballot (ballot.rs): op "identityPath", "revocation", "input", "recorded" or "nullifier", on a JSON argument.
     #[no_mangle]
     pub extern "system" fn Java_io_github_nemounus_proofofone_reader_NativeProver_ballotOp<'l>(
         mut env: JNIEnv<'l>, _c: JClass<'l>, op: JString<'l>, data: JString<'l>,
@@ -426,6 +426,8 @@ mod android {
                 "identityPath" => super::ballot::identity_path(&v),
                 "revocation" => super::ballot::revocation_witness(&v),
                 "input" => super::ballot::ballot_input(&v),
+                "recorded" => super::ballot::recorded_answer(&v),
+                "nullifier" => super::ballot::nullifier(&v),
                 _ => Err("unknown ballot operation".into()),
             }
         })();

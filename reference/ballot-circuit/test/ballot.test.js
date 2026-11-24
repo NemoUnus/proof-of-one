@@ -17,7 +17,7 @@ const ZKEY = path.join(__dirname, "..", "setup", "ballot_test.zkey");
 const VKEY = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "setup", "vkey_test.json"), "utf8"));
 const TODAY = [2026, 10, 23];
 const POLICY = { ...A.ageRange(TODAY, { minAge: 18 }), minExpiryMonth: 24330, requiredNat: 0 };
-const POLL = 1001n, CTX = 777n;
+const POLL = 1001n, CTX = 777n, OPEN = 1795000000n; // the poll's opening time (Decision #62)
 
 let P, keys, idTree, revTree, members;
 const handle = () => BigInt("0x" + crypto.randomBytes(31).toString("hex")); // < 2^248
@@ -48,12 +48,12 @@ test.before(async () => {
 });
 
 const ballotFor = (m, choice, extra = {}) =>
-  B.buildBallot(P, { pollId: POLL, PK: keys.PK, policy: POLICY, ctxHash: CTX, member: m, leafIndex: m.index, idTree, revTree, choice, ...extra });
+  B.buildBallot(P, { pollId: POLL, PK: keys.PK, policy: POLICY, ctxHash: CTX, openTime: OPEN, member: m, leafIndex: m.index, idTree, revTree, choice, ...extra });
 
 test("honest ballot: proof verifies against public inputs rebuilt by the verifier", async () => {
   const b = ballotFor(members[0], 2);
   const { proof } = await B.prove(b.input, ZKEY);
-  const signals = B.publicSignals(P, { idRoot: idTree.root, revRoot: revTree.root, pollId: POLL, nf: b.nf, PK: keys.PK, policy: POLICY, ctxHash: CTX, C: b.C });
+  const signals = B.publicSignals(P, { idRoot: idTree.root, revRoot: revTree.root, pollId: POLL, nf: b.nf, PK: keys.PK, policy: POLICY, ctxHash: CTX, openTime: OPEN, C: b.C });
   assert.equal(await B.verify(VKEY, signals, proof), true);
 });
 
@@ -130,7 +130,7 @@ test("an age range (18–24): too old or too young cannot be proven; inside the 
 test("tampering with a public input after proving makes verification fail", async () => {
   const b = ballotFor(members[0], 3);
   const { proof } = await B.prove(b.input, ZKEY);
-  const base = { idRoot: idTree.root, revRoot: revTree.root, pollId: POLL, nf: b.nf, PK: keys.PK, policy: POLICY, ctxHash: CTX, C: b.C };
+  const base = { idRoot: idTree.root, revRoot: revTree.root, pollId: POLL, nf: b.nf, PK: keys.PK, policy: POLICY, ctxHash: CTX, openTime: OPEN, C: b.C };
   const swapped = [b.C[1], b.C[0], b.C[2], b.C[3]];
   assert.equal(await B.verify(VKEY, B.publicSignals(P, { ...base, C: swapped }), proof), false, "swapped ciphertexts");
   assert.equal(await B.verify(VKEY, B.publicSignals(P, { ...base, ctxHash: CTX + 1n }), proof), false, "other context");
@@ -138,17 +138,17 @@ test("tampering with a public input after proving makes verification fail", asyn
 });
 
 test("end to end: verified submissions, re-vote, tally and recount", async () => {
-  const poll = createVerifiedPoll(P, { pollId: POLL, PK: keys.PK, policy: POLICY, idRoot: idTree.root, revRoot: revTree.root, eligible: 3, vkey: VKEY });
+  const poll = createVerifiedPoll(P, { pollId: POLL, PK: keys.PK, policy: POLICY, idRoot: idTree.root, revRoot: revTree.root, openTime: OPEN, eligible: 3, vkey: VKEY });
   const send = async (b) => {
     const { proof } = await B.prove(b.input, ZKEY);
-    await poll.submit({ nf: b.nf, C: b.C, ctxHash: CTX, proof });
+    await poll.submit({ nf: b.nf, C: b.C, ctxHash: CTX, openTime: OPEN, proof });
   };
   await send(ballotFor(members[0], 0));
   await send(ballotFor(members[0], 3)); // re-vote: only this one counts
   // a ballot whose proof belongs to different ciphertexts is rejected
   const b1 = ballotFor(members[0], 1), b2 = ballotFor(members[0], 2);
   const { proof } = await B.prove(b1.input, ZKEY);
-  await assert.rejects(poll.submit({ nf: b2.nf, C: b2.C, ctxHash: CTX, proof }), /rejected/);
+  await assert.rejects(poll.submit({ nf: b2.nf, C: b2.C, ctxHash: CTX, openTime: OPEN, proof }), /rejected/);
   poll.ledger.close();
   const { counted } = P.replay(poll.ledger.events);
   const agg = P.aggregate(counted, 4);
@@ -161,7 +161,7 @@ test("end to end: verified submissions, re-vote, tally and recount", async () =>
 // ---------------------------------------------------- several nationalities (Decision #30)
 const regional = (requiredNat) => ({ ...POLICY, requiredNat });
 const ballotUnder = (m, policy, extra = {}) =>
-  B.buildBallot(P, { pollId: POLL, PK: keys.PK, policy, ctxHash: CTX, member: m, leafIndex: m.index, idTree, revTree, choice: 0, ...extra });
+  B.buildBallot(P, { pollId: POLL, PK: keys.PK, policy, ctxHash: CTX, openTime: OPEN, member: m, leafIndex: m.index, idTree, revTree, choice: 0, ...extra });
 
 test("two nationalities: a valid proof for the region of each, without revealing the other", async () => {
   const dual = members[4];
@@ -169,9 +169,9 @@ test("two nationalities: a valid proof for the region of each, without revealing
     const policy = regional(nat);
     const b = ballotUnder(dual, policy);
     const { proof } = await B.prove(b.input, ZKEY);
-    const signals = B.publicSignals(P, { idRoot: idTree.root, revRoot: revTree.root, pollId: POLL, nf: b.nf, PK: keys.PK, policy, ctxHash: CTX, C: b.C });
+    const signals = B.publicSignals(P, { idRoot: idTree.root, revRoot: revTree.root, pollId: POLL, nf: b.nf, PK: keys.PK, policy, ctxHash: CTX, openTime: OPEN, C: b.C });
     assert.equal(await B.verify(VKEY, signals, proof), true, `region ${nat}`);
-    assert.equal(signals.length, 18, "public inputs do not include any nationality");
+    assert.equal(signals.length, 19, "public inputs do not include any nationality");
   }
 });
 
@@ -196,3 +196,37 @@ test("an expired document does not count; the member's other valid document stil
   await snarkjs.wtns.calculate(ballotUnder(m, POLICY).input, B.WASM, { type: "mem" });
   await witnessFails(ballotUnder(m, POLICY, { docIndex: 1 }).input); // global poll, expired document chosen
 });
+
+// ---------------------------------------------------- joining open polls (Decision #62)
+test("a member registered after the poll opened answers it, proving against the newest root", async () => {
+  const late = { s: P.curve.randScalar(), birthDay: A.dayNumber(1988, 8, 8), natCode: 250, sexCode: 1, expiryMonth: 24400, salt: P.curve.randScalar(), rn: handle() };
+  const older = idTree.root;
+  late.index = idTree.insert(B.memberLeaf(P, late));
+  const b = ballotFor(late, 1);
+  const { proof } = await B.prove(b.input, ZKEY);
+  const base = { revRoot: revTree.root, pollId: POLL, nf: b.nf, PK: keys.PK, policy: POLICY, ctxHash: CTX, openTime: OPEN, C: b.C };
+  assert.equal(await B.verify(VKEY, B.publicSignals(P, { ...base, idRoot: idTree.root }), proof), true);
+  assert.equal(await B.verify(VKEY, B.publicSignals(P, { ...base, idRoot: older }), proof), false, "the proof names the root it used");
+});
+
+test("a re-issued identity answers only polls opened after it was issued", async () => {
+  const re = { s: P.curve.randScalar(), birthDay: A.dayNumber(1979, 9, 9), natCode: 250, sexCode: 2, expiryMonth: 24400, salt: P.curve.randScalar(), rn: handle(), notBefore: OPEN + 60n };
+  re.index = idTree.insert(B.memberLeaf(P, re));
+  assert.throws(() => ballotFor(re, 0), /issued after the poll opened/);
+  const forged = { ...ballotFor({ ...re, notBefore: 0n }, 0).input, notBefore: String(OPEN + 60n) };
+  await witnessFails(forged);                                     // the leaf holds the real notBefore
+  const later = ballotFor(re, 0, { openTime: OPEN + 3600n });      // a poll opened an hour later
+  const { proof } = await B.prove(later.input, ZKEY);
+  const signals = B.publicSignals(P, { idRoot: idTree.root, revRoot: revTree.root, pollId: POLL, nf: later.nf, PK: keys.PK, policy: POLICY, ctxHash: CTX, openTime: OPEN + 3600n, C: later.C });
+  assert.equal(await B.verify(VKEY, signals, proof), true);
+});
+
+test("ballot randomness from the secret: the same revision gives the same ballot, the next one a fresh one", () => {
+  const m = members[0];
+  const a = ballotFor(m, 2, { revision: 0 }), b = ballotFor(m, 2, { revision: 0 }), c = ballotFor(m, 2, { revision: 1 });
+  assert.deepEqual(a.input.CA, b.input.CA);
+  assert.notDeepEqual(a.input.CA, c.input.CA);
+  const r = B.ballotRandomness(P, m.s, POLL, 0);
+  assert.deepEqual(r.map(String), a.input.r);
+});
+
