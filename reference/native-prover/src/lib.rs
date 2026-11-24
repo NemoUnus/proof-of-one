@@ -263,6 +263,7 @@ fn proof_json(p: &Proof<Bn254>) -> String {
 /// Minimal reader of the .wtns format (iden3 binfile: header section 1, values section 2).
 pub mod fingerprint;
 pub mod member;
+pub mod ballot;
 // Poseidon (circomlib parameters), shared with the enrolment service's core.
 #[path = "../../service-core/src/poseidon.rs"]
 pub mod poseidon;
@@ -410,6 +411,24 @@ mod android {
         mut env: JNIEnv<'l>, _c: JClass<'l>, rand: JString<'l>,
     ) -> jstring {
         let r = (|| -> Result<serde_json::Value, super::Error> { super::member::new_member(&hex(&s(&mut env, &rand)?)?) })();
+        env.new_string(json_or_error(r)).map(|x| x.into_raw()).unwrap_or(std::ptr::null_mut())
+    }
+
+    /// The ballot (ballot.rs): op "identityPath", "revocation" or "input", on a JSON argument.
+    #[no_mangle]
+    pub extern "system" fn Java_io_github_nemounus_proofofone_reader_NativeProver_ballotOp<'l>(
+        mut env: JNIEnv<'l>, _c: JClass<'l>, op: JString<'l>, data: JString<'l>,
+    ) -> jstring {
+        let r = (|| -> Result<serde_json::Value, super::Error> {
+            let op = s(&mut env, &op)?;
+            let v: serde_json::Value = serde_json::from_str(&s(&mut env, &data)?)?;
+            match op.as_str() {
+                "identityPath" => super::ballot::identity_path(&v),
+                "revocation" => super::ballot::revocation_witness(&v),
+                "input" => super::ballot::ballot_input(&v),
+                _ => Err("unknown ballot operation".into()),
+            }
+        })();
         env.new_string(json_or_error(r)).map(|x| x.into_raw()).unwrap_or(std::ptr::null_mut())
     }
 

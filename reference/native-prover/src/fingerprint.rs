@@ -18,7 +18,7 @@ use ark_ed_on_bn254::Fr as Sc; // scalars modulo ℓ, the order of the prime sub
 use std::str::FromStr;
 
 pub use crate::Error;
-type Pt = (Fr, Fr);
+pub(crate) type Pt = (Fr, Fr);
 
 const A_ED: u64 = 168700;
 const D_ED: u64 = 168696;
@@ -34,7 +34,7 @@ pub(crate) fn g8() -> Pt {
 }
 
 // ---- twisted Edwards arithmetic (complete: d is not a square)
-fn add(p: &Pt, q: &Pt) -> Pt {
+pub(crate) fn add(p: &Pt, q: &Pt) -> Pt {
     let (a, d) = (Fr::from(A_ED), Fr::from(D_ED));
     let t = d * p.0 * q.0 * p.1 * q.1;
     let x = (p.0 * q.1 + p.1 * q.0) * (Fr::one() + t).inverse().unwrap();

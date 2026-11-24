@@ -37,6 +37,9 @@ object NativeProver {
     // Decision #61: π_reg's inputs from member.json's member, attrs and credential and the
     // published key set: {"input", "leaf", "cn"}. Then prove(registration.graph, its key, input).
     external fun regInput(data: String): String
+    // The ballot (native-prover ballot.rs): op "identityPath" {leaves, leaf, idRoot},
+    // "revocation" {revoked, rn, revRoot}, or "input" (π_vote's inputs and the receipt).
+    external fun ballotOp(op: String, data: String): String
     // TEST ONLY: the answer of a synthetic service holding key k, until the real service exists.
     external fun fpTestService(helperGraphPath: String, k: String, pB: String, dB: String): String
 }
