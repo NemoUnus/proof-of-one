@@ -143,7 +143,7 @@ jobs:
           cp reference/document-circuit/build/document_s2.graph reference/document-circuit/build/dsc_test_tree_s2.graph reference/document-circuit/build/fp_helper.graph $A/
           cp reference/document-circuit/build/bench_s2.input.json $A/doc_s2_input.json
           cp reference/enrolment-circuit/build/registration.graph reference/enrolment-circuit/setup/registration_test.zkey $A/
-          sha256sum $A/* reference/android-prototype/app/src/main/jniLibs/arm64-v8a/*.so
+          sha256sum $(find $A -type f | sort) reference/android-prototype/app/src/main/jniLibs/arm64-v8a/*.so
       # Face check test (v0.4, Decision Log #57): InsightFace "buffalo_sc" models, SCRFD-500M
       # detector and ArcFace MobileFaceNet (pretrained models for non-commercial research use
       # only), downloaded from InsightFace's release and checked against their SHA-256.
