@@ -111,6 +111,15 @@ jobs:
           node scripts/reg-vector.js > $RUNNER_TEMP/reg-vector.json
           cd ../native-prover && cargo build --release --locked --bin reg-check
           ./target/release/reg-check $RUNNER_TEMP/reg-vector.json ../enrolment-circuit/build/registration.graph ../enrolment-circuit/setup/registration_test.zkey
+      # The phone's ballot (native-prover ballot.rs): identity path at the poll's snapshot,
+      # non-revocation witness and π_vote's inputs must equal the reference's (ballot-circuit
+      # buildBallot), a revoked or late member must be refused, and the proof must verify with
+      # the ballot graph and TEST-ONLY key that the app carries.
+      - name: Ballot check (π_vote inputs, TEST-ONLY key)
+        run: |
+          cd reference/ballot-circuit && node scripts/vote-vector.js > $RUNNER_TEMP/vote-vector.json
+          cd ../native-prover && cargo build --release --locked --bin vote-check
+          ./target/release/vote-check $RUNNER_TEMP/vote-vector.json graphs/ballot.graph ../ballot-circuit/setup/ballot_test.zkey
       # The phone's input builder (DocInput.kt) must build exactly the reference input
       # (document-circuit/src/document.js) on synthetic passports of both suites.
       - name: Check the phone's enrolment input builder
