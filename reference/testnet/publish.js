@@ -75,7 +75,7 @@ async function makePublishWithProof(plan, secrets, state) {
   const S = (v) => JSON.parse(JSON.stringify(v, (_, x) => (typeof x === "bigint" ? x.toString() : x)));
   if (globalThis.curve_bn128) await globalThis.curve_bn128.terminate();
   return {
-    title: `Proof of One — Phase 1a: publish the result of test poll 3 (poll id ${pollId}), with the tally proof`,
+    title: `Proof of One — Phase 1a: publish the result of a test poll (poll id ${pollId} of ${plan.contracts.ProofOfOnePolls}), with the tally proof`,
     warning: plan.warning, chainId: plan.chainId, deployer: plan.deployer, pollId: plan.pollId, contracts: plan.contracts,
     expectedCounts: counts.map(String), abi: plan.abi,
     partials: S(partials.map((q) => ({ index: q.index, parts: q.parts.map((x) => ({ D: pt(x.D), T1: pt(x.proof.T1), T2: pt(x.proof.T2), z: x.proof.z })) }))),
