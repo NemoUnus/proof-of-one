@@ -156,7 +156,6 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
     private fun chip() {
         val pg = Ui.page(this, t("st2Title"), 2) { menu() }
         val c = Ui.c(this)
-        pg.content.addView(Ui.symbol(this, "▭ ⟿ ▢", c.primary))
         pg.content.addView(Ui.body(this, t("hold")))
         pg.content.addView(Ui.note(this, t("chipTip")))
         val st = Ui.status(this); status = st; pg.content.addView(st)
@@ -210,7 +209,6 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
     // ---- an older membership (before v0.12): enrol again
     private fun old() {
         val pg = Ui.page(this, t("appName"), 0) { menu() }
-        pg.content.addView(Ui.symbol(this, "↻", Ui.c(this).accent))
         pg.content.addView(Ui.body(this, t("regOld")))
         pg.bottom.addView(Ui.primary(this, t("enrolAgain")) { reenrol = true; show(P.DETAILS) })
     }
@@ -218,7 +216,6 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
     // ---- step 6: registration on the public ledger
     private fun reg() {
         val pg = Ui.page(this, t("st6Title"), 6) { menu() }
-        pg.content.addView(Ui.symbol(this, "⧗", Ui.c(this).primary))
         pg.content.addView(Ui.body(this, t("regIntro")))
         val st = Ui.status(this); status = st; pg.content.addView(st)
         numberCard(pg.content)

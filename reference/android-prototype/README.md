@@ -54,6 +54,7 @@ The secrets and the credential stay in the app's private storage (`member.json`,
 - **Ballot randomness** includes the choice, so two different answers never share random values (two phones, a retry, a misreporting relay).
 - **Newest root.** Ballots prove against the newest identity root read from the chain.
 - `test/ChainCheck.kt` runs `Chain.kt` on a computer against a local chain; the relay's test compares what it reads with ethers.
+- **A minimal look** (the founder's choice): a plain background, one accent colour (the logo's teal), a thin line under each screen's title instead of a coloured band and pattern, no decorative symbols. The project's logo is drawn on the welcome and home screens.
 - The public RPC endpoint sees the phone's network address and the nullifier it asks about, as the relay does. Several endpoints and a censorship-resistant transport are for later (Decision #34).
 
 ### v0.13: one step per screen (Decision #64; design by the Hokusai agent)

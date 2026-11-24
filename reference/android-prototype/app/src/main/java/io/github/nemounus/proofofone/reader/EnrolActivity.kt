@@ -134,7 +134,6 @@ class EnrolActivity : Activity() {
     private fun face() {
         page = P.FACE; clear()
         val pg = Ui.page(this, t("faceStep"), 4) { menu() }
-        pg.content.addView(Ui.symbol(this, "◉", Ui.c(this).primary))
         pg.content.addView(Ui.body(this, t("faceIntro")))
         val st = Ui.status(this); faceStatus = st; pg.content.addView(st)
         bottom = pg.bottom
