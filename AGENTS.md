@@ -13,21 +13,27 @@ Proof of One is led by its pseudonymous founder, **Nemo Unus**, and developed wi
 
 ## The agents
 
-| Agent | Name | Role | Contributions so far |
-|---|---|---|---|
-| **Kryptos** | Greek: “hidden” | Cryptography architect | Primitive suite; hidden revocation handle |
-| **Psephos** | The Athenian voting pebble | Zero-knowledge and voting protocol engineer | Encrypted ballots with individual and public verification; unlinkable registration |
-| **Ostrakon** | The Athenian voting shard | Ledger and smart-contract engineer | Contract design; long-term data-availability finding; cost estimates |
-| **Prosopon** | Greek: “face”, also “mask” | Mobile identity engineer | Enrolment flow; birth-date grouping weakness in face checks |
-| **Argus** | The hundred-eyed watchman | Security red team | Threat model; red-team review (11 findings) |
-| **Themis** | Justice and law | Privacy, ethics and legal analyst | Participant-safety gates; separation of contributions from voting |
-| **Metron** | Greek: “measure” | Survey methodology and statistics | Neutral wording, small-group protection, honest presentation of results |
-| **Hermes** | The messenger | Documentation and community | Whitepaper, translations, decision log, this repository |
+Since 24 November 2026 the agents are named after historical figures of science and art, each from a different country (Decision #64); earlier documents use their former names.
+
+| Agent | Named after | Role | Former name | Contributions so far |
+|---|---|---|---|---|
+| **Al-Kindi** | Al-Kindi (Iraq, 9th century), who founded cryptanalysis by counting letter frequencies | Cryptography architect | Kryptos | Primitive suite; hidden revocation handle |
+| **Condorcet** | Nicolas de Condorcet (France, 18th century), a founder of the theory of voting | Zero-knowledge and voting protocol engineer | Psephos | Encrypted ballots with individual and public verification; unlinkable registration |
+| **Cai Lun** | Cai Lun (China, 1st–2nd century), credited with making paper, the first medium of public records for many | Ledger and smart-contract engineer | Ostrakon | Contract design; long-term data-availability finding; cost estimates |
+| **Leonardo** | Leonardo da Vinci (Italy, 15th–16th century), who studied the human face and its proportions | Mobile identity engineer | Prosopon | Enrolment flow; birth-date grouping weakness in face checks |
+| **Kautilya** | Kautilya (India, 4th century BCE), author of the *Arthashastra* on statecraft and security | Security red team | Argus | Threat model; red-team review (11 findings) |
+| **Ibn Rushd** | Ibn Rushd (Spain, 12th century), judge and philosopher of al-Andalus | Privacy, ethics and legal analyst | Themis | Participant-safety gates; separation of contributions from voting |
+| **Khayyam** | Omar Khayyam (Iran, 11th–12th century), mathematician and astronomer whose calendar measured the year more exactly than any of its time | Survey methodology and statistics | Metron | Neutral wording, small-group protection, honest presentation of results |
+| **Hypatia** | Hypatia (Egypt, 4th–5th century), teacher of mathematics in Alexandria | Documentation and community | Hermes | Whitepaper, translations, decision log, this repository |
+| **Hokusai** | Katsushika Hokusai (Japan, 18th–19th century), painter and designer | UI/UX and visual design | (new) | Step-by-step app flow and visual system (from app v0.13) |
+
+The team figure above still shows the former names; it will be redrawn.
 
 ## How the team works
 
-- **Design review:** a proposing agent presents → Argus attacks → Themis checks participant harm and law → the proposer revises → Hermes records the decisions.
-- **Threat model:** Argus leads with Kryptos and Prosopon → Themis adds a harm assessment.
+- **Design review:** a proposing agent presents → Kautilya attacks → Ibn Rushd checks participant harm and law → the proposer revises → Hypatia records the decisions.
+- **Threat model:** Kautilya leads with Al-Kindi and Leonardo → Ibn Rushd adds a harm assessment.
+- **Screen design:** Hokusai proposes the flow and the look → Leonardo checks that the steps match what the phone must do → Ibn Rushd checks consent, safety and wording → Hokusai revises → the founder approves before it is built.
 - **Every session** ends with what was decided, what is still open, and what needs human review.
 
 ## Human experts wanted
