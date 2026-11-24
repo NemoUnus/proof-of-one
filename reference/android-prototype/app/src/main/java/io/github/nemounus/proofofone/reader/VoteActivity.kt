@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-// Proof of One — answering a poll (app v0.12; Decision #62).
+// Proof of One — answering a poll (app v0.12, look of v0.13; Decision #62).
 //
 // 1. From the relay's /state (every value public on the ledger): the identity leaves and the
 //    revoked handles, from which the phone rebuilds both trees and checks their roots in the
@@ -47,7 +47,7 @@ class VoteActivity : Activity() {
     private lateinit var options: RadioGroup
     private lateinit var send: Button
     private lateinit var share: Button
-    private val log = mutableListOf("Proof of One pilot ballot (app v0.12)")
+    private val log = mutableListOf("Proof of One pilot ballot (app v0.13)")
     @Volatile private var busy = false
 
     // what the screen was loaded with
@@ -60,42 +60,29 @@ class VoteActivity : Activity() {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE) // the answer is on screen: no screenshots
         L10n.load(this)
-        val pad = (16 * resources.displayMetrics.density).toInt()
-        col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(pad, pad, pad, pad) }
-        L10n.dir(col)
-        col.addView(TextView(this).apply { text = L10n.t("voteTitle"); textSize = 20f; setTypeface(null, Typeface.BOLD) })
-        question = TextView(this).apply { textSize = 17f; setPadding(0, pad, 0, pad / 2); visibility = View.GONE }
-        col.addView(question)
-        recordedView = TextView(this).apply { textSize = 15f; setTypeface(null, Typeface.BOLD); setPadding(0, pad / 2, 0, pad / 2); visibility = View.GONE }
-        col.addView(recordedView)
+        val pg = Ui.page(this, L10n.t("voteTitle"), 0) {
+            Ui.menu(this, listOf(L10n.t("language") to { Ui.language(this) }, L10n.t("shareResult") to { shareLog() }))
+        }
+        val c = Ui.c(this)
+        col = pg.content
+        val qcard = Ui.card(this)
+        question = Ui.heading(this, "").apply { visibility = View.GONE }
+        qcard.addView(question)
         options = RadioGroup(this).apply { visibility = View.GONE }
-        col.addView(options)
-        send = Button(this).apply { visibility = View.GONE; setOnClickListener { submit() } }
-        col.addView(send)
-        status = TextView(this).apply { textSize = 15f; setPadding(0, pad, 0, 0) }
+        qcard.addView(options)
+        col.addView(qcard)
+        recordedView = Ui.body(this, "").apply { typeface = Ui.font(context, true); setTextColor(c.heading); visibility = View.GONE }
+        col.addView(recordedView)
+        status = Ui.status(this)
         col.addView(status)
-        share = Button(this).apply {
-            text = L10n.t("shareResult"); visibility = View.GONE
-            setOnClickListener {
-                startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, log.joinToString("\n")) }, "Share result"))
-            }
-        }
-        col.addView(share)
-        val scroll = ScrollView(this).apply { addView(col) }
-        scroll.setOnApplyWindowInsetsListener { v, insets ->
-            if (Build.VERSION.SDK_INT >= 30) {
-                val b = insets.getInsets(WindowInsets.Type.systemBars())
-                v.setPadding(b.left, b.top, b.right, b.bottom)
-            } else {
-                @Suppress("DEPRECATION")
-                v.setPadding(insets.systemWindowInsetLeft, insets.systemWindowInsetTop, insets.systemWindowInsetRight, insets.systemWindowInsetBottom)
-            }
-            insets
-        }
-        setContentView(scroll)
+        share = Ui.secondary(this, L10n.t("shareResult")) { shareLog() }.apply { visibility = View.GONE }
+        send = Ui.primary(this, "") { submit() }.apply { visibility = View.GONE }
+        pg.bottom.addView(share)
+        pg.bottom.addView(send)
         load()
     }
 
+    private fun shareLog() = startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, log.joinToString("\n")) }, "Share result"))
     private fun say(s: String) = runOnUiThread { status.text = s }
     private fun fail(e: Throwable, stage: String) {
         val msg = when (e) {
@@ -161,7 +148,12 @@ class VoteActivity : Activity() {
         question.text = text?.optString("question") ?: "Poll ${p.getString("pollId")}"
         question.visibility = View.VISIBLE
         options.removeAllViews()
-        for (i in 0 until opts.length()) options.addView(RadioButton(this).apply { id = 1000 + i; this.text = opts.getString(i); textSize = 16f })
+        val pal = Ui.c(this)
+        for (i in 0 until opts.length()) options.addView(RadioButton(this).apply {
+            id = 1000 + i; this.text = opts.getString(i); textSize = 17f; typeface = Ui.font(context); setTextColor(pal.text)
+            buttonTintList = android.content.res.ColorStateList.valueOf(pal.primary)
+            minHeight = Ui.dp(context, 52); setPadding(Ui.dp(context, 8), 0, Ui.dp(context, 8), 0)
+        })
         options.visibility = View.VISIBLE
         val r = recorded
         val count = s.optJSONObject("ballot")?.optInt("count") ?: 0

@@ -48,6 +48,14 @@ The secrets and the credential stay in the app's private storage (`member.json`,
 - **What it is not.** A check made on the phone can be bypassed by a modified app, and it does not detect a printed photo or a screen held to the camera. In the pilot it stops honest mistakes (someone else's passport picked up at home) and gives the measurements; the design's defences (the attested enclave's face comparison, Decision #33) are not in the pilot.
 - **Translated.** The face check's texts are in the six languages. The technical test tools (face check test, enrolment proof test, ballot proof benchmark) stay in English and are folded under **▸ Test tools (English)** on the first screen, so that volunteers do not meet them.
 
+### v0.13: one step per screen (Decision #64; design by the Hokusai agent)
+
+- **Six numbered steps.** Joining is split into one screen per step, with a numbered progress bar at the top (done steps ticked, the current one highlighted): 1 passport details, 2 reading the chip, 3 information and consent, 4 face check, 5 password and enrolment, 6 registration on the public ledger. The button for the next step appears only when the current one is done. A welcome screen, shown once, lists the six steps. Once joined, the first screen is the member's home: the membership, the member number with its privacy warning, and the polls.
+- **Look.** Turquoise, lapis and saffron on ivory, from tile work shared by many regions, with a light dark mode; a faint pattern of eight-pointed stars in the header; the Vazirmatn typeface for Persian, Arabic and Latin text (SIL Open Font License, `app/src/main/assets/fonts`); Persian and Arabic digits in the progress bar; large touch targets.
+- **Out of the way.** The language and the technical test tools are behind "⋮" on every screen; reports are shared from there or from the screen where something went wrong, and stay hidden unless asked for.
+- **Eight languages.** Russian and Chinese join English, Persian, Arabic, French, Spanish and German (drafts by the AI agents, not yet reviewed by native speakers). Russian and Chinese use the phone's own font, since Vazirmatn has no Cyrillic or Chinese letters. The full information text exists in English and Persian; the other languages link to the English one. The pilot's first poll has its text in the six earlier languages (its hash is fixed on the ledger), so Russian and Chinese show it in English.
+- The app's logic is that of v0.12.
+
 ### v0.12: answering polls (Decision #62)
 
 - **Registration within minutes.** After enrolment (and after a restore) the phone registers 1 to 10 minutes later, on its own: while the app stays open, or the next time it is opened. The registry of deployment 5 inserts the membership into the identity tree in the same transaction, so the member can answer every open poll at once. If the relay names another registry (a new deployment), the phone registers there too.

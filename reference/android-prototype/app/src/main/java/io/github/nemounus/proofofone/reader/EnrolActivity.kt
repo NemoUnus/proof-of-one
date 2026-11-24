@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Proof of One — enrolment with the pilot's service (Decision Log #57, #58, #59; design
+// v0.13: steps 3 to 5 of joining, one screen each: 3 information and consent, 4 face check,
+// 5 password and enrolment, then the result;
 // docs/specs/pilot-enrolment-service-v0.1.md). First, the face check (v0.10, #57 (3)): a
 // selfie is compared with the chip photo on this phone (FaceMatcher.THRESHOLD); the selfie is
 // deleted at once and no face data is sent. Enrolment (and restore) starts only once it has
@@ -45,105 +47,155 @@ import java.time.LocalDate
 import kotlin.concurrent.thread
 
 class EnrolActivity : Activity() {
-    private lateinit var status: TextView
-    private lateinit var numberView: TextView
-    private lateinit var report: TextView
-    private lateinit var pw1: EditText
-    private lateinit var pw2: EditText
-    private lateinit var start: Button
-    private lateinit var restore: Button
-    private lateinit var share: Button
+    private enum class P { CONSENT, FACE, PASSWORD, DONE, STOP }
+    private var page: P? = null
+    private var status: TextView? = null
+    private var report: TextView? = null
+    private var pw1: EditText? = null
+    private var pw2: EditText? = null
+    private var start: Button? = null
+    private var restore: Button? = null
+    private var bottom: LinearLayout? = null
     private var shareText = ""
     // kept for a retried restore after a wrong password
     private var pendingBackup: String? = null
     private var pendingSeed: String? = null
     private var restoreTries = 0
     // the face check (v0.10)
-    private lateinit var faceStatus: TextView
-    private lateinit var selfieBtn: Button
+    private var faceStatus: TextView? = null
+    private var selfieBtn: Button? = null
     private var matcher: FaceMatcher? = null
     private var chipFace: FaceMatcher.Face? = null
+    private var faceNote: String? = null
     private var faceOk = false
     @Volatile private var consentOk = false
     private var faceSim = 0f
     private var faceTries = 0
     private val selfie by lazy { File(cacheDir, "enrol_selfie.jpg") }
+    // the result, for the last page
+    private var doneText = ""
+    private var doneGood = true
+    private var doneNumber: String? = null
+
+    private fun t(k: String, vararg a: Any) = L10n.t(k, *a)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         L10n.load(this)
         window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
-        fun t(k: String, vararg a: Any) = L10n.t(k, *a)
-        val pad = (16 * resources.displayMetrics.density).toInt()
-        val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(pad, pad, pad, pad) }
-        L10n.dir(col)
-        col.addView(L10n.picker(this))
-        col.addView(TextView(this).apply { text = t("enrolTitle"); textSize = 20f; setTypeface(null, Typeface.BOLD) })
-        if (t("draft").isNotEmpty()) col.addView(TextView(this).apply { text = t("draft"); textSize = 12f })
-        col.addView(TextView(this).apply { text = t("enrolIntro"); setPadding(0, pad / 2, 0, 0) })
-        fun heading(k: String) = TextView(this).apply { text = t(k); textSize = 17f; setTypeface(null, Typeface.BOLD); setPadding(0, pad, 0, 0) }
-        // The pilot's information and consent (docs/pilot/consent-v0.3*.md; Decision #57, point 4)
-        col.addView(heading("consentStep"))
-        col.addView(TextView(this).apply { text = t("consentSummary"); setPadding(0, pad / 2, 0, 0) })
-        col.addView(Button(this).apply {
-            text = t("consentRead")
-            setOnClickListener {
-                val f = if (L10n.lang == "fa") "consent-v0.3-fa.md" else "consent-v0.3.md"
-                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/NemoUnus/proof-of-one/blob/main/docs/pilot/$f")))
-            }
-        })
-        col.addView(CheckBox(this).apply {
-            text = t("consentAgree")
-            setOnCheckedChangeListener { _, on ->
-                consentOk = on
-                selfieBtn.isEnabled = on && chipFace != null && !faceOk
-                start.isEnabled = on && faceOk && !memberFile().exists() && DocStore.chip?.dscDer != null
-            }
-        })
-        col.addView(heading("faceStep"))
-        col.addView(TextView(this).apply { text = t("faceIntro"); setPadding(0, pad / 2, 0, 0) })
-        selfieBtn = Button(this).apply { text = t("takeSelfie"); isEnabled = false; setOnClickListener { takeSelfie() } }
-        col.addView(selfieBtn)
-        faceStatus = TextView(this).apply { textSize = 16f; setPadding(0, pad / 4, 0, 0) }
-        col.addView(faceStatus)
-        col.addView(heading("pwStep"))
-        col.addView(TextView(this).apply { text = t("pwLabel"); setPadding(0, pad / 2, 0, 0) })
-        fun pw(hint: String) = EditText(this).apply { this.hint = hint; inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD }
-        pw1 = pw(t("pw1")); col.addView(pw1)
-        pw2 = pw(t("pw2")); col.addView(pw2)
-        start = Button(this).apply { text = t("enrol"); isEnabled = false; setOnClickListener { run() } }
-        col.addView(start)
-        restore = Button(this).apply { text = t("restore"); visibility = View.GONE; setOnClickListener { retryRestore() } }
-        col.addView(restore)
-        status = TextView(this).apply { textSize = 16f; setPadding(0, pad / 2, 0, 0) }
-        col.addView(status)
-        numberView = TextView(this).apply { textSize = 18f; setTypeface(null, Typeface.BOLD); setTextIsSelectable(true); setPadding(0, pad / 2, 0, 0); visibility = View.GONE }
-        col.addView(numberView)
-        report = TextView(this).apply {
-            typeface = Typeface.MONOSPACE; textSize = 12f; setTextIsSelectable(true); setPadding(0, pad, 0, 0)
-            layoutDirection = View.LAYOUT_DIRECTION_LTR; textDirection = View.TEXT_DIRECTION_LTR
-        }
-        col.addView(report)
-        share = Button(this).apply {
-            text = t("shareResult"); visibility = View.GONE
-            setOnClickListener {
-                startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, shareText) }, "Share"))
-            }
-        }
-        col.addView(share)
-        setContentView(ScrollView(this).apply { addView(col) })
         when {
-            memberFile().exists() -> { status.text = t("alreadyHere"); showNumber(JSONObject(memberFile().readText()).optString("number")) }
-            DocStore.chip == null -> status.text = t("readFirst")
-            DocStore.chip?.dscDer == null -> status.text = t("noCert")
+            hasMember() -> done(t("alreadyHere"), true, JSONObject(memberFile().readText()).optString("number"))
+            DocStore.chip == null -> stop(t("readFirst"))
+            DocStore.chip?.dscDer == null -> stop(t("noCert"))
             // Clear reasons first, on the phone, before the face check (v0.10.1).
-            !DocStore.genuine -> status.text = t("notGenuine")
-            DocInput.suiteOf(DocStore.chip!!).first == null -> status.text = t("unsupported")
-            expired(DocStore.chip!!) -> status.text = t("expired")
-            FaceStore.chipPhoto == null -> faceStatus.text = t("faceNoPhoto")
-            else -> { faceStatus.text = t("facePrep"); thread { prepareChipFace() } }
+            !DocStore.genuine -> stop(t("notGenuine"))
+            DocInput.suiteOf(DocStore.chip!!).first == null -> stop(t("unsupported"))
+            expired(DocStore.chip!!) -> stop(t("expired"))
+            FaceStore.chipPhoto == null -> stop(t("faceNoPhoto"))
+            else -> { faceNote = t("facePrep"); thread { prepareChipFace() }; consent() }
         }
     }
+
+    private fun menu() = Ui.menu(this, listOfNotNull(
+        t("language") to { Ui.language(this) },
+        if (shareText.isNotEmpty()) t("shareResult") to { share() } else null))
+    private fun share() = startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, shareText) }, "Share"))
+
+    private fun clear() { status = null; report = null; pw1 = null; pw2 = null; start = null; restore = null; faceStatus = null; selfieBtn = null; bottom = null }
+
+    // ---- a reason to stop before step 3
+    private fun stop(why: String) {
+        page = P.STOP; clear()
+        val pg = Ui.page(this, t("enrolTitle"), 2) { menu() }
+        pg.content.addView(Ui.symbol(this, "!", Ui.c(this).bad))
+        pg.content.addView(Ui.body(this, why))
+        pg.bottom.addView(Ui.primary(this, t("back")) { finish() })
+    }
+
+    // ---- step 3: information and consent (docs/pilot/consent-v0.3*.md; Decision #57, point 4)
+    private fun consent() {
+        page = P.CONSENT; clear()
+        val pg = Ui.page(this, t("consentStep"), 3) { menu() }
+        pg.content.addView(Ui.body(this, t("enrolIntro")))
+        val card = Ui.card(this, tint = true)
+        card.addView(Ui.body(this, t("consentSummary")))
+        card.addView(Ui.secondary(this, t("consentRead")) {
+            val f = if (L10n.lang == "fa") "consent-v0.3-fa.md" else "consent-v0.3.md"
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/NemoUnus/proof-of-one/blob/main/docs/pilot/$f")))
+        })
+        pg.content.addView(card)
+        val next = Ui.primary(this, t("next")) { if (consentOk) face() }
+        pg.content.addView(Ui.check(this, t("consentAgree")) { on -> consentOk = on; Ui.enable(next, on) }.apply { isChecked = consentOk })
+        Ui.enable(next, consentOk)
+        pg.bottom.addView(next)
+    }
+
+    // ---- step 4: the face check, on the phone only
+    private fun face() {
+        page = P.FACE; clear()
+        val pg = Ui.page(this, t("faceStep"), 4) { menu() }
+        pg.content.addView(Ui.symbol(this, "◉", Ui.c(this).primary))
+        pg.content.addView(Ui.body(this, t("faceIntro")))
+        val st = Ui.status(this); faceStatus = st; pg.content.addView(st)
+        bottom = pg.bottom
+        if (faceOk) { faceDone(); return }
+        faceNote?.let { Ui.say(st, it) }
+        val b = Ui.primary(this, t("takeSelfie")) { takeSelfie() }
+        selfieBtn = b; Ui.enable(b, chipFace != null)
+        pg.bottom.addView(Ui.secondary(this, t("back")) { consent() })
+        pg.bottom.addView(b)
+    }
+    private fun faceDone() {
+        faceStatus?.let { Ui.say(it, t("facePass"), 1) }
+        bottom?.removeAllViews()
+        bottom?.addView(Ui.primary(this, t("next")) { password() })
+    }
+
+    // ---- step 5: password and enrolment (or restore)
+    private fun password() {
+        page = P.PASSWORD; clear()
+        val pg = Ui.page(this, t("pwStep"), 5) { menu() }
+        pg.content.addView(Ui.body(this, t("pwLabel")))
+        val (b1, e1) = Ui.field(this, t("pw1"), "", password = true)
+        val (b2, e2) = Ui.field(this, t("pw2"), "", password = true)
+        pg.content.addView(b1); pg.content.addView(b2); pw1 = e1; pw2 = e2
+        val st = Ui.status(this); status = st; pg.content.addView(st)
+        val rp = Ui.mono(this).apply { visibility = View.GONE }; report = rp; pg.content.addView(rp)
+        bottom = pg.bottom
+        val r = Ui.primary(this, t("restore")) { retryRestore() }.apply { visibility = View.GONE }; restore = r
+        val s = Ui.primary(this, t("enrol")) { run() }; start = s
+        pg.bottom.addView(r); pg.bottom.addView(s)
+    }
+    private fun showDetailsButton() {
+        val b = bottom ?: return
+        if (b.findViewWithTag<View>("details") != null) return
+        b.addView(Ui.secondary(this, t("shareResult")) { share() }.apply { tag = "details" }, 0)
+    }
+
+    // ---- the result
+    private fun done(text: String, good: Boolean, number: String?) {
+        page = P.DONE; clear()
+        doneText = text; doneGood = good; doneNumber = number
+        val pg = Ui.page(this, t("enrolledTitle"), 5) { menu() }
+        val c = Ui.c(this)
+        pg.content.addView(Ui.symbol(this, if (good) "✓" else "!", if (good) c.good else c.accent))
+        pg.content.addView(Ui.status(this).also { Ui.say(it, text, if (good) 0 else 2) })
+        if (!number.isNullOrEmpty()) {
+            val card = Ui.card(this)
+            card.addView(Ui.note(this, t("yourNumber")))
+            card.addView(TextView(this).apply {
+                this.text = number; textSize = 17f; typeface = Typeface.MONOSPACE; setTextColor(c.heading); setTextIsSelectable(true)
+                textDirection = View.TEXT_DIRECTION_LTR
+            })
+            card.addView(Ui.note(this, t("numberPrivate")))
+            pg.content.addView(card)
+        }
+        pg.content.addView(Ui.note(this, t("nextReg")))
+        if (shareText.isNotEmpty()) pg.bottom.addView(Ui.secondary(this, t("shareResult")) { share() })
+        pg.bottom.addView(Ui.primary(this, t("next")) { finish() })
+    }
+
+    private fun hasMember() = memberFile().exists() && Registration.state(this) !is Registration.State.Old
 
     /** The expiry date in the MRZ is before today (π_doc would refuse it: document_core, step 6). */
     private fun expired(c: DocInput.Chip): Boolean = try {
@@ -175,12 +227,13 @@ class EnrolActivity : Activity() {
             val f = m.analyse(FaceMatcher.decodeChip(bytes, FaceStore.chipMime))
             chipFace = f
             runOnUiThread {
-                if (f == null) faceStatus.text = L10n.t("faceNoChipFace")
-                else if (!faceOk) { faceStatus.text = L10n.t("faceReady"); selfieBtn.isEnabled = consentOk }
+                faceNote = if (f == null) L10n.t("faceNoChipFace") else if (!faceOk) L10n.t("faceReady") else null
+                if (!faceOk) faceNote?.let { n -> faceStatus?.let { Ui.say(it, n, if (f == null) 2 else 0) } }
+                selfieBtn?.let { Ui.enable(it, f != null && !faceOk) }
             }
             f != null
         } catch (e: Throwable) {
-            runOnUiThread { faceStatus.text = L10n.t("faceError", e.message ?: e.javaClass.simpleName) }
+            runOnUiThread { faceNote = L10n.t("faceError", e.message ?: e.javaClass.simpleName); faceStatus?.let { Ui.say(it, faceNote!!, 2) } }
             false
         }
     }
@@ -201,8 +254,9 @@ class EnrolActivity : Activity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         @Suppress("DEPRECATION") super.onActivityResult(requestCode, resultCode, data)
         if (requestCode != 1) return
-        if (resultCode != RESULT_OK || !selfie.exists()) { faceStatus.text = L10n.t("faceNoSelfie"); selfie.delete(); return }
-        faceStatus.text = L10n.t("faceComparing"); selfieBtn.isEnabled = false
+        if (page != P.FACE) { consentOk = true; face() }   // the screen was rebuilt while the camera was open
+        if (resultCode != RESULT_OK || !selfie.exists()) { faceStatus?.let { Ui.say(it, L10n.t("faceNoSelfie"), 2) }; selfie.delete(); return }
+        faceStatus?.let { Ui.say(it, L10n.t("faceComparing")) }; selfieBtn?.let { Ui.enable(it, false) }
         thread {
             try {
                 val bm = try { FaceMatcher.loadSelfie(selfie) } finally { selfie.delete() }
@@ -211,19 +265,15 @@ class EnrolActivity : Activity() {
                 faceTries++
                 val sim = f?.let { FaceMatcher.cosine(chipFace!!.embedding, it.embedding) }
                 runOnUiThread {
-                    selfieBtn.isEnabled = true
+                    selfieBtn?.let { Ui.enable(it, true) }
                     when {
-                        sim == null -> faceStatus.text = L10n.t("faceNone")
-                        sim >= FaceMatcher.THRESHOLD -> {
-                            faceOk = true; faceSim = sim
-                            faceStatus.text = L10n.t("facePass"); selfieBtn.isEnabled = false
-                            start.isEnabled = consentOk && !memberFile().exists() && DocStore.chip?.dscDer != null
-                        }
-                        else -> faceStatus.text = L10n.t("faceFail")
+                        sim == null -> faceStatus?.let { Ui.say(it, L10n.t("faceNone"), 2) }
+                        sim >= FaceMatcher.THRESHOLD -> { faceOk = true; faceSim = sim; faceDone() }
+                        else -> faceStatus?.let { Ui.say(it, L10n.t("faceFail"), 2) }
                     }
                 }
             } catch (e: Throwable) {
-                runOnUiThread { selfieBtn.isEnabled = true; faceStatus.text = L10n.t("faceError", e.message ?: e.javaClass.simpleName) }
+                runOnUiThread { selfieBtn?.let { Ui.enable(it, true) }; faceStatus?.let { Ui.say(it, L10n.t("faceError", e.message ?: e.javaClass.simpleName), 2) } }
             }
         }
     }
@@ -239,12 +289,6 @@ class EnrolActivity : Activity() {
         JSONObject(plain).put("restoredDay", day.toString()).put("registerAfter", Registration.pickTime()).toString()
     private fun saveMember(j: String) { val tmp = File(filesDir, "member.json.part"); tmp.writeText(j); tmp.renameTo(memberFile()) }
 
-    private fun showNumber(n: String?) {
-        if (n.isNullOrEmpty()) return
-        numberView.text = "${L10n.t("yourNumber")}\n$n\n${L10n.t("numberPrivate")}"
-        numberView.visibility = View.VISIBLE
-    }
-
     private fun file(name: String): String {
         val f = File(filesDir, name)
         if (!f.exists() || f.length() == 0L) {
@@ -258,25 +302,22 @@ class EnrolActivity : Activity() {
     private fun retryRestore() {
         val blob = pendingBackup ?: return
         val seed = pendingSeed ?: return
-        val pw = pw1.text.toString()
-        restore.isEnabled = false
+        val pw = pw1?.text.toString()
+        restore?.let { Ui.enable(it, false) }
         thread {
             val plain = Backup.open(blob, pw, seed)
             runOnUiThread {
-                restore.isEnabled = true
+                restore?.let { Ui.enable(it, true) }
                 restoreTries++
                 if (plain == null) {
-                    status.text = L10n.t("wrongPw")
-                    shareText += "\nretry $restoreTries: backup not opened (password)"; report.text = shareText
+                    status?.let { Ui.say(it, L10n.t("wrongPw"), 2) }
+                    shareText += "\nretry $restoreTries: backup not opened (password)"
                     return@runOnUiThread
                 }
                 saveMember(restored(plain, LocalDate.now()))
-                shareText += "\nretry $restoreTries: RESTORED with the password"; report.text = shareText
+                shareText += "\nretry $restoreTries: RESTORED with the password"
                 pendingBackup = null; pendingSeed = null
-                pw1.text.clear(); pw2.text.clear()
-                restore.visibility = View.GONE
-                status.text = L10n.t("restored")
-                showNumber(JSONObject(plain).optString("number"))
+                done(L10n.t("restored"), true, JSONObject(plain).optString("number"))
             }
         }
     }
@@ -284,17 +325,18 @@ class EnrolActivity : Activity() {
     private fun run() {
         val chip = DocStore.chip ?: return
         fun t(k: String, vararg a: Any) = L10n.t(k, *a)
-        if (!consentOk) { status.text = t("consentFirst"); return }
-        if (!faceOk) { status.text = t("faceFirst"); return }
-        val password = pw1.text.toString()
-        if (password.length < 8) { status.text = t("pwShort"); return }
-        if (password != pw2.text.toString()) { status.text = t("pwDiffer"); return }
-        start.isEnabled = false; share.visibility = View.GONE; report.text = ""
+        val say = { s: String, k: Int -> status?.let { Ui.say(it, s, k) }; Unit }
+        if (!consentOk) { say(t("consentFirst"), 2); return }
+        if (!faceOk) { say(t("faceFirst"), 2); return }
+        val password = pw1?.text.toString()
+        if (password.length < 8) { say(t("pwShort"), 2); return }
+        if (password != pw2?.text.toString()) { say(t("pwDiffer"), 2); return }
+        start?.let { Ui.enable(it, false) }
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        val log = mutableListOf("Proof of One pilot enrolment v0.12", "consent: information text v0.3 read and agreed",
+        val log = mutableListOf("Proof of One pilot enrolment v0.13", "consent: information text v0.3 read and agreed",
             "face check: passed on the phone (similarity %.2f, threshold %.2f, %d selfie%s); no face data sent".format(
                 java.util.Locale.ROOT, faceSim, FaceMatcher.THRESHOLD, faceTries, if (faceTries == 1) "" else "s"))
-        fun step(s: String) = runOnUiThread { status.text = s }
+        fun step(s: String) = runOnUiThread { status?.let { Ui.say(it, s) } }
         thread {
             var stage = "start"
             var number: String? = null
@@ -368,14 +410,17 @@ class EnrolActivity : Activity() {
                         log += if (plain != null) "RESTORED with the password" else if (blob != null) "backup not opened (password)" else "nothing to restore"
                         shareText = log.joinToString("\n")
                         runOnUiThread {
-                            showNumber(number)
-                            status.text = t("already") + "\n\n" + when {
-                                plain != null -> t("restored")
-                                blob != null -> { pendingBackup = blob; pendingSeed = backupSeed; restore.visibility = View.VISIBLE; t("wrongPw") + " " + t("restoreAsk") }
-                                else -> t("noBackup")
+                            when {
+                                plain != null -> done(t("already") + "\n\n" + t("restored"), true, number)
+                                blob != null -> {
+                                    pendingBackup = blob; pendingSeed = backupSeed
+                                    status?.let { Ui.say(it, t("already") + "\n\n" + t("wrongPw") + " " + t("restoreAsk"), 2) }
+                                    start?.visibility = View.GONE; restore?.visibility = View.VISIBLE
+                                    pw2?.visibility = View.GONE; pw1?.text?.clear()
+                                    showDetailsButton()
+                                }
+                                else -> done(t("already") + "\n\n" + t("noBackup"), false, number)
                             }
-                            report.text = shareText; share.visibility = View.VISIBLE
-                            if (plain != null) { pw1.text.clear(); pw2.text.clear() }
                         }
                         return@thread
                     }
@@ -400,19 +445,14 @@ class EnrolActivity : Activity() {
                 val backedUp = try { svc.backup(ses.getString("session"), Backup.seal(saved.toString(), password, backupSeed)); true }
                     catch (x: Exception) { log += "backup NOT stored: ${x.message}"; false }
                 if (backedUp) log += "backup: stored, encrypted (Argon2id + AES-GCM)"
-                log += "registration on the ledger: automatic, at the first opening of the app after a random delay of 2-26 h (Decision #61)"
+                log += "registration on the ledger: automatic, 1-10 minutes after enrolment (Decision #62)"
                 log += "total time: ${(System.currentTimeMillis() - t0) / 1000} s (after the files)"
                 shareText = log.joinToString("\n")
-                runOnUiThread {
-                    status.text = if (backedUp) t("enrolled") else t("noBackupStored")
-                    showNumber(number)
-                    pw1.text.clear(); pw2.text.clear()
-                    report.text = shareText; share.visibility = View.VISIBLE
-                }
+                runOnUiThread { done(if (backedUp) t("enrolled") else t("noBackupStored"), backedUp, number) }
             } catch (e: EnrolService.Failure) {
                 log += "REFUSED at step '$stage' (HTTP ${e.status}): ${e.message}"
                 shareText = log.joinToString("\n")
-                runOnUiThread { status.text = explain(e, stage); report.text = shareText; share.visibility = View.VISIBLE; start.isEnabled = !memberFile().exists() }
+                runOnUiThread { say(explain(e, stage), 2); showDetailsButton(); start?.let { Ui.enable(it, !hasMember()) } }
             } catch (e: Throwable) {
                 log += "ERROR at step '$stage': ${e.javaClass.simpleName}: ${e.message}"
                 shareText = log.joinToString("\n")
@@ -421,7 +461,7 @@ class EnrolActivity : Activity() {
                     stage == "proof" -> t("proofFail")
                     else -> t("error", stage, e.message ?: "")
                 }
-                runOnUiThread { status.text = why; report.text = shareText; share.visibility = View.VISIBLE; start.isEnabled = !memberFile().exists() }
+                runOnUiThread { say(why, 2); showDetailsButton(); start?.let { Ui.enable(it, !hasMember()) } }
             } finally {
                 runOnUiThread { window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
             }
