@@ -1,6 +1,6 @@
 # Proof of One pilot — information for volunteers and consent
 
-*Version 0.3, draft of 24 November 2026 (Decision #62: registration within minutes; every member can answer every open poll), to be approved by the organiser; replaces version 0.2. To be read in full before installing the app. The app shows a short summary of it and asks for your agreement before enrolment.*
+*Version 0.3, approved by the organiser on 24 November 2026 (Decision #62: registration within minutes; every member can answer every open poll); replaces version 0.2. To be read in full before installing the app. The app shows a short summary of it and asks for your agreement before enrolment.*
 
 ## 1. Why this project exists
 
