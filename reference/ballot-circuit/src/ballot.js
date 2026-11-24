@@ -31,13 +31,18 @@ function pollHashOf(P, { revRoot, pollId, PK, policy, ctxHash, openTime }) {
 // Everything the phone needs to submit one ballot.
 // `docIndex` (optional) chooses which of the member's documents is used for eligibility;
 // by default the first one that satisfies the poll's policy.
-// The ballot's random values come from the member's secret, the poll and a revision number
-// (Decision #62), so that a phone that restored the identity can open the recorded ballot
-// without a stored receipt. Each changed answer uses the next revision.
-function ballotRandomness(P, s, pollId, revision, k = K) {
+// The ballot's random values come from the member's secret, the poll, a revision number and
+// the choice (Decision #62; review of deployment 5, finding A2/F-01), so that a phone that
+// restored the identity can open the recorded ballot without a stored receipt by trying each
+// (revision, choice). The choice is part of the derivation so that two ballots with the same
+// random values always have the same plaintext: they are then identical, and publishing both
+// (two phones, a retry, a relay that misreports the count) reveals only that they are equal,
+// never the answer. Without it, B - B' = (v - v')·G would reveal both answers.
+function ballotRandomness(P, s, pollId, revision, choice, k = K) {
   const H = P.hash.H, L = P.curve.L;
+  if (!Number.isInteger(choice) || choice < 0 || choice >= k) throw new Error("choice out of range");
   return Array.from({ length: k }, (_, j) => {
-    const x = H([P.hash.TAG.BALLOT_RAND, BigInt(s), BigInt(pollId), BigInt(revision), BigInt(j)]) % L;
+    const x = H([P.hash.TAG.BALLOT_RAND, BigInt(s), BigInt(pollId), BigInt(revision), BigInt(choice), BigInt(j)]) % L;
     if (x === 0n) throw new Error("zero ballot randomness");
     return x;
   });
@@ -51,7 +56,7 @@ function buildBallot(P, { pollId, PK, policy, ctxHash, openTime, member, leafInd
   if (!Number.isInteger(choice) || choice < 0 || choice >= k) throw new Error("choice out of range");
   if (BigInt(member.notBefore ?? 0) > BigInt(openTime)) throw new Error("this identity was issued after the poll opened");
   const enc = revision === undefined ? P.encryptBallot(PK, k, choice) : (() => {
-    const r = ballotRandomness(P, member.s, pollId, revision, k);
+    const r = ballotRandomness(P, member.s, pollId, revision, choice, k);
     return { C: P.reencrypt(PK, k, choice, r), r };
   })();
   const nf = P.nullifier(pollId, member.s);
@@ -76,6 +81,19 @@ function buildBallot(P, { pollId, PK, policy, ctxHash, openTime, member, leafInd
   return { input, C: enc.C, r: enc.r, nf };
 }
 
+// The answer recorded for this member, from the contract's ballot hash alone: tries each
+// revision below `count` (newest first) and each choice. Returns {choice, revision, C} or null
+// (a ballot this secret did not make, for example a recovery ballot).
+function recordedAnswer(P, { s, pollId, PK, count, ballotHash, k = K }) {
+  const want = String(ballotHash).replace(/^0x/, "").slice(0, 56).toLowerCase();
+  for (let rev = Number(count) - 1; rev >= 0; rev--)
+    for (let c = 0; c < k; c++) {
+      const C = P.reencrypt(PK, k, c, ballotRandomness(P, s, pollId, rev, c, k));
+      if (P.ballotHash(C).slice(2, 58).toLowerCase() === want) return { choice: c, revision: rev, C };
+    }
+  return null;
+}
+
 async function prove(input, zkey) {
   return snarkjs.groth16.fullProve(input, WASM, zkey);
 }
@@ -94,4 +112,4 @@ async function verify(vkey, signals, proof) {
   return snarkjs.groth16.verify(vkey, signals, proof);
 }
 
-module.exports = { K, DEPTH, REV_DEPTH, WASM, memberLeaf, pollHashOf, ballotRandomness, buildBallot, prove, publicSignals, verify };
+module.exports = { K, DEPTH, REV_DEPTH, WASM, memberLeaf, pollHashOf, ballotRandomness, recordedAnswer, buildBallot, prove, publicSignals, verify };

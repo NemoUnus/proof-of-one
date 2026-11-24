@@ -48,17 +48,20 @@ The other settings are in `wrangler.toml`: `RPC_URL`, `CHAIN_ID`, `POLLS`, `POLL
 | `GET /state?poll=<id>[&nf=<nullifier>]` | everything a phone needs to answer a poll, read from the contracts at that moment: the identity leaves and root, the revoked handles and root, the poll's public values, its text ([`src/pilot-polls.json`](src/pilot-polls.json), whose hash the poll holds) and, with `nf`, the ballot recorded for it (hash and count), so that a phone can show the recorded answer |
 | `GET /` | the relay's account, balance and configuration |
 
-Every value `/state` returns is public on the ledger; the phone rebuilds both trees from it and checks their roots.
+Every value `/state` returns is public on the ledger. From app v0.14 the phone uses only the two lists and the text from it, and checks them against values it reads from the contracts itself (the newest identity root and leaf count, the revocation root, `metadataHash`); the poll's key, times, policy and the recorded ballot come from the contracts, never from the relay (review of deployment 5, Decision #65).
 
 ## Tests
 
 ```bash
 npm install
-node test/pilot.test.mjs ../testnet/web/plan7.json
+CHAINCHECK_JAR=/path/to/chaincheck.jar node test/pilot.test.mjs ../testnet/web/plan7.json ../testnet/web/plan8.json
 # local chain with deployment 5 replayed at the planned addresses: a π_reg is registered and
 # enters the tree at once; /state gives the trees, the poll and its text; a member registered
 # after the poll opened answers it; the recorded answer is found from the ballot hash and
-# changed; an unknown identity root and another poll are refused
+# changed; two ballots built from one state with different answers share no random values
+# and the stale one is refused; the app's chain reader (CHAINCHECK_JAR, built from
+# android-prototype/test/ChainCheck.kt and Chain.kt) reads what ethers reads; an unknown
+# identity root and another poll are refused
 ```
 
 The tests of the earlier deployments (ballots without the identity root, batch insertion) were removed with deployment 5; they are in the repository's history. The voting page in [`../app/web`](../app/web) still makes ballots for deployments 1–3 and does not work with this relay any more.

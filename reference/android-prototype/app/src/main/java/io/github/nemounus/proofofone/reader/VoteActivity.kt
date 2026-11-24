@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Proof of One — answering a poll (app v0.12, look of v0.13; Decision #62).
 //
-// 1. From the relay's /state (every value public on the ledger): the identity leaves and the
-//    revoked handles, from which the phone rebuilds both trees and checks their roots in the
-//    native code; the poll's public values and its text; the ballot recorded for this member's
-//    nullifier, if any.
+// 1. From the contracts, read directly (Chain.kt; v0.14, review of deployment 5): the poll's
+//    tally key, times, policy, context hash and metadataHash, the newest identity root and
+//    leaf count, the revocation root, and the ballot recorded for this member's nullifier.
+//    From the relay's /state, only the bulky public lists (identity leaves, revoked handles),
+//    which the native code checks against those roots, and the poll's text, shown only if the
+//    Keccak-256 of its exact bytes equals metadataHash. Nothing the relay says decides what the
+//    phone encrypts to, proves against or shows.
 // 2. The recorded answer is found from the contract's ballot hash alone: the ballot's random
 //    values come from the member's secret, the poll and a revision number, so a phone that got
 //    the identity back (password, new phone) recomputes them (#62, principle 2). The answer is
@@ -13,8 +16,8 @@
 //    root the registry has held is accepted, so a member registered after the poll opened can
 //    answer it, principle 1), with the next revision's random values; a changed answer hands
 //    the replaced ballot (rebuilt from the secret) to the contract, which subtracts it.
-// 4. Sent through the relay; the phone then reads the recorded ballot back and checks that it
-//    opens to the answer chosen.
+// 4. Sent through the relay; the phone then reads the recorded ballot back from the chain and
+//    checks that it opens to the answer chosen.
 // The secrets stay in member.json; the relay sees the nullifier, the ciphertexts and the proof,
 // as everyone does on the ledger, and the phone's network address.
 package io.github.nemounus.proofofone.reader
@@ -47,7 +50,7 @@ class VoteActivity : Activity() {
     private lateinit var options: RadioGroup
     private lateinit var send: Button
     private lateinit var share: Button
-    private val log = mutableListOf("Proof of One pilot ballot (app v0.13)")
+    private val log = mutableListOf("Proof of One pilot ballot (app v0.14)")
     @Volatile private var busy = false
 
     // what the screen was loaded with
@@ -103,6 +106,48 @@ class VoteActivity : Activity() {
 
     private fun pollOf(s: JSONObject) = s.getJSONObject("poll")
 
+    class NoPoll : Exception()
+    private val chain by lazy { Chain() }
+    private val STATES = listOf("None", "Open", "Published", "Final", "Withheld", "Rejected")
+
+    /**
+     * The poll as the phone may rely on it: values from the chain, lists from the relay checked
+     * against the chain, the text only if its hash is the poll's. Same shape as the relay's
+     * /state, so that the rest of the screen reads one object.
+     */
+    private fun verifiedState(pollId: String, nf: String): JSONObject {
+        val polls = Chain.POLLS
+        val pid = java.math.BigInteger(pollId)
+        val cp = chain.poll(polls, pid)
+        if (cp.state == 0) throw NoPoll()
+        val identity = chain.address(polls, "identity"); val revocation = chain.address(polls, "revocation")
+        val n = chain.uint(identity, "leafCount").toInt()
+        val idRoot = chain.uint(identity, "root")
+        val revRoot = chain.uint(revocation, "root")
+        val slot = chain.ballot(polls, pid, java.math.BigInteger(nf))
+        val s = EnrolService(Registration.RELAY).state(pollId, null)
+        if (!s.optString("polls").equals(polls, ignoreCase = true)) error("the relay serves another polls contract than this app's")
+        val all = s.getJSONObject("identity").getJSONArray("leaves")
+        if (all.length() < n) throw java.io.IOException("the relay's list of members is behind the ledger; try again in a minute")
+        val leaves = JSONArray(); for (i in 0 until n) leaves.put(all.getString(i))   // the newest root: all n leaves (review A4/F-03)
+        val entry = s.optJSONObject("text")
+        val textJson = entry?.optString("textJson").orEmpty()
+        val textOk = textJson.isNotEmpty() && Chain.hex(Keccak.k256(textJson.toByteArray(Charsets.UTF_8))) == cp.metadataHash
+        log += "chain: poll ${pollId} read from the contract; ${n} members; text ${if (textOk) "matches the poll's hash" else "NOT verified"}"
+        return JSONObject()
+            .put("poll", JSONObject().put("pollId", pollId).put("state", STATES.getOrElse(cp.state) { cp.state.toString() })
+                .put("PK", JSONArray().put(cp.PK.first.toString()).put(cp.PK.second.toString()))
+                .put("openTime", cp.openTime.toString()).put("closeTime", cp.closeTime.toString()).put("ctxHash", cp.ctxHash.toString())
+                .put("maxRevotes", cp.maxRevotes)
+                .put("policy", JSONObject().put("maxBirthDay", cp.maxBirthDay.toString()).put("minBirthDay", cp.minBirthDay.toString())
+                    .put("minExpiryMonth", cp.minExpiryMonth.toString()).put("requiredNat", cp.requiredNat.toString())))
+            .put("identity", JSONObject().put("root", idRoot.toString()).put("leaves", leaves))
+            .put("revocation", JSONObject().put("root", revRoot.toString()).put("revoked", s.getJSONObject("revocation").getJSONArray("revoked")))
+            .put("ballot", JSONObject().put("ballotHash", slot.ballotHash).put("count", slot.count))
+            .put("verifiedText", if (textOk) JSONObject(textJson) else JSONObject.NULL)
+            .put("now", System.currentTimeMillis() / 1000)
+    }
+
     /** Reads the poll and the answer recorded for this member. */
     private fun load() {
         say(L10n.t("voteLoading"))
@@ -118,7 +163,7 @@ class VoteActivity : Activity() {
                 val pollId = ids.getString(0)
                 val n = native("nullifier", JSONObject().put("member", m.getJSONObject("member")).put("pollId", pollId)).getString("nf")
                 nf = n
-                val s = relay.state(pollId, n)
+                val s = try { verifiedState(pollId, n) } catch (e: NoPoll) { say(L10n.t("voteNoPoll")); return@Thread }
                 st = s
                 val p = pollOf(s)
                 log += "poll ${p.getString("pollId")}: ${s.getJSONObject("identity").getJSONArray("leaves").length()} members on the ledger"
@@ -133,7 +178,7 @@ class VoteActivity : Activity() {
     }
 
     private fun textOf(s: JSONObject): JSONObject? {
-        val t = s.optJSONObject("text")?.optJSONObject("text") ?: return null
+        val t = s.optJSONObject("verifiedText") ?: return null
         return t.optJSONObject(L10n.lang) ?: t.optJSONObject("en")
     }
 
@@ -174,6 +219,10 @@ class VoteActivity : Activity() {
                 for (i in 0 until options.childCount) options.getChildAt(i).isEnabled = false
             }
             now < open -> status.text = L10n.t("voteNotOpen", time(open))
+            text == null -> {   // the relay's text does not match the poll's hash: nothing to choose from (review B1/F-02)
+                status.text = L10n.t("voteTextUnverified")
+                for (i in 0 until options.childCount) options.getChildAt(i).isEnabled = false
+            }
             count > 0 && (r == null || r.isNull("choice")) -> {
                 status.text = L10n.t("voteClosesAt", time(close))
                 for (i in 0 until options.childCount) options.getChildAt(i).isEnabled = false
@@ -199,8 +248,9 @@ class VoteActivity : Activity() {
                 val m = member!!
                 val relay = EnrolService(Registration.RELAY)
                 val p0 = pollOf(st!!)
-                // Fresh state: the newest roots, and the count of ballots recorded for nf.
-                val s = relay.state(p0.getString("pollId"), nf)
+                // Fresh state from the chain: the newest roots, and the count of ballots recorded for nf.
+                val s = verifiedState(p0.getString("pollId"), nf!!)
+                if (s.isNull("verifiedText")) { say(L10n.t("voteTextUnverified")); return@Thread }
                 val p = pollOf(s)
                 val count = s.optJSONObject("ballot")?.optInt("count") ?: 0
                 val rec = if (count > 0) native("recorded", JSONObject()
@@ -258,19 +308,18 @@ class VoteActivity : Activity() {
                 var mine: JSONObject? = null
                 for (i in 0 until 20) {
                     Thread.sleep(4000)
-                    val s2 = try { relay.state(p.getString("pollId"), nf) } catch (e: java.io.IOException) { continue }
-                    val bb = s2.optJSONObject("ballot") ?: continue
-                    if (bb.optInt("count") <= count) continue
+                    val slot = try { chain.ballot(Chain.POLLS, java.math.BigInteger(p.getString("pollId")), java.math.BigInteger(nf)) } catch (e: java.io.IOException) { continue }
+                    if (slot.count <= count) continue
                     mine = native("recorded", JSONObject()
                         .put("member", JSONObject().put("s", m.getJSONObject("member").getString("s")))
                         .put("poll", JSONObject().put("pollId", p.getString("pollId")).put("PK", p.getJSONArray("PK")))
-                        .put("count", bb.getInt("count")).put("ballotHash", bb.getString("ballotHash")))
-                    st = s2
+                        .put("count", slot.count).put("ballotHash", slot.ballotHash))
+                    st = try { verifiedState(p.getString("pollId"), nf!!) } catch (e: Exception) { st }
                     break
                 }
                 if (mine == null) { say(L10n.t("voteNotYet")); log += "not yet in a block after 80 s"; runOnUiThread { share.visibility = View.VISIBLE }; return@Thread }
                 val ok = !mine.isNull("choice") && mine.getInt("choice") == choice
-                log += if (ok) "recorded on the ledger and read back: it opens to the answer chosen on this phone" else "recorded ballot does NOT open to the answer chosen"
+                log += if (ok) "recorded on the ledger and read back from the chain: it opens to the answer chosen on this phone" else "recorded ballot does NOT open to the answer chosen"
                 recorded = mine
                 runOnUiThread {
                     show(st!!)

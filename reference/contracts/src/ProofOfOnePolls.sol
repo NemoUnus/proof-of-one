@@ -246,6 +246,11 @@ contract ProofOfOnePolls {
         // The tally key is the only externally chosen curve point the proof relies on.
         if (!BabyJubjub.isInSubgroup(p.tallyPK[0], p.tallyPK[1])) revert InvalidTallyKey();
         if (p.closeTime < p.openTime + MIN_DURATION) revert BadTimes();
+        // The opening time is bound in every ballot proof and compared with each identity's
+        // notBefore in a 40-bit comparison: it must fit 40 bits, and a poll cannot be backdated
+        // by more than an hour, which would shut out identities re-issued in the meantime
+        // (Decision #62, point 3; review of deployment 5, C5). An hour allows for a slow block.
+        if (p.openTime >= 2 ** 40 || uint256(p.openTime) + 1 hours < block.timestamp) revert BadTimes();
         _checkTrustees(p);
         pollId = ++pollCount;
         Poll storage s = _polls[pollId];
@@ -626,9 +631,11 @@ contract ProofOfOnePolls {
         for (uint256 j = 0; j < K; j++) sum += r.counts[j];
         if (sum != distinctVoters(pollId)) revert CountsMismatch();      // one-hot ballots
         // bound check (C5): members who joined while the poll was open may answer it
-        // (Decision #62), so the bound is the membership when the result is published;
-        // a sampled poll keeps its creation-time population.
-        uint256 eligibleNow = sampling[pollId].threshold != 0 ? p.eligible : identity.leafCount() - revocation.revokedCount();
+        // (Decision #62), so the bound is every membership ever registered when the result is
+        // published. Revoked memberships are not subtracted: a ballot cast before a revocation
+        // stays counted, and subtracting would let later revocations block the result for good
+        // (review of deployment 5, B2). A sampled poll keeps its creation-time population.
+        uint256 eligibleNow = sampling[pollId].threshold != 0 ? p.eligible : identity.leafCount();
         if (distinctVoters(pollId) > eligibleNow) revert TooManyVoters();
         if (keccak256(abi.encode(keys)) != p.trusteeKeysHash) revert BadTrustees();
         if (trustees.length != TALLY_T) revert BadPartials();

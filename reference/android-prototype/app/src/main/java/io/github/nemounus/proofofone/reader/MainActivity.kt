@@ -267,7 +267,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
                 // A new deployment names another registry: register there too (once per start).
                 if (!registryChecked) Thread {
                     try {
-                        val now = EnrolService(Registration.RELAY).status().optString("registry").lowercase()
+                        val now = Chain().address(Chain.POLLS, "identity").lowercase()   // the polls contract's registry, from the chain
                         registryChecked = true
                         if (now.isNotEmpty() && now != st.registry) { Registration.registryChanged(this); runOnUiThread { route() } }
                     } catch (e: Exception) { /* offline: checked again next time */ }

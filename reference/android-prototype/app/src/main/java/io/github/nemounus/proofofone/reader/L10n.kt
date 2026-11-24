@@ -1245,6 +1245,15 @@ object L10n {
             "Geöffnet bis %s. Bis dahin können Sie Ihre Antwort ändern.",
             "Открыт до %s. До этого времени ответ можно изменить.",
             "开放至 %s。在此之前您可以更改回答。"),
+        "voteTextUnverified" to listOf(
+            "The poll's text could not be checked against the public ledger, so it is not shown and no answer can be sent. Please tell the organiser.",
+            "متن نظرسنجی با دفتر کل عمومی تطبیق داده نشد، برای همین نشان داده نمی‌شود و نمی‌توان پاسخی فرستاد. لطفاً به هماهنگ‌کننده خبر دهید.",
+            "تعذّر التحقق من نص الاستطلاع مقابل السجل العام، لذلك لا يُعرض ولا يمكن إرسال إجابة. يُرجى إبلاغ المنظِّم.",
+            "Le texte du sondage n'a pas pu être vérifié auprès du registre public : il n'est pas affiché et aucune réponse ne peut être envoyée. Prévenez l'organisateur.",
+            "No se pudo comprobar el texto de la encuesta con el libro público, así que no se muestra y no se puede enviar ninguna respuesta. Avise al organizador.",
+            "Der Text der Umfrage konnte nicht mit dem öffentlichen Register abgeglichen werden; er wird nicht angezeigt und es kann keine Antwort gesendet werden. Bitte informieren Sie den Organisator.",
+            "Текст опроса не удалось сверить с публичным реестром, поэтому он не показан и ответ отправить нельзя. Сообщите организатору.",
+            "问卷文本无法与公共账本核对，因此不予显示，也无法发送回答。请告知组织者。"),
         "voteSend" to listOf(
             "Send my answer",
             "فرستادن پاسخ",

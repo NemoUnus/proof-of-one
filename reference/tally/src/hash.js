@@ -22,7 +22,7 @@ const TAG = Object.freeze({
   DKG_GEN: 12n, // trustee key generation: second generator H
   TICKET: 13n, // invitation ticket of sampled polls: H(TAG, nf, seed)
   REPLACES: 14n, // recovery link: rn_new = H(TAG, rn_old, rho)
-  BALLOT_RAND: 15n, // ballot randomness from the member's secret: r_j = H(TAG, s, pollId, revision, j) mod ℓ (Decision #62)
+  BALLOT_RAND: 15n, // ballot randomness from the member's secret: r_j = H(TAG, s, pollId, revision, choice, j) mod ℓ (Decision #62; review of deployment 5)
 });
 
 let poseidon = null;

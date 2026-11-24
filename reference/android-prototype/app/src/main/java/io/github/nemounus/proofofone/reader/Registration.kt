@@ -65,8 +65,15 @@ object Registration {
     fun run(ctx: Context): String {
         val m = JSONObject(memberFile(ctx).readText())
         if (m.has("registered")) return "already registered"
-        val registry = EnrolService(RELAY).status().optString("registry").ifEmpty { throw NotReady("the relay accepts no registrations") }
+        // The registry is the one the polls contract uses, read from the chain (review of
+        // deployment 5, C2); the relay must be sending to the same one.
+        val chain = Chain()
+        val registry = chain.address(Chain.POLLS, "identity").lowercase()
+        val relayRegistry = EnrolService(RELAY).status().optString("registry").lowercase()
+        if (relayRegistry.isEmpty()) throw NotReady("the relay accepts no registrations")
+        if (relayRegistry != registry) error("the relay sends registrations to another registry than the polls contract uses")
         val keySet = EnrolService().info().optJSONObject("keySet") ?: throw NotReady("the key set is not published yet")
+        if (java.math.BigInteger(keySet.getString("root")) != chain.uint(registry, "keySetRoot")) throw NotReady("the service's key set is not the registry's yet")
         val data = JSONObject().put("member", m.getJSONObject("member")).put("attrs", m.getJSONObject("attrs"))
             .put("credential", m.getJSONObject("credential")).put("keySet", keySet)
         val ri = JSONObject(NativeProver.regInput(data.toString()))
@@ -92,10 +99,20 @@ object Registration {
         val r = try { EnrolService(RELAY).register(body) } catch (e: EnrolService.Failure) {
             if (e.body?.optBoolean("alreadyRegistered") == true) JSONObject().put("already", true) else throw e
         }
-        val rec = JSONObject().put("leaf", leaf).put("day", LocalDate.now().toString()).put("registry", registry.lowercase())
-            .put("tx", r.optString("tx")).put("index", r.optString("index"))
+        // Saved only once the leaf is in the registry on the chain: a relay that answers
+        // "registered" without sending, or a transaction that failed, is found out here, and the
+        // phone tries again next time (review of deployment 5, C2).
+        var index: Long? = null
+        for (i in 0 until 12) {
+            index = chain.findLeaf(registry, java.math.BigInteger(leaf))
+            if (index != null) break
+            Thread.sleep(5000)
+        }
+        if (index == null) throw java.io.IOException("the registration is not on the public ledger yet")
+        val rec = JSONObject().put("leaf", leaf).put("day", LocalDate.now().toString()).put("registry", registry)
+            .put("tx", r.optString("tx")).put("index", index.toString())
         save(ctx, m.put("registered", rec))
         return if (r.optBoolean("already")) "registration: this credential was already on the ledger (restored membership)"
-        else "registration: π_reg made and verified on the phone in $ms ms; sent through the relay; position ${r.optString("index", "pending")}"
+        else "registration: π_reg made and verified on the phone in $ms ms; sent through the relay; read back from the ledger at position $index"
     }
 }

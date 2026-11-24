@@ -169,6 +169,11 @@ test("createPoll: rejects a bad tally key and short polls; snapshot comes from t
   await reverts(polls.createPoll.staticCall(await pollParams({ tallyPK: [0n, p - 1n] })), polls, "InvalidTallyKey");
   const short = await pollParams(); short.closeTime = short.openTime + 3600n;
   await reverts(polls.createPoll.staticCall(short), polls, "BadTimes");
+  // review of deployment 5 (C5): no backdating by more than an hour, and openTime fits 40 bits
+  const back = await pollParams(); back.openTime -= 2n * 3600n; back.closeTime -= 2n * 3600n;
+  await reverts(polls.createPoll.staticCall(back), polls, "BadTimes");
+  const far = await pollParams(); far.openTime = 2n ** 40n; far.closeTime = far.openTime + 49n * 3600n;
+  await reverts(polls.createPoll.staticCall(far), polls, "BadTimes");
   // Trustee keys: valid points, at most 32, threshold 1..n, and the first t combine to the tally key
   const swapped = trusteeKeys(); [swapped[0], swapped[3]] = [swapped[3], swapped[0]];
   await reverts(polls.createPoll.staticCall(await pollParams({ trusteeKeys: swapped })), polls, "BadTrustees");

@@ -48,6 +48,14 @@ The secrets and the credential stay in the app's private storage (`member.json`,
 - **What it is not.** A check made on the phone can be bypassed by a modified app, and it does not detect a printed photo or a screen held to the camera. In the pilot it stops honest mistakes (someone else's passport picked up at home) and gives the measurements; the design's defences (the attested enclave's face comparison, Decision #33) are not in the pilot.
 - **Translated.** The face check's texts are in the six languages. The technical test tools (face check test, enrolment proof test, ballot proof benchmark) stay in English and are folded under **▸ Test tools (English)** on the first screen, so that volunteers do not meet them.
 
+### v0.14: checked against the chain (Decision #65, review of deployment 5)
+
+- **The relay is no longer believed.** `Chain.kt` reads the contracts directly through a public RPC endpoint (`https://sepolia.base.org`; plain JSON-RPC `eth_call`, with its own Keccak-256): the poll's tally key, times, policy, context hash and `metadataHash`, the newest identity root and leaf count, the revocation root, and the ballot recorded for the member's nullifier. The relay's identity and revocation lists are used only if they give those roots; the poll's text only if its exact bytes hash to `metadataHash` (otherwise the poll is not shown and no answer can be sent). A registration is saved only once its leaf is found in the registry on chain.
+- **Ballot randomness** includes the choice, so two different answers never share random values (two phones, a retry, a misreporting relay).
+- **Newest root.** Ballots prove against the newest identity root read from the chain.
+- `test/ChainCheck.kt` runs `Chain.kt` on a computer against a local chain; the relay's test compares what it reads with ethers.
+- The public RPC endpoint sees the phone's network address and the nullifier it asks about, as the relay does. Several endpoints and a censorship-resistant transport are for later (Decision #34).
+
 ### v0.13: one step per screen (Decision #64; design by the Hokusai agent)
 
 - **Six numbered steps.** Joining is split into one screen per step, with a numbered progress bar at the top (done steps ticked, the current one highlighted): 1 passport details, 2 reading the chip, 3 information and consent, 4 face check, 5 password and enrolment, 6 registration on the public ledger. The button for the next step appears only when the current one is done. A welcome screen, shown once, lists the six steps. Once joined, the first screen is the member's home: the membership, the member number with its privacy warning, and the polls.

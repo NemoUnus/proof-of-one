@@ -221,12 +221,34 @@ test("a re-issued identity answers only polls opened after it was issued", async
   assert.equal(await B.verify(VKEY, signals, proof), true);
 });
 
-test("ballot randomness from the secret: the same revision gives the same ballot, the next one a fresh one", () => {
+test("ballot randomness from the secret: the same revision and answer give the same ballot, anything else a fresh one", () => {
   const m = members[0];
   const a = ballotFor(m, 2, { revision: 0 }), b = ballotFor(m, 2, { revision: 0 }), c = ballotFor(m, 2, { revision: 1 });
   assert.deepEqual(a.input.CA, b.input.CA);
+  assert.deepEqual(a.input.CB, b.input.CB);                       // identical: equality is all two copies reveal
   assert.notDeepEqual(a.input.CA, c.input.CA);
-  const r = B.ballotRandomness(P, m.s, POLL, 0);
+  const r = B.ballotRandomness(P, m.s, POLL, 0, 2);
   assert.deepEqual(r.map(String), a.input.r);
+});
+
+test("review of deployment 5 (A2/F-01): two different answers never share random values, even with the same revision", () => {
+  // Two phones holding one identity, a retry after a slow block, or a relay that misreports the
+  // count can all lead to two ballots with the same revision. With different answers their
+  // random values must differ in every position, so B - B' never reveals (v - v')·G.
+  const m = members[0];
+  for (let x = 0; x < B.K; x++)
+    for (let y = x + 1; y < B.K; y++) {
+      const a = ballotFor(m, x, { revision: 0 }), b = ballotFor(m, y, { revision: 0 });
+      for (let j = 0; j < B.K; j++) assert.notDeepEqual(a.input.CA[j], b.input.CA[j], `answers ${x} and ${y}, position ${j}`);
+    }
+});
+
+test("Decision #62, principle 2: the recorded answer is found from the ballot hash alone", () => {
+  const m = members[0];
+  const recorded = ballotFor(m, 3, { revision: 2 });
+  const hash = P.ballotHash(recorded.C).slice(2, 58);
+  const found = B.recordedAnswer(P, { s: m.s, pollId: POLL, PK: keys.PK, count: 3, ballotHash: hash });
+  assert.equal(found.choice, 3); assert.equal(found.revision, 2);
+  assert.equal(B.recordedAnswer(P, { s: members[1].s, pollId: POLL, PK: keys.PK, count: 3, ballotHash: hash }), null);  // another member's secret
 });
 

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// Tests the relay (Decision #62) against a local chain (ganache) with deployment 5 replayed
-// from web/plan7.json at the planned addresses (the reused contracts of earlier deployments
-// are placed at their addresses first):
+// Tests the relay (Decision #62) against a local chain (ganache) with deployments 5 and 6
+// replayed from web/plan7.json and web/plan8.json at the planned addresses (the reused
+// contracts of earlier deployments are placed at their addresses first):
 //   - a valid π_reg is registered and inserted into the identity tree at once; the same
 //     credential again is "already registered"; a malformed request is refused;
 //   - GET /state gives the leaves, the roots, the poll and its text (checked against the
@@ -9,8 +9,12 @@
 //   - a member registered AFTER the poll opened answers it at once (principle 1);
 //   - the recorded answer is found from the ballot hash /state gives, the member changes it
 //     (revision 1, the replaced ballot rebuilt from the secret), and the count goes up (principle 2);
-//   - a ballot with a root the registry never held, or for another poll, is refused.
-// Usage: node test/pilot.test.mjs ../testnet/web/plan7.json
+//   - a ballot with a root the registry never held, or for another poll, is refused;
+//   - review of deployment 5: two ballots built from the same state with different answers
+//     (two phones, or a retry) share no random values, and only one is accepted;
+//   - the app's chain reader (android-prototype/app/.../Chain.kt), run on the JVM when
+//     CHAINCHECK_JAR is set, reads the same values from the contracts as ethers does.
+// Usage: node test/pilot.test.mjs ../testnet/web/plan7.json ../testnet/web/plan8.json
 import { createRequire } from "module";
 import assert from "assert";
 import { handle } from "../src/index.js";
@@ -24,16 +28,22 @@ const A = require("../../ballot-circuit/src/attrs");
 const B = require("../../ballot-circuit/src/ballot");
 const { IncrementalTree, RevocationTree } = require("../../ballot-circuit/src/trees");
 const { create } = require("../../tally/src/protocol");
-const { metadataHashOf } = require("../../testnet/plan7.js");
+const { execFile } = require("child_process");
+const run = (cmd, args) => new Promise((ok, no) => execFile(cmd, args, { encoding: "utf8" }, (e, out, err) => (e ? no(new Error(err || e.message)) : ok(out))));
 const ROOT = path.join(import.meta.dirname, "..", "..");
 const REG_ZKEY = path.join(ROOT, "enrolment-circuit", "setup", "registration_test.zkey");
 const BALLOT_ZKEY = path.join(ROOT, "ballot-circuit", "setup", "ballot_test.zkey");
 const art = (n) => JSON.parse(fs.readFileSync(path.join(ROOT, "contracts", "build", n + ".json"), "utf8"));
 
-const plan = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+const plans = process.argv.slice(2).map((f) => JSON.parse(fs.readFileSync(f, "utf8")));
+const plan = plans[plans.length - 1];
 const relayKey = ethers.Wallet.createRandom();
-const g = ganache.provider({ logging: { quiet: true }, chain: { chainId: Number(plan.chainId) }, miner: { blockGasLimit: 60_000_000 },
+// A server, so that the app's chain reader can reach it over HTTP as it reaches the network.
+const server = ganache.server({ logging: { quiet: true }, chain: { chainId: Number(plan.chainId) }, miner: { blockGasLimit: 60_000_000 },
   wallet: { totalAccounts: 1, deterministic: true, unlockedAccounts: [plan.deployer] } });
+await server.listen(0);
+const RPC = `http://127.0.0.1:${server.address().port}`;
+const g = server.provider;
 const provider = new ethers.BrowserProvider(g);
 await g.request({ method: "evm_setAccountBalance", params: [plan.deployer, "0x" + (10n ** 21n).toString(16)] });
 await g.request({ method: "evm_setAccountBalance", params: [relayKey.address, "0x" + (10n ** 17n).toString(16)] });
@@ -49,19 +59,22 @@ for (const n of [2, 3, 5]) await place(old[`Poseidon(${n})`], poseidonContract.g
 await place(old.RevokeVerifier, null, art("RevokeVerifier").bytecode);
 await place(old.TallyVerifier, null, art("TallyVerifier").bytecode);
 
-await g.request({ method: "evm_setAccountNonce", params: [plan.deployer, "0x" + Number(plan.startNonce).toString(16)] });
 const signer = await provider.getSigner(plan.deployer);
-const polls = new ethers.Contract(old.ProofOfOnePolls, plan.abi.ProofOfOnePolls, signer);
-for (const t of plan.txs) {
-  if (t.kind === "deploy") {
-    const rc = await (await signer.sendTransaction({ data: t.data })).wait();
-    assert.strictEqual(rc.contractAddress.toLowerCase(), t.expectedAddress.toLowerCase(), t.name);
-  } else if (t.kind === "createPoll") {
-    const ts = BigInt((await provider.getBlock("latest")).timestamp) + 120n;
-    await (await polls.createPoll({ ...t.params, openTime: ts, closeTime: ts + BigInt(t.duration) })).wait();
+for (const pl of plans) {
+  await g.request({ method: "evm_setAccountNonce", params: [pl.deployer, "0x" + Number(pl.startNonce).toString(16)] });
+  for (const t of pl.txs) {
+    if (t.kind === "deploy") {
+      const rc = await (await signer.sendTransaction({ data: t.data })).wait();
+      assert.strictEqual(rc.contractAddress.toLowerCase(), t.expectedAddress.toLowerCase(), t.name);
+    } else if (t.kind === "createPoll") {
+      const ts = BigInt((await provider.getBlock("latest")).timestamp) + 120n;
+      const pc = new ethers.Contract(t.to, pl.abi.ProofOfOnePolls, signer);
+      await (await pc.createPoll({ ...t.params, openTime: ts, closeTime: ts + BigInt(t.duration) })).wait();
+    }
   }
+  console.log(`${pl.title.split(" (")[0]} replayed: ${pl.txs.length} steps at the planned addresses`);
 }
-console.log(`deployment 5 replayed: ${plan.txs.length} steps at the planned addresses`);
+const polls = new ethers.Contract(plan.contracts.ProofOfOnePolls, plan.abi.ProofOfOnePolls, signer);
 const registry = new ethers.Contract(old.IdentityRegistry, plan.abi.IdentityRegistry, signer);
 assert.strictEqual((await registry.keySetRoot()).toString(), plan.keySet.root);
 
@@ -113,8 +126,9 @@ assert.deepStrictEqual(s.identity.leaves, [m1.leaf.toString(), m2.leaf.toString(
 assert.strictEqual(s.identity.root, (await registry.root()).toString());
 assert.strictEqual(s.poll.state, "Open");
 assert.strictEqual(s.text && s.text.metadataHash, s.poll.metadataHash);
-assert.strictEqual(metadataHashOf(s.text.text), s.poll.metadataHash, "the text is the one the poll holds");
-assert.strictEqual(s.text.text.fa.options.length, 4);
+assert.strictEqual(ethers.keccak256(ethers.toUtf8Bytes(s.text.textJson)), s.poll.metadataHash, "the exact text bytes are the ones the poll holds");
+assert.deepStrictEqual(JSON.parse(s.text.textJson), s.text.text);
+assert.strictEqual(s.text.text.zh.options.length, 4);
 const H = P.hash.H;
 const view = (s) => {
   const ids = new IncrementalTree(H, B.DEPTH); s.identity.leaves.forEach((l) => ids.insert(BigInt(l)));
@@ -155,14 +169,8 @@ await provider.send("evm_mine", []);
 [st, s] = await get(`poll=1&nf=${b1.nf}`);
 assert.strictEqual(s.ballot.count, 1);
 const found = (() => {
-  const C = P.curve, PK = C.fromJSON(s.poll.PK);
-  for (let rev = s.ballot.count - 1; rev >= 0; rev--)
-    for (let c = 0; c < 4; c++) {
-      const r = B.ballotRandomness(P, m1.member.s, 1n, rev);
-      const Cs = r.map((x, k) => ({ A: C.mul(C.G, x), B: k === c ? C.add(C.G, C.mul(PK, x)) : C.mul(PK, x) }));
-      if (P.ballotHash(Cs).slice(2, 58) === s.ballot.ballotHash) return { choice: c, revision: rev };
-    }
-  return null;
+  const f = B.recordedAnswer(P, { s: m1.member.s, pollId: 1n, PK: P.curve.fromJSON(s.poll.PK), count: s.ballot.count, ballotHash: s.ballot.ballotHash });
+  return f && { choice: f.choice, revision: f.revision };
 })();
 assert.deepStrictEqual(found, { choice: 1, revision: 0 });
 console.log(`recorded answer found from the ballot hash: option ${found.choice + 1}`);
@@ -176,6 +184,44 @@ assert.strictEqual(s.ballot.count, 2);
 assert.strictEqual(s.poll.voters, "2");
 console.log("answer changed (revision 1): count 2, distinct voters 2");
 
+// ---- review of deployment 5 (A2/F-01): two phones (or a retry) build from the same state with
+// different answers. Their random values differ in every position, so nothing about the
+// answers follows from comparing them; the second, now stale, is refused.
+const p1 = await ballot(s, m1, 0, 2), p2 = await ballot(s, m1, 3, 2);
+for (let k = 0; k < 4; k++) assert.notDeepStrictEqual([p1.ct[2 * k], p1.ct[2 * k + 1]], [p2.ct[2 * k], p2.ct[2 * k + 1]]);
+r = await post("/", { ...p1, prev: b1b.ct, _C: undefined });
+assert.strictEqual(r.status, 202);
+await provider.send("evm_mine", []);
+r = await post("/", { ...p2, prev: b1b.ct, _C: undefined });
+assert.strictEqual(r.status, 400);
+[st, s] = await get(`poll=1&nf=${b1.nf}`);
+assert.strictEqual(s.ballot.count, 3);
+const f3 = B.recordedAnswer(P, { s: m1.member.s, pollId: 1n, PK: P.curve.fromJSON(s.poll.PK), count: s.ballot.count, ballotHash: s.ballot.ballotHash });
+assert.deepStrictEqual([f3.choice, f3.revision], [0, 2]);
+console.log("two ballots from one state with different answers: no shared random values; the stale one refused; recorded answer still found");
+
+// ---- the app's chain reader reads what ethers reads
+if (process.env.CHAINCHECK_JAR) {
+  // asynchronously: the chain answers from this same process
+  const out = JSON.parse((await run("java", ["-cp", process.env.CHAINCHECK_JAR, "ChainCheckKt", RPC, plan.contracts.ProofOfOnePolls, "1", b1.nf, m2.leaf.toString()])).trim().split("\n").pop());
+  const gp = await polls.getPoll(1);
+  const identity = new ethers.Contract(plan.contracts.IdentityRegistry, plan.abi.IdentityRegistry, provider);
+  const revocationC = new ethers.Contract(plan.contracts.RevocationRegistry, plan.abi.RevocationRegistry, provider);
+  const slot = await polls.ballots(1, b1.nf);
+  const want = {
+    chainId: String(plan.chainId), identity: plan.contracts.IdentityRegistry.toLowerCase(), revocation: plan.contracts.RevocationRegistry.toLowerCase(),
+    idRootAtCreation: gp.idRoot.toString(), revRootAtCreation: gp.revRoot.toString(), PKx: gp.tallyPK[0].toString(), PKy: gp.tallyPK[1].toString(),
+    maxBirthDay: gp.maxBirthDay.toString(), minBirthDay: gp.minBirthDay.toString(), minExpiryMonth: gp.minExpiryMonth.toString(), requiredNat: gp.requiredNat.toString(),
+    maxRevotes: gp.maxRevotes.toString(), openTime: gp.openTime.toString(), closeTime: gp.closeTime.toString(), metadataHash: gp.metadataHash.slice(2), state: gp.state.toString(),
+    ctxHash: (await polls.contextHash(1)).toString(), leafCount: (await identity.leafCount()).toString(), idRoot: (await identity.root()).toString(),
+    isHistoricalRoot: "true", isHistoricalRootBogus: "false", revRoot: (await revocationC.root()).toString(), keySetRoot: (await identity.keySetRoot()).toString(),
+    leafIndex: "1", leafAt0: m1.leaf.toString(), ballotHash: slot.ballotHash.slice(2), count: slot.count.toString(),
+    keccakAbc: "4e03657aea45a94fc7d47ba826c8d667c0d1e6e33a64a036ec44f58fa12d6c45",
+  };
+  assert.deepStrictEqual(out, want);
+  console.log(`the app's chain reader (Chain.kt, on the JVM) reads the same ${Object.keys(want).length} values as ethers`);
+} else console.log("(CHAINCHECK_JAR not set: the app's chain reader was not run)");
+
 // ---- refusals
 r = await post("/", { ...b1b, idRoot: "12345", prev: b1b.ct, _C: undefined });
 j = await r.json();
@@ -185,4 +231,5 @@ assert.strictEqual(r.status, 400);
 console.log(`unknown root: ${j.error}; other poll: refused`);
 console.log("pilot relay test: all passed");
 if (globalThis.curve_bn128) await globalThis.curve_bn128.terminate();
+await server.close();
 process.exit(0);

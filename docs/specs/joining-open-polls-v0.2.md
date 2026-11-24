@@ -15,8 +15,8 @@ A poll stores the identity root at its creation, and every ballot proves members
 
 ## 3. Principle 1: joining at once
 
-- **Any past root.** The ballot proof makes `idRoot` a public input; the contract accepts it if the identity registry has held it (`isHistoricalRoot`). The app proves against the newest root it knows, so every voter's anonymity set is the whole membership at that moment.
-- **Within 30 minutes.** After enrolment the app waits a random 1–10 minutes and registers (π_reg through the relay). A registration enters the tree in a batch of 4 when the batch fills; if it has waited 15 minutes, anyone may insert it on its own (the app asks the relay), at about fifteen times a batch's gas per leaf. No filler members and no scheduled job are needed for this. With many members, batches fill within seconds and single insertions become rare.
+- **Any past root.** The ballot proof makes `idRoot` a public input; the contract accepts it if the identity registry has held it (`isHistoricalRoot`). The app proves against the newest root, read from the registry on chain (app v0.14; review of deployment 5), so every voter's anonymity set is the whole membership at that moment.
+- **Within 30 minutes.** After enrolment the app waits a random 1–10 minutes and registers (π_reg through the relay). *As implemented (Decision #63):* the registration enters the identity tree in the same transaction, about 1.6 million gas on the test network; there are no batches, no filler members and no scheduled job. *(This note first proposed batches of 4, with a single insertion after 15 minutes.)*
 - **Sampled polls** keep their creation-time root. **The eligible count** is taken at closing.
 - **Cost, stated to volunteers (amends Decision #61):** with a short delay, the service's operator can more easily tell which ledger entry came from which enrolment. Answers stay secret: a ballot never shows which entry voted.
 
@@ -49,7 +49,7 @@ A poll stores the identity root at its creation, and every ballot proves members
 |---|---|
 | Ballot and recovery circuits | `idRoot` public; `notBefore` in the attributes; `openTime` in `pollHash`; new TEST-ONLY keys |
 | Registration circuit, credential, attribute hash | `notBefore` among the signed attributes (9 instead of 8) |
-| Identity registry | single insertion of a leaf that has waited 15 minutes; new deployment, as its registration verifier changes |
+| Identity registry | every registration inserted at once (Decision #63); new deployment, as its registration verifier changes |
 | Polls contract | root through the registry's history; sampled polls keep the snapshot; eligible count at closing; `openTime` in `pollHash`; new deployment |
 | Enrolment service | signs `notBefore` (0 in the pilot, which issues no replacement identities) |
 | Relay | asks the registry for a single insertion |

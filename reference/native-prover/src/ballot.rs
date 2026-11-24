@@ -75,24 +75,33 @@ impl Tree {
     }
 }
 
-/// The member's path in the identity tree as it was when the poll opened: the poll's idRoot
-/// is the root of the first n published leaves for some n (the registry's leafCount then).
-/// `v`: {leaves: [...], leaf, idRoot}. Returns {siblings, pathIndex, index, n}.
+/// The member's path in the identity tree for a root the registry has held (Decision #62):
+/// every registration enters the tree at once, so a root is the root of the first n leaves for
+/// some n. The app passes the newest root, which it has checked against the chain; the fast
+/// path builds the tree once. Any other root is looked up among the prefix roots, computed
+/// incrementally (DEPTH hashes per leaf), so that a wrong root costs O(n), not O(n²) (review
+/// of deployment 5, C3). `v`: {leaves: [...], leaf, idRoot}. Returns {siblings, pathIndex, index, n}.
 pub fn identity_path(v: &Value) -> Result<Value, Error> {
     let leaves = frs(get(v, "leaves")?)?;
     let leaf = num(v, "leaf")?;
     let root = num(v, "idRoot")?;
     let index = leaves.iter().position(|l| *l == leaf).ok_or("this membership is not in the published identity tree yet")?;
-    // Decision #62: every registration enters the tree at once, so any prefix length can be
-    // a root the registry has held; the app normally passes the newest root (n = all leaves).
-    for n in (index + 1..=leaves.len()).rev() {
-        let t = Tree::new(leaves[..n].to_vec())?;
-        if t.root()? == root {
-            let (s, p) = t.path(index)?;
-            return Ok(json!({ "siblings": strs(&s), "pathIndex": strs(&p), "index": index, "n": n }));
+    let full = Tree::new(leaves.clone())?;
+    let n = if full.root()? == root { leaves.len() } else {
+        let mut filled = vec![Fr::zero(); DEPTH];
+        let mut found = None;
+        for (i, l) in leaves.iter().enumerate() {
+            let mut cur = *l;
+            for d in 0..DEPTH {
+                if (i >> d) & 1 == 0 { filled[d] = cur; cur = h(&[cur, full.zeros[d]])?; } else { cur = h(&[filled[d], cur])?; }
+            }
+            if i >= index && cur == root { found = Some(i + 1); break; }
         }
-    }
-    Err("this membership was not yet in the identity tree when the poll opened".into())
+        found.ok_or("the identity root given is not a root of the published leaves that holds this membership")?
+    };
+    let t = if n == leaves.len() { full } else { Tree::new(leaves[..n].to_vec())? };
+    let (s, p) = t.path(index)?;
+    Ok(json!({ "siblings": strs(&s), "pathIndex": strs(&p), "index": index, "n": n }))
 }
 
 /// Non-revocation witness for rn in the revocation tree rebuilt from the revoked handles in
@@ -122,12 +131,15 @@ pub fn revocation_witness(v: &Value) -> Result<Value, Error> {
 }
 
 /// The ballot's random values from the member's secret (Decision #62; ballotRandomness in
-/// ballot.js): r_j = H(15, s, pollId, revision, j) mod ℓ. A phone that restored the identity
-/// recomputes them to open the ballot recorded for it; every changed answer takes the next
-/// revision, so no two ballots share values.
-pub fn ballot_randomness(s: &Fr, poll_id: &Fr, revision: u64) -> Result<Vec<Sc>, Error> {
+/// ballot.js): r_j = H(15, s, pollId, revision, choice, j) mod ℓ. A phone that restored the
+/// identity recomputes them to open the ballot recorded for it. The choice is an input so that
+/// two ballots with equal values always have equal plaintexts (identical ballots); two
+/// different answers never share values, whatever revision a phone uses (review of deployment
+/// 5, A2/F-01).
+pub fn ballot_randomness(s: &Fr, poll_id: &Fr, revision: u64, choice: usize) -> Result<Vec<Sc>, Error> {
+    if choice >= K { return Err("choice out of range".into()); }
     (0..K).map(|j| {
-        let x = h(&[Fr::from(TAG_BALLOT_RAND), *s, *poll_id, Fr::from(revision), Fr::from(j as u64)])?;
+        let x = h(&[Fr::from(TAG_BALLOT_RAND), *s, *poll_id, Fr::from(revision), Fr::from(choice as u64), Fr::from(j as u64)])?;
         let r = Sc::from_le_bytes_mod_order(&x.into_bigint().to_bytes_le());
         if r.is_zero() { return Err("zero ballot randomness".into()); }
         Ok(r)
@@ -164,7 +176,7 @@ pub fn ballot_input(v: &Value) -> Result<Value, Error> {
             .map(|x| x.as_str().and_then(|t| Sc::from_str(t).ok()).ok_or_else(|| Error::from("r: scalar expected"))).collect::<Result<_, _>>()?
     } else {
         let rev = get(v, "revision")?.as_u64().ok_or("revision: number expected")?;
-        ballot_randomness(&s_fr, &poll_id, rev)?
+        ballot_randomness(&s_fr, &poll_id, rev, choice)?
     };
     if r.len() != K || r.iter().any(|x| x.is_zero()) { return Err("r: four non-zero scalars expected".into()); }
 
@@ -250,7 +262,7 @@ pub fn ballot_hash(ca: &[Pt], cb: &[Pt]) -> String {
 /// Decision #62, principle 2: the answer recorded for this member, found without a stored
 /// receipt. `v`: {member {s}, poll {pollId, PK}, count (ballots recorded for the nullifier),
 /// ballotHash (hex of the 28 bytes the contract keeps)}. Tries every answer with the
-/// randomness of each revision, newest first. Returns {choice, revision, ct} if this
+/// randomness of each revision and answer, newest revision first. Returns {choice, revision, ct} if this
 /// membership made the recorded ballot, or {choice: null} if it did not (for example a
 /// ballot made with another phone's random values, or by someone who took the phone).
 pub fn recorded_answer(v: &Value) -> Result<Value, Error> {
@@ -259,12 +271,14 @@ pub fn recorded_answer(v: &Value) -> Result<Value, Error> {
     let pk = pt(get(poll, "PK")?)?;
     let count = get(v, "count")?.as_u64().ok_or("count: number expected")?;
     let want = get(v, "ballotHash")?.as_str().ok_or("ballotHash: hex expected")?.trim_start_matches("0x").to_lowercase();
+    // At most the contract's cap of changes: a larger count is not believed (a relay could send one).
+    if count > 64 { return Err("count: more ballots than any poll allows".into()); }
     let g = g8();
     for rev in (0..count).rev() {
-        let r = ballot_randomness(&s, &poll_id, rev)?;
-        let ca: Vec<Pt> = r.iter().map(|x| mul(&g, x)).collect();
-        let rp: Vec<Pt> = r.iter().map(|x| mul(&pk, x)).collect();
         for choice in 0..K {
+            let r = ballot_randomness(&s, &poll_id, rev, choice)?;
+            let ca: Vec<Pt> = r.iter().map(|x| mul(&g, x)).collect();
+            let rp: Vec<Pt> = r.iter().map(|x| mul(&pk, x)).collect();
             let cb: Vec<Pt> = (0..K).map(|j| if j == choice { add(&g, &rp[j]) } else { rp[j] }).collect();
             if ballot_hash(&ca, &cb) == want {
                 let ct: Vec<String> = ca.iter().chain(cb.iter()).flat_map(|p| [dec(&p.0), dec(&p.1)]).collect();

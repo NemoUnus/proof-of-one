@@ -9,7 +9,7 @@ preview_urls = false   # one public address only: the relay that config.json nam
 [vars]
 RPC_URL = "https://sepolia.base.org"
 CHAIN_ID = "84532"
-POLLS = "0xaD174b869FD926c249AE6e9516e58D0901b9aD6E"   # deployment 5 (Decision #62)
+POLLS = "0x5DcBFaA0111d75047AACa970bbb429e2e6fD396d"   # deployment 6 (review of deployment 5)
 POLL_IDS = "1"   # the pilot's first poll
 REGISTRY = "0x945cBfd04c6Bda5E2eC3Ce48d0Ce52cDFbA3784b"   # IdentityRegistry (deployment 5): registrations enter the tree at once
 
