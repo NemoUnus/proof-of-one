@@ -249,9 +249,43 @@ object Ui {
         }
     }
 
+    /**
+     * The project's logo (docs/logo.svg), drawn from its own geometry so that it stays sharp at
+     * any size and readable in dark mode: three open rings and a "1". The rings keep the logo's
+     * navy in light mode and turn light in dark mode; the "1" stays teal.
+     */
+    class Logo(ctx: Context, private val sizeDp: Int) : View(ctx) {
+        private val dark = c(ctx).bg == DARK.bg
+        private val ring = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND; color = if (dark) 0xFFCBD5E1.toInt() else 0xFF12233D.toInt() }
+        private val one = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND; color = if (dark) 0xFF2DD4BF.toInt() else 0xFF1F7F84.toInt() }
+        init { contentDescription = "Proof of One" }
+        override fun onMeasure(w: Int, h: Int) { val d = dp(context, sizeDp); setMeasuredDimension(View.MeasureSpec.getSize(w), d) }
+        override fun onDraw(cv: Canvas) {
+            val d = dp(context, sizeDp).toFloat(); val k = d / 120f
+            val ox = (width - d) / 2f
+            // In the SVG each ring is a dashed circle (radius, dash length, rotation); a dash
+            // drawn clockwise from the rotation is an arc of (dash / circumference) × 360°.
+            ring.strokeWidth = 6 * k
+            for ((r, dash, rot) in listOf(Triple(50f, 232f, 122f), Triple(38f, 178f, 118f), Triple(26f, 116f, 130f))) {
+                val sweep = dash / (2 * Math.PI.toFloat() * r) * 360f
+                cv.drawArc(android.graphics.RectF(ox + (60 - r) * k, (62 - r) * k, ox + (60 + r) * k, (62 + r) * k), rot, sweep, false, ring)
+            }
+            one.strokeWidth = 8 * k
+            val path = Path().apply { moveTo(ox + 52 * k, 57 * k); lineTo(ox + 61 * k, 49 * k); lineTo(ox + 61 * k, 80 * k) }
+            cv.drawPath(path, one)
+        }
+    }
+
     /** A faint pattern of eight-pointed stars, as in tile and lattice work from many regions. */
     class Pattern(ctx: Context) : View(ctx) {
         private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x1FFFFFFF; style = Paint.Style.STROKE; strokeWidth = dp(ctx, 1).toFloat() }
+        // No height of its own: the header's height comes from its title row, and the pattern
+        // then fills it (FrameLayout measures it again at that exact height). Without this, a
+        // match-parent child of a wrap-content header took the whole screen (v0.14 on a phone).
+        override fun onMeasure(w: Int, h: Int) {
+            val height = if (View.MeasureSpec.getMode(h) == View.MeasureSpec.EXACTLY) View.MeasureSpec.getSize(h) else 0
+            setMeasuredDimension(View.MeasureSpec.getSize(w), height)
+        }
         override fun onDraw(cv: Canvas) {
             val s = dp(context, 34).toFloat()
             var y = s / 2; var row = 0

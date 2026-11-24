@@ -114,8 +114,8 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
     private fun welcome() {
         val pg = Ui.page(this, t("appName"), 0) { menu() }
         val c = Ui.c(this)
-        pg.content.addView(Ui.symbol(this, "◈", c.primary))
-        pg.content.addView(Ui.heading(this, t("welcomeTitle")))
+        pg.content.addView(Ui.Logo(this, 128))
+        pg.content.addView(Ui.heading(this, t("welcomeTitle")).apply { gravity = android.view.Gravity.CENTER })
         pg.content.addView(Ui.body(this, t("welcomeBody")))
         val steps = Ui.card(this, tint = true)
         for (i in 1..6) steps.addView(Ui.body(this, "${i}. ${t("st${i}Long")}"))
@@ -228,6 +228,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
     private fun home() {
         val pg = Ui.page(this, t("appName"), 0) { menu() }
         val c = Ui.c(this)
+        pg.content.addView(Ui.Logo(this, 72))
         val card = Ui.card(this, tint = true)
         card.addView(TextView(this).apply { text = "✓  " + t("memberActive"); textSize = 18f; typeface = Ui.font(context, true); setTextColor(c.good) })
         val st = Ui.note(this, t("regDone")); status = st; card.addView(st)
