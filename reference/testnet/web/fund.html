@@ -68,18 +68,29 @@ const RELAY = "0x3dB9d15202Bd291558889b42eb4291e288797fb9";    // the pilot rela
 const SEPOLIA = { chainId: "0xaa36a7", chainName: "Sepolia", rpcUrls: ["https://ethereum-sepolia-rpc.publicnode.com"], nativeCurrency: { name: "Sepolia ETH", symbol: "ETH", decimals: 18 }, blockExplorerUrls: ["https://sepolia.etherscan.io"] };
 const BASE_SEPOLIA = { chainId: "0x14a34", chainName: "Base Sepolia", rpcUrls: ["https://sepolia.base.org"], nativeCurrency: { name: "Sepolia ETH", symbol: "ETH", decimals: 18 }, blockExplorerUrls: ["https://sepolia.basescan.org"] };
 const EXPLORER = { 11155111: "https://sepolia.etherscan.io", 84532: "https://sepolia.basescan.org" };
-let provider, account;
+let account;
 $("relayAddr").textContent = RELAY;
 const msg = (t, cls) => { $("msg").className = cls || "mut"; $("msg").innerHTML = t; };
 const fmt = (wei) => Number(ethers.formatEther(wei)).toFixed(5) + " ETH";
 
+// MetaMask on phones answers some requests in ways ethers cannot read ("could not coalesce
+// error"), so the page talks to MetaMask directly and only for what needs the wallet: the
+// network switch and the signature. Simulation, gas and the receipt use public endpoints.
+const eth = (method, params) => window.ethereum.request({ method, params });
+const why = (e) => {
+  const parts = [e && e.code, e && (e.shortMessage || e.message), e && e.data && (e.data.message || JSON.stringify(e.data)), e && e.error && e.error.message];
+  return parts.filter((x) => x !== undefined && x !== null && x !== "").join(" · ") || String(e);
+};
 async function onChain(net) {
-  const want = parseInt(net.chainId, 16);
-  if (Number((await provider.getNetwork()).chainId) === want) return;
-  try { await window.ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: net.chainId }] }); }
-  catch (e) { await window.ethereum.request({ method: "wallet_addEthereumChain", params: [net] }); }
-  provider = new ethers.BrowserProvider(window.ethereum);
-  if (Number((await provider.getNetwork()).chainId) !== want) throw new Error("MetaMask is not on " + net.chainName);
+  if ((await eth("eth_chainId", [])).toLowerCase() === net.chainId) return;
+  try { await eth("wallet_switchEthereumChain", [{ chainId: net.chainId }]); }
+  catch (e) {
+    if (e && e.code === 4001) throw new Error("the network switch was declined in MetaMask");
+    // Sepolia is built into MetaMask and cannot be added; Base Sepolia can.
+    if (net.chainId === "0xaa36a7") throw new Error("MetaMask could not switch to Sepolia (" + why(e) + "). In MetaMask, turn on test networks, then try again.");
+    await eth("wallet_addEthereumChain", [net]);
+  }
+  if ((await eth("eth_chainId", [])).toLowerCase() !== net.chainId) throw new Error("MetaMask is not on " + net.chainName + " yet; try again");
 }
 
 // Balances are read from public endpoints, whatever network MetaMask shows.
@@ -93,8 +104,7 @@ async function balances() {
 
 async function connect() {
   try {
-    provider = new ethers.BrowserProvider(window.ethereum);
-    [account] = await provider.send("eth_requestAccounts", []);
+    [account] = await eth("eth_requestAccounts", []);
     $("who").innerHTML = "Connected as <code>" + account + "</code>";
     ["go1", "go2", "reload"].forEach((id) => ($(id).disabled = false));
     await balances();
@@ -104,24 +114,33 @@ async function connect() {
 
 async function send(net, to, amountField, what) {
   const btn = what === 1 ? $("go1") : $("go2");
+  const rpc = what === 1 ? l1 : l2;
   btn.disabled = true;
   try {
     const value = ethers.parseEther($(amountField).value.trim());
     if (value <= 0n || value > ethers.parseEther("1")) throw new Error("the amount must be more than 0 and at most 1 ETH");
+    // Simulate first, on a public endpoint: a transfer that would fail is not sent.
+    let gas;
+    try { gas = await rpc.estimateGas({ from: account, to, value }); }
+    catch (e) { throw new Error("the transfer would fail, so it was not sent (" + why(e) + ")"); }
     msg("Switching MetaMask to " + net.chainName + "… approve it if MetaMask asks.");
     await onChain(net);
-    const signer = await provider.getSigner();
-    // Simulate first: a transfer that would fail is not sent.
-    await provider.call({ from: account, to, value });
     msg("Approve the transaction in MetaMask: network <b>" + net.chainName + "</b>, amount <b>" + ethers.formatEther(value) + " ETH</b>, to <code>" + to + "</code>.");
-    const tx = await signer.sendTransaction({ to, value });
-    msg("Sent. Waiting for it to be included… <a target=_blank rel=noopener href='" + EXPLORER[parseInt(net.chainId, 16)] + "/tx/" + tx.hash + "'>see it on the explorer</a>");
-    const rc = await tx.wait();
+    let hash;
+    try {
+      hash = await eth("eth_sendTransaction", [{ from: account, to, value: ethers.toQuantity(value), gas: ethers.toQuantity(gas + gas / 4n) }]);
+    } catch (e) {
+      if (e && e.code === 4001) throw new Error("declined in MetaMask");
+      throw new Error("MetaMask did not send it (" + why(e) + ")");
+    }
+    msg("Sent. Waiting for it to be included… <a target=_blank rel=noopener href='" + EXPLORER[parseInt(net.chainId, 16)] + "/tx/" + hash + "'>see it on the explorer</a>");
+    const rc = await rpc.waitForTransaction(hash, 1, 180000);
+    if (!rc) throw new Error("not included after 3 minutes; check it on the explorer");
     if (rc.status !== 1) throw new Error("the transaction failed");
     msg(what === 1
       ? "Step 1 done. The coins arrive on Base Sepolia in about 5–15 minutes: press Refresh balances, then do step 2."
       : "Step 2 done: the relay has been funded.", "done");
-  } catch (e) { msg("Not sent: " + (e.shortMessage || e.message), "err"); }
+  } catch (e) { msg("Not sent: " + why(e), "err"); }
   btn.disabled = false;
   await balances();
 }
