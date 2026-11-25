@@ -1,7 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
 # Builds the test app (reference/android-prototype) on GitHub's servers and attaches the APK
-# to the run, so anyone can check that the published APK comes from this source. Test build
-# only: debug-signed, not for distribution.
+# to the run, so anyone can check that the published APK comes from this source. Test build,
+# not for distribution. Since v0.16 (Decision #67) it is a release build signed with the
+# pilot's one fixed key, held only in the repository's secrets POO_KEYSTORE_B64 and
+# POO_KEYSTORE_PASSWORD (made with reference/tools/signing-key/), so that each new version installs
+# over the previous one. The key is written to a temporary file for the build and deleted.
 # Since v0.2 the app includes the native prover (reference/native-prover, Rust), built here
 # for 64-bit ARM, and the ballot proof's TEST-ONLY key and witness graph as assets.
 # Since v0.5 it also makes the enrolment proof π_doc (suite 2) from a real passport's chip
@@ -154,15 +157,29 @@ jobs:
           unzip -o -q $RUNNER_TEMP/buffalo_sc.zip -d $RUNNER_TEMP/face
           cp $RUNNER_TEMP/face/det_500m.onnx $RUNNER_TEMP/face/w600k_mbf.onnx $A/
           (cd $A && sha256sum -c ../../../../face/models.sha256)
-      - name: Build the debug APK
+      - name: Build the signed APK
         working-directory: reference/android-prototype
-        run: gradle --no-daemon assembleDebug
-      - name: Checksum
-        run: sha256sum reference/android-prototype/app/build/outputs/apk/debug/app-debug.apk | tee apk-sha256.txt
+        env:
+          POO_KEYSTORE_B64: ${{ secrets.POO_KEYSTORE_B64 }}
+          POO_KEYSTORE_PASSWORD: ${{ secrets.POO_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -z "$POO_KEYSTORE_B64" ] || [ -z "$POO_KEYSTORE_PASSWORD" ]; then
+            echo "::error::The signing key is not set: add the secrets POO_KEYSTORE_B64 and POO_KEYSTORE_PASSWORD (reference/tools/signing-key/)."
+            exit 1
+          fi
+          export POO_KEYSTORE="$RUNNER_TEMP/pilot.p12"
+          echo "$POO_KEYSTORE_B64" | base64 -d > "$POO_KEYSTORE"
+          gradle --no-daemon assembleRelease
+          rm -f "$POO_KEYSTORE"
+      - name: Checksum and signing certificate
+        run: |
+          APK=reference/android-prototype/app/build/outputs/apk/release/app-release.apk
+          sha256sum $APK | tee apk-sha256.txt
+          $ANDROID_HOME/build-tools/$(ls $ANDROID_HOME/build-tools | sort -V | tail -1)/apksigner verify --print-certs $APK | tee -a apk-sha256.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: proof-of-one-reader-debug-apk
+          name: proof-of-one-pilot-apk
           path: |
-            reference/android-prototype/app/build/outputs/apk/debug/app-debug.apk
+            reference/android-prototype/app/build/outputs/apk/release/app-release.apk
             apk-sha256.txt
           retention-days: 30
