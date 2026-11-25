@@ -14,6 +14,7 @@ fun main(a: Array<String>) {
     val identity = c.address(polls, "identity"); val revocation = c.address(polls, "revocation")
     val slot = c.ballot(polls, BigInteger(pollId), BigInteger(nf))
     val root = c.uint(identity, "root")
+    val res = c.result(polls, BigInteger(pollId))
     val out = linkedMapOf(
         "chainId" to c.chainId().toString(),
         "identity" to identity, "revocation" to revocation,
@@ -29,6 +30,7 @@ fun main(a: Array<String>) {
         "leafIndex" to (c.findLeaf(identity, BigInteger(leaf))?.toString() ?: "null"),
         "leafAt0" to (c.leafAt(identity, 0)?.toString() ?: "null"),
         "ballotHash" to slot.ballotHash, "count" to slot.count.toString(),
+        "resultCounts" to res.counts.joinToString(","), "resultPublishedAt" to res.publishedAt.toString(),
         "keccakAbc" to Chain.hex(Keccak.k256("abc".toByteArray())),
     )
     println("{" + out.entries.joinToString(",") { "\"${it.key}\":\"${it.value}\"" } + "}")

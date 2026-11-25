@@ -193,6 +193,43 @@ object Ui {
     fun symbol(ctx: Context, s: String, color: Int) = TextView(ctx).apply {
         text = s; textSize = 44f; gravity = Gravity.CENTER; setTextColor(color); setPadding(0, dp(ctx, 8), 0, dp(ctx, 8))
     }
+    /** Persian and Arabic digits where they are the script's own (counts in sentences). */
+    fun digits(s: String): String = when (L10n.lang) {
+        "fa" -> s.map { if (it in '0'..'9') "۰۱۲۳۴۵۶۷۸۹"[it - '0'] else it }.joinToString("")
+        "ar" -> s.map { if (it in '0'..'9') "٠١٢٣٤٥٦٧٨٩"[it - '0'] else it }.joinToString("")
+        else -> s
+    }
+    /** A tappable row inside a card: text on the start side, an optional count and a chevron on the end. */
+    fun row(ctx: Context, title: String, sub: String?, side: String?, subColor: Int? = null, click: () -> Unit) = card(ctx).apply {
+        val p = c(ctx)
+        orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+        val col = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
+        col.addView(body(ctx, title).apply { typeface = font(ctx, true) })
+        if (sub != null) col.addView(note(ctx, sub).apply { if (subColor != null) setTextColor(subColor) })
+        addView(col, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        if (side != null) addView(TextView(ctx).apply {
+            text = side; textSize = 14f; typeface = font(ctx, true); setTextColor(p.primary); setPadding(dp(ctx, 10), 0, dp(ctx, 4), 0)
+        })
+        addView(TextView(ctx).apply { text = if (L10n.rtl) "‹" else "›"; textSize = 24f; setTextColor(p.muted); setPadding(dp(ctx, 6), 0, 0, dp(ctx, 2)) })
+        isClickable = true; isFocusable = true
+        foreground = RippleDrawable(ColorStateList.valueOf(0x221F7F84), null, rounded(Color.WHITE, dp(ctx, 12).toFloat()))
+        setOnClickListener { click() }
+    }
+    /** A thin result bar; [frac] of the width filled, from the start side; [strong] for the leading option. */
+    class Bar(ctx: Context, private val frac: Float, private val strong: Boolean) : View(ctx) {
+        private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+        override fun onMeasure(w: Int, h: Int) = setMeasuredDimension(View.MeasureSpec.getSize(w), dp(context, 8))
+        override fun onDraw(cv: Canvas) {
+            val p = c(context); val w = width.toFloat(); val h = height.toFloat(); val r = h / 2
+            paint.color = p.line
+            cv.drawRoundRect(0f, 0f, w, h, r, r, paint)
+            val f = w * frac.coerceIn(0f, 1f)
+            if (f <= 0f) return
+            paint.color = if (strong) p.primary else (p.primary and 0x00FFFFFF) or 0x73000000
+            val rtl = layoutDirection == View.LAYOUT_DIRECTION_RTL
+            if (rtl) cv.drawRoundRect(w - f, 0f, w, h, r, r, paint) else cv.drawRoundRect(0f, 0f, f, h, r, r, paint)
+        }
+    }
     /** Monospaced technical text (reports stay in English, left to right). */
     fun mono(ctx: Context) = TextView(ctx).apply {
         typeface = Typeface.MONOSPACE; textSize = 12f; setTextIsSelectable(true); setTextColor(c(ctx).muted); setPadding(0, dp(ctx, 8), 0, 0)

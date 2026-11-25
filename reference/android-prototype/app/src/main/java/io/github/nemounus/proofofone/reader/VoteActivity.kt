@@ -18,6 +18,10 @@
 //    the replaced ballot (rebuilt from the secret) to the contract, which subtracts it.
 // 4. Sent through the relay; the phone then reads the recorded ballot back from the chain and
 //    checks that it opens to the answer chosen.
+// 5. A closed poll shows its result instead (v0.15): the counts the contract accepted with a
+//    valid proof of the count (getResult), as bars; and, if this member's ballot is on the
+//    ledger, that it is counted, with the recorded answer shown on this phone only (R1). Before
+//    the trustees publish, "waiting for the count".
 // The secrets stay in member.json; the relay sees the nullifier, the ciphertexts and the proof,
 // as everyone does on the ledger, and the phone's network address.
 package io.github.nemounus.proofofone.reader
@@ -50,7 +54,10 @@ class VoteActivity : Activity() {
     private lateinit var options: RadioGroup
     private lateinit var send: Button
     private lateinit var share: Button
-    private val log = mutableListOf("Proof of One pilot ballot (app v0.14)")
+    private lateinit var summary: TextView      // result view: "n people answered · closed …"
+    private lateinit var bars: LinearLayout     // result view: one row and bar per option
+    private lateinit var after: LinearLayout    // result view: "your answer is counted", the note
+    private val log = mutableListOf("Proof of One pilot ballot (app v0.15)")
     @Volatile private var busy = false
 
     // what the screen was loaded with
@@ -63,7 +70,7 @@ class VoteActivity : Activity() {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE) // the answer is on screen: no screenshots
         L10n.load(this)
-        val pg = Ui.page(this, L10n.t("voteTitle"), 0) {
+        val pg = Ui.page(this, L10n.t(if (intent.getBooleanExtra("result", false)) "resultTitle" else "voteTitle"), 0) {
             Ui.menu(this, listOf(L10n.t("language") to { Ui.language(this) }, L10n.t("shareResult") to { shareLog() }))
         }
         val c = Ui.c(this)
@@ -71,9 +78,15 @@ class VoteActivity : Activity() {
         val qcard = Ui.card(this)
         question = Ui.heading(this, "").apply { visibility = View.GONE }
         qcard.addView(question)
+        summary = Ui.note(this, "").apply { visibility = View.GONE }
+        qcard.addView(summary)
         options = RadioGroup(this).apply { visibility = View.GONE }
         qcard.addView(options)
+        bars = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; visibility = View.GONE }
+        qcard.addView(bars)
         col.addView(qcard)
+        after = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; visibility = View.GONE }
+        col.addView(after)
         recordedView = Ui.body(this, "").apply { typeface = Ui.font(context, true); setTextColor(c.heading); visibility = View.GONE }
         col.addView(recordedView)
         status = Ui.status(this)
@@ -125,6 +138,9 @@ class VoteActivity : Activity() {
         val idRoot = chain.uint(identity, "root")
         val revRoot = chain.uint(revocation, "root")
         val slot = chain.ballot(polls, pid, java.math.BigInteger(nf))
+        // A published result: the counts the contract accepted with a valid proof of the count.
+        val res = if (cp.state == 3) chain.result(polls, pid) else null
+        if (res != null) log += "chain: result of poll $pollId read from the contract: ${res.counts.joinToString("·")}"
         val s = EnrolService(Registration.RELAY).state(pollId, null)
         if (!s.optString("polls").equals(polls, ignoreCase = true)) error("the relay serves another polls contract than this app's")
         val all = s.getJSONObject("identity").getJSONArray("leaves")
@@ -145,6 +161,7 @@ class VoteActivity : Activity() {
             .put("revocation", JSONObject().put("root", revRoot.toString()).put("revoked", s.getJSONObject("revocation").getJSONArray("revoked")))
             .put("ballot", JSONObject().put("ballotHash", slot.ballotHash).put("count", slot.count))
             .put("verifiedText", if (textOk) JSONObject(textJson) else JSONObject.NULL)
+            .put("result", if (res != null) JSONArray(res.counts.map { it.toString() }) else JSONObject.NULL)
             .put("now", System.currentTimeMillis() / 1000)
     }
 
@@ -158,9 +175,12 @@ class VoteActivity : Activity() {
                 if (m.optJSONObject("registered") == null) { say(L10n.t("voteNotRegistered")); return@Thread }
                 member = m
                 val relay = EnrolService(Registration.RELAY)
-                val ids = relay.status().optJSONArray("pollIds")
-                if (ids == null || ids.length() == 0) { say(L10n.t("voteNoPoll")); return@Thread }
-                val pollId = ids.getString(0)
+                // The poll chosen in the list (PollsActivity, v0.15); otherwise the relay's first.
+                val pollId = intent.getStringExtra("pollId") ?: run {
+                    val ids = relay.status().optJSONArray("pollIds")
+                    if (ids == null || ids.length() == 0) { say(L10n.t("voteNoPoll")); return@Thread }
+                    ids.getString(0)
+                }
                 val n = native("nullifier", JSONObject().put("member", m.getJSONObject("member")).put("pollId", pollId)).getString("nf")
                 nf = n
                 val s = try { verifiedState(pollId, n) } catch (e: NoPoll) { say(L10n.t("voteNoPoll")); return@Thread }
@@ -214,10 +234,7 @@ class VoteActivity : Activity() {
         recordedView.visibility = View.VISIBLE
         val state = p.optString("state")
         when {
-            state != "Open" || now >= close -> {
-                status.text = L10n.t("voteClosed", time(close)); options.isEnabled = false
-                for (i in 0 until options.childCount) options.getChildAt(i).isEnabled = false
-            }
+            state != "Open" || now >= close -> showResult(s, opts, state, time(close).substring(0, 10), text != null)
             now < open -> status.text = L10n.t("voteNotOpen", time(open))
             text == null -> {   // the relay's text does not match the poll's hash: nothing to choose from (review B1/F-02)
                 status.text = L10n.t("voteTextUnverified")
@@ -233,6 +250,62 @@ class VoteActivity : Activity() {
                 send.visibility = View.VISIBLE
             }
         }
+    }
+
+    /** The result view of a closed poll (v0.15). */
+    private fun showResult(s: JSONObject, opts: JSONArray, state: String, closed: String, textOk: Boolean) {
+        val pal = Ui.c(this)
+        options.visibility = View.GONE; recordedView.visibility = View.GONE; send.visibility = View.GONE
+        status.visibility = View.GONE
+        bars.removeAllViews(); after.removeAllViews()
+        bars.visibility = View.VISIBLE; after.visibility = View.VISIBLE; summary.visibility = View.VISIBLE
+        val r = recorded
+        val mine = if (r != null && !r.isNull("choice")) r.getInt("choice") else null
+        val counts = s.optJSONArray("result")
+        if (!textOk) bars.addView(Ui.note(this, L10n.t("voteTextUnverified")))
+        when {
+            state == "Final" && counts != null -> {
+                val n = (0 until counts.length()).map { counts.getString(it).toLong() }
+                val total = n.sum()
+                val top = n.maxOrNull() ?: 0L
+                summary.text = L10n.t("resultSummary", Ui.digits(total.toString()), closed)
+                for (i in 0 until minOf(n.size, opts.length())) {
+                    val lead = total > 0 && n[i] == top
+                    val frac = if (total > 0) n[i].toFloat() / total else 0f
+                    val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, Ui.dp(context, 12), 0, Ui.dp(context, 4)) }
+                    row.addView(Ui.body(this, opts.getString(i) + if (lead) " ✓" else "").apply { if (lead) { typeface = Ui.font(context, true); setTextColor(pal.primary) } },
+                        LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                    row.addView(Ui.note(this, "${Math.round(frac * 100)}% (${n[i]})").apply {
+                        layoutDirection = View.LAYOUT_DIRECTION_LTR; setPadding(Ui.dp(context, 10), Ui.dp(context, 4), 0, 0) })
+                    bars.addView(row)
+                    bars.addView(Ui.Bar(this, frac, lead))
+                }
+                if (mine != null) after.addView(countedCard(opts.optString(mine)))
+                else if ((s.optJSONObject("ballot")?.optInt("count") ?: 0) == 0) after.addView(Ui.note(this, L10n.t("resultNotAnswered")))
+                after.addView(Ui.note(this, L10n.t("resultNote")).apply { setPadding(0, Ui.dp(context, 12), 0, 0) })
+            }
+            state == "Open" -> {   // closed, not yet counted
+                summary.text = L10n.t("pollClosedOn", closed)
+                bars.addView(Ui.body(this, L10n.t("pollResultWait").replaceFirstChar { it.uppercase() }).apply { typeface = Ui.font(context, true); setPadding(0, Ui.dp(context, 12), 0, 0) })
+                bars.addView(Ui.note(this, L10n.t("resultWait")))
+                if (mine != null) after.addView(Ui.note(this, L10n.t("resultYours", opts.optString(mine))).apply { setPadding(0, Ui.dp(context, 8), 0, 0) })
+            }
+            else -> {   // withheld: not published in time
+                summary.text = L10n.t("pollClosedOn", closed)
+                bars.addView(Ui.body(this, L10n.t("resultNone")).apply { setPadding(0, Ui.dp(context, 12), 0, 0) })
+            }
+        }
+    }
+
+    /** The green card: this member's ballot is in the published result; its answer, on this phone only. */
+    private fun countedCard(answer: String) = Ui.card(this).apply {
+        val pal = Ui.c(context)
+        background = android.graphics.drawable.GradientDrawable().apply {
+            setColor((pal.good and 0x00FFFFFF) or 0x1A000000); cornerRadius = Ui.dp(context, 12).toFloat()
+            setStroke(Ui.dp(context, 1), (pal.good and 0x00FFFFFF) or 0x55000000)
+        }
+        addView(Ui.body(context, "✓ " + L10n.t("resultCounted")).apply { typeface = Ui.font(context, true); setTextColor(pal.good) })
+        addView(Ui.note(context, L10n.t("resultYours", answer)).apply { setTextColor(pal.text) })
     }
 
     private fun submit() {

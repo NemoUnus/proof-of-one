@@ -40,6 +40,8 @@ class EnrolService(private val base: String = BASE) {
     fun register(body: JSONObject) = call("POST", "/register", body)
     /** On the relay: its configuration (the polls it accepts, the identity registry). */
     fun status() = call("GET", "/")
+    /** On the relay (v0.15): the texts of the polls it accepts; checked against the chain by the app. */
+    fun polls() = call("GET", "/polls")
     /** On the relay (Decision #62): the registries, the poll and its text, and the ballot recorded for nf. */
     fun state(pollId: String, nf: String?) = call("GET", "/state?poll=$pollId" + (nf?.let { "&nf=$it" } ?: ""))
     /** On the relay: a ballot. */

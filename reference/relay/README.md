@@ -46,6 +46,7 @@ The other settings are in `wrangler.toml`: `RPC_URL`, `CHAIN_ID`, `POLLS`, `POLL
 | `POST /` | a ballot `{pollId, nf, idRoot, ct, prev, a, b, c}`: checked against the registry's roots, simulated, then sent with `vote()` |
 | `POST /register` | a phone's π_reg `{leaf, cn, a, b, c}`: simulated, then sent with `register()`; the membership enters the identity tree at once (Decision #62) |
 | `GET /state?poll=<id>[&nf=<nullifier>]` | everything a phone needs to answer a poll, read from the contracts at that moment: the identity leaves and root, the revoked handles and root, the poll's public values, its text ([`src/pilot-polls.json`](src/pilot-polls.json), whose hash the poll holds) and, with `nf`, the ballot recorded for it (hash and count), so that a phone can show the recorded answer |
+| `GET /polls` | the texts of the polls it accepts (`textJson`, with each poll's category), for the app's list; the app checks each against the poll's `metadataHash` on the chain |
 | `GET /` | the relay's account, balance and configuration |
 
 Every value `/state` returns is public on the ledger. From app v0.14 the phone uses only the two lists and the text from it, and checks them against values it reads from the contracts itself (the newest identity root and leaf count, the revocation root, `metadataHash`); the poll's key, times, policy and the recorded ballot come from the contracts, never from the relay (review of deployment 5, Decision #65).

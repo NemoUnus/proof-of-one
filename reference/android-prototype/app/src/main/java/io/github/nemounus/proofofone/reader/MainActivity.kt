@@ -235,7 +235,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         polls.addView(Ui.heading(this, t("pollsBtn")))
         polls.addView(Ui.body(this, t("pollsIntro")))
         pg.content.addView(polls)
-        pg.bottom.addView(Ui.primary(this, t("pollsBtn")) { startActivity(Intent(this, VoteActivity::class.java)) })
+        pg.bottom.addView(Ui.primary(this, t("pollsBtn")) { startActivity(Intent(this, PollsActivity::class.java)) })
     }
 
     /** The member number (Decision #59), shown with the warning to keep it private. */
@@ -286,7 +286,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
                 Thread {
                     try {
                         val line = Registration.run(this)
-                        shareText = "Proof of One registration (app v0.13)\n$line"
+                        shareText = "Proof of One registration (app v0.15)\n$line"
                         registryChecked = true
                         runOnUiThread { checkRegistration() }
                     } catch (e: Registration.NotReady) {
@@ -294,7 +294,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
                     } catch (e: java.io.IOException) {
                         say(t("regOffline"), 2)
                     } catch (e: Throwable) {
-                        shareText = "Proof of One registration (app v0.13)\nFAILED: ${e.javaClass.simpleName}: ${e.message}"
+                        shareText = "Proof of One registration (app v0.15)\nFAILED: ${e.javaClass.simpleName}: ${e.message}"
                         say(t("regFailed", e.message ?: e.javaClass.simpleName), 2)
                     } finally { registering = false }
                 }.start()

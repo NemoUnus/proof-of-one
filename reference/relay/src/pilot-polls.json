@@ -81,6 +81,170 @@
      ]
     }
    }
+  },
+  {
+   "chainId": "84532",
+   "polls": "0x50Bd199Ff42FaBa4b4Bf5C545a84E91003D51F5F",
+   "pollId": "2",
+   "metadataHash": "0x8b7d68f8af53419d4355a66b451a2b72f6c6a84a8649cd26a93281a779c563dd",
+   "textJson": "{\"category\":\"social\",\"en\":{\"question\":\"Outside work, how many hours a day do you spend on your phone?\",\"options\":[\"Less than 1 hour\",\"1 to 3 hours\",\"3 to 5 hours\",\"More than 5 hours\"]},\"fa\":{\"question\":\"جدا از کار، روزی چند ساعت با گوشی وقت می‌گذرانید؟\",\"options\":[\"کمتر از ۱ ساعت\",\"۱ تا ۳ ساعت\",\"۳ تا ۵ ساعت\",\"بیشتر از ۵ ساعت\"]},\"ar\":{\"question\":\"خارج العمل، كم ساعة في اليوم تقضي على هاتفك؟\",\"options\":[\"أقل من ساعة\",\"من ساعة إلى ٣ ساعات\",\"من ٣ إلى ٥ ساعات\",\"أكثر من ٥ ساعات\"]},\"fr\":{\"question\":\"En dehors du travail, combien d'heures par jour passez-vous sur votre téléphone ?\",\"options\":[\"Moins d'une heure\",\"1 à 3 heures\",\"3 à 5 heures\",\"Plus de 5 heures\"]},\"es\":{\"question\":\"Fuera del trabajo, ¿cuántas horas al día pasa con el teléfono?\",\"options\":[\"Menos de 1 hora\",\"De 1 a 3 horas\",\"De 3 a 5 horas\",\"Más de 5 horas\"]},\"de\":{\"question\":\"Wie viele Stunden am Tag verbringen Sie außerhalb der Arbeit mit Ihrem Telefon?\",\"options\":[\"Weniger als 1 Stunde\",\"1 bis 3 Stunden\",\"3 bis 5 Stunden\",\"Mehr als 5 Stunden\"]},\"ru\":{\"question\":\"Сколько часов в день вне работы вы проводите в телефоне?\",\"options\":[\"Меньше 1 часа\",\"От 1 до 3 часов\",\"От 3 до 5 часов\",\"Больше 5 часов\"]},\"zh\":{\"question\":\"工作之外，您每天花多少小时在手机上？\",\"options\":[\"少于 1 小时\",\"1 到 3 小时\",\"3 到 5 小时\",\"超过 5 小时\"]}}",
+   "text": {
+    "category": "social",
+    "en": {
+     "question": "Outside work, how many hours a day do you spend on your phone?",
+     "options": [
+      "Less than 1 hour",
+      "1 to 3 hours",
+      "3 to 5 hours",
+      "More than 5 hours"
+     ]
+    },
+    "fa": {
+     "question": "جدا از کار، روزی چند ساعت با گوشی وقت می‌گذرانید؟",
+     "options": [
+      "کمتر از ۱ ساعت",
+      "۱ تا ۳ ساعت",
+      "۳ تا ۵ ساعت",
+      "بیشتر از ۵ ساعت"
+     ]
+    },
+    "ar": {
+     "question": "خارج العمل، كم ساعة في اليوم تقضي على هاتفك؟",
+     "options": [
+      "أقل من ساعة",
+      "من ساعة إلى ٣ ساعات",
+      "من ٣ إلى ٥ ساعات",
+      "أكثر من ٥ ساعات"
+     ]
+    },
+    "fr": {
+     "question": "En dehors du travail, combien d'heures par jour passez-vous sur votre téléphone ?",
+     "options": [
+      "Moins d'une heure",
+      "1 à 3 heures",
+      "3 à 5 heures",
+      "Plus de 5 heures"
+     ]
+    },
+    "es": {
+     "question": "Fuera del trabajo, ¿cuántas horas al día pasa con el teléfono?",
+     "options": [
+      "Menos de 1 hora",
+      "De 1 a 3 horas",
+      "De 3 a 5 horas",
+      "Más de 5 horas"
+     ]
+    },
+    "de": {
+     "question": "Wie viele Stunden am Tag verbringen Sie außerhalb der Arbeit mit Ihrem Telefon?",
+     "options": [
+      "Weniger als 1 Stunde",
+      "1 bis 3 Stunden",
+      "3 bis 5 Stunden",
+      "Mehr als 5 Stunden"
+     ]
+    },
+    "ru": {
+     "question": "Сколько часов в день вне работы вы проводите в телефоне?",
+     "options": [
+      "Меньше 1 часа",
+      "От 1 до 3 часов",
+      "От 3 до 5 часов",
+      "Больше 5 часов"
+     ]
+    },
+    "zh": {
+     "question": "工作之外，您每天花多少小时在手机上？",
+     "options": [
+      "少于 1 小时",
+      "1 到 3 小时",
+      "3 到 5 小时",
+      "超过 5 小时"
+     ]
+    }
+   }
+  },
+  {
+   "chainId": "84532",
+   "polls": "0x50Bd199Ff42FaBa4b4Bf5C545a84E91003D51F5F",
+   "pollId": "3",
+   "metadataHash": "0xa971b446392683c4fe9460fc707a5ffe935689ec2cc4d68dccf59dea4188668b",
+   "textJson": "{\"category\":\"regional\",\"en\":{\"question\":\"Where you live, what is the most important skill today's children need for the future?\",\"options\":[\"A foreign language\",\"Programming and technology\",\"A practical trade or craft\",\"Working with others and communication\"]},\"fa\":{\"question\":\"به نظر شما مهم‌ترین مهارتی که بچه‌های امروزِ جایی که زندگی می‌کنید برای آینده لازم دارند چیست؟\",\"options\":[\"زبان خارجی\",\"برنامه‌نویسی و فناوری\",\"مهارت فنی و حرفه‌ای (یک کار با دست)\",\"ارتباط با دیگران و کار گروهی\"]},\"ar\":{\"question\":\"في المكان الذي تعيش فيه، ما أهم مهارة يحتاجها أطفال اليوم للمستقبل؟\",\"options\":[\"لغة أجنبية\",\"البرمجة والتكنولوجيا\",\"مهارة مهنية أو حرفة يدوية\",\"التواصل مع الآخرين والعمل الجماعي\"]},\"fr\":{\"question\":\"Là où vous vivez, quelle est la compétence la plus importante dont les enfants d'aujourd'hui auront besoin pour l'avenir ?\",\"options\":[\"Une langue étrangère\",\"La programmation et la technologie\",\"Un métier manuel ou technique\",\"Travailler avec les autres et communiquer\"]},\"es\":{\"question\":\"Donde usted vive, ¿cuál es la habilidad más importante que los niños de hoy necesitan para el futuro?\",\"options\":[\"Un idioma extranjero\",\"Programación y tecnología\",\"Un oficio práctico o manual\",\"Trabajar con otros y comunicarse\"]},\"de\":{\"question\":\"Welche Fähigkeit brauchen Kinder dort, wo Sie leben, heute am meisten für die Zukunft?\",\"options\":[\"Eine Fremdsprache\",\"Programmieren und Technik\",\"Ein praktisches Handwerk\",\"Zusammenarbeit und Kommunikation\"]},\"ru\":{\"question\":\"Там, где вы живёте, какой навык сегодняшним детям важнее всего для будущего?\",\"options\":[\"Иностранный язык\",\"Программирование и технологии\",\"Практическое ремесло\",\"Работа с людьми и общение\"]},\"zh\":{\"question\":\"在您生活的地方，今天的孩子们为未来最需要的技能是什么？\",\"options\":[\"一门外语\",\"编程与技术\",\"一门实用的手艺或技能\",\"与人合作和沟通\"]}}",
+   "text": {
+    "category": "regional",
+    "en": {
+     "question": "Where you live, what is the most important skill today's children need for the future?",
+     "options": [
+      "A foreign language",
+      "Programming and technology",
+      "A practical trade or craft",
+      "Working with others and communication"
+     ]
+    },
+    "fa": {
+     "question": "به نظر شما مهم‌ترین مهارتی که بچه‌های امروزِ جایی که زندگی می‌کنید برای آینده لازم دارند چیست؟",
+     "options": [
+      "زبان خارجی",
+      "برنامه‌نویسی و فناوری",
+      "مهارت فنی و حرفه‌ای (یک کار با دست)",
+      "ارتباط با دیگران و کار گروهی"
+     ]
+    },
+    "ar": {
+     "question": "في المكان الذي تعيش فيه، ما أهم مهارة يحتاجها أطفال اليوم للمستقبل؟",
+     "options": [
+      "لغة أجنبية",
+      "البرمجة والتكنولوجيا",
+      "مهارة مهنية أو حرفة يدوية",
+      "التواصل مع الآخرين والعمل الجماعي"
+     ]
+    },
+    "fr": {
+     "question": "Là où vous vivez, quelle est la compétence la plus importante dont les enfants d'aujourd'hui auront besoin pour l'avenir ?",
+     "options": [
+      "Une langue étrangère",
+      "La programmation et la technologie",
+      "Un métier manuel ou technique",
+      "Travailler avec les autres et communiquer"
+     ]
+    },
+    "es": {
+     "question": "Donde usted vive, ¿cuál es la habilidad más importante que los niños de hoy necesitan para el futuro?",
+     "options": [
+      "Un idioma extranjero",
+      "Programación y tecnología",
+      "Un oficio práctico o manual",
+      "Trabajar con otros y comunicarse"
+     ]
+    },
+    "de": {
+     "question": "Welche Fähigkeit brauchen Kinder dort, wo Sie leben, heute am meisten für die Zukunft?",
+     "options": [
+      "Eine Fremdsprache",
+      "Programmieren und Technik",
+      "Ein praktisches Handwerk",
+      "Zusammenarbeit und Kommunikation"
+     ]
+    },
+    "ru": {
+     "question": "Там, где вы живёте, какой навык сегодняшним детям важнее всего для будущего?",
+     "options": [
+      "Иностранный язык",
+      "Программирование и технологии",
+      "Практическое ремесло",
+      "Работа с людьми и общение"
+     ]
+    },
+    "zh": {
+     "question": "在您生活的地方，今天的孩子们为未来最需要的技能是什么？",
+     "options": [
+      "一门外语",
+      "编程与技术",
+      "一门实用的手艺或技能",
+      "与人合作和沟通"
+     ]
+    }
+   }
   }
  ]
 }

@@ -219,7 +219,7 @@ Prepared by `plan7.js` (`web/plan7.json`, start nonce 19, deployer `0x6FbCf03F4b
 
 Reused: Poseidon(2), Poseidon(3), Poseidon(5), RevokeVerifier (deployment 1) and the TallyVerifier of deployment 3 (byte-for-byte the contracts the reference builds today). The identity registry starts empty, with the key set of plan 6; members enrol again with app v0.12, whose credentials carry `notBefore`, and register within minutes. The relay (`wrangler.toml`) points at the new polls contract and registry, and the workflow "Registry batches" is no longer needed.
 
-The poll: *"Pilot test poll: which part of the app should we improve first?"* (text in six languages in `../relay/src/pilot-polls.json`), adults on 24 November 2026, any document valid in November 2026 or later, up to 20 changes of answer, 3 of 5 synthetic trustees. Sent on 24 November 2026 (all 8 steps); its poll is not used for the pilot (Decision #65, deployment 6 below).
+The poll: *"Pilot test poll: which part of the app should we improve first?"* (text in six languages in `../relay/src/pilot-polls.json`), adults on 24 November 2026, any document valid in November 2026 or later, up to 20 changes of answer, 3 of 5 synthetic trustees. Not yet sent.
 
 
 ## Deployment 6: fixes from the review of deployment 5 (Decision #65)
@@ -233,9 +233,16 @@ Prepared by `plan8.js` (`web/plan8.json`, start nonce 26):
 | 1 | ProofOfOnePolls (review fixes B2, C5; registries and verifiers of deployment 5) | `0x50Bd199Ff42FaBa4b4Bf5C545a84E91003D51F5F` |
 | 2 | Create the pilot's poll (poll id 1 of deployment 6; 4 options, open for 14 days, text in eight languages) | `0x50Bd199Ff42FaBa4b4Bf5C545a84E91003D51F5F` |
 
-Reused from deployment 5: IdentityRegistry, RevocationRegistry, RegistrationVerifier, Groth16Verifier, BallotBatchVerifier, RecoveryVerifier; and Poseidon, RevokeVerifier, TallyVerifier from earlier deployments. The relay (`wrangler.toml`) and app v0.14 (`Chain.kt`) point at the new polls contract. Sent on 24 November 2026: both steps done at the planned addresses (polls contract `0x50Bd199Ff42FaBa4b4Bf5C545a84E91003D51F5F`, start nonce 26).
+Reused from deployment 5: IdentityRegistry, RevocationRegistry, RegistrationVerifier, Groth16Verifier, BallotBatchVerifier, RecoveryVerifier; and Poseidon, RevokeVerifier, TallyVerifier from earlier deployments. The relay (`wrangler.toml`) and app v0.14 (`Chain.kt`) point at the new polls contract. Not yet sent.
 
 
-## Poll 4: result (deployment 3, poll id 1 of `0xbfD100fC025Cd71b0D979F4D8FaE64a2Fa06FF58`)
+## Pilot polls 2 and 3 (deployment 6)
 
-Closed on 24 November 2026 at about 21:57 (Muscat). Read from the contract on the plan page: 3 distinct voters, ballot chain `0xa1ce2422557f3885ad34062a3e04e000257ea54b20fafe542b6c0c488ef4a470`. Decrypted by 3 of the 5 synthetic trustees with `publish.js`: **2 · 1 · 0 · 0**, as expected. Member 5 chose option 1 and member 6 option 2. Member 7's ballot, first cast by a "thief" for option 4, was replaced by member 7's recovery ballot for option 1, so the thief's ballot is not counted. The publish transaction with its tally proof is `web/publish4.json` (`?plan=publish4.json`).
+Prepared by `plan9.js` (`web/plan9.json`): two `createPoll` calls on `0x50Bd199Ff42FaBa4b4Bf5C545a84E91003D51F5F`, no new contracts.
+
+| Step | What |
+|---|---|
+| 1 | Create pilot poll 2 (social; 4 options, open for 14 days, text in eight languages) |
+| 2 | Create pilot poll 3 (regional; 4 options, open for 14 days, text in eight languages) |
+
+The relay accepts ballots for polls 1, 2 and 3 (`POLL_IDS`). Not yet sent.

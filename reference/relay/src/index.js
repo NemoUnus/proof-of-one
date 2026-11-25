@@ -187,6 +187,9 @@ export async function handle(request, env, deps = {}) {
     // Status, so the page can tell whether the relay is up and still has coins.
     const url = new URL(request.url);
     if (url.pathname === "/state") return state(url, env, provider);
+    // The texts of the polls this relay accepts (v0.15: the app's list of polls by category).
+    // The app shows a text only if its hash is the poll's metadataHash, read from the chain.
+    if (url.pathname === "/polls") return reply(200, { polls: env.POLLS, entries: allowed.map((id) => pollText(env, id)).filter(Boolean) });
     const bal = await provider.getBalance(wallet.address);
     return reply(200, { relay: wallet.address, chainId: String(env.CHAIN_ID), polls: env.POLLS, pollIds: allowed, registry: env.REGISTRY || null, balance: ethers.formatEther(bal) });
   }

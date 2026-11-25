@@ -14,6 +14,8 @@
 //   - the newest identity root and the number of leaves (root, leafCount), and the
 //     revocation root (root);
 //   - the ballot recorded for the member's nullifier (ballots);
+//   - a closed poll's published result: the four counts, which the contract accepted only
+//     with a valid proof of the count (getResult; v0.15);
 //   - after registration, the member's leaf at its position (getLeaves).
 // The poll's text is accepted only if the Keccak-256 of its exact bytes equals metadataHash.
 // The RPC endpoint sees the phone's network address and the nullifier it asks about, as the
@@ -45,6 +47,8 @@ class Chain(private val rpc: String = RPC, private val transport: ((String) -> S
                val maxBirthDay: Long, val minBirthDay: Long, val minExpiryMonth: Long, val requiredNat: Long, val maxRevotes: Int,
                val openTime: Long, val closeTime: Long, val metadataHash: String, val state: Int, val ctxHash: BigInteger)
     class Slot(val ballotHash: String, val count: Int)
+    /** A published result: the count for each option, and when it was published (0: not yet). */
+    class Result(val counts: List<BigInteger>, val publishedAt: Long)
 
     private var id = 0
     /** eth_call on the latest block; returns the result's hex digits. */
@@ -103,6 +107,15 @@ class Chain(private val rpc: String = RPC, private val transport: ((String) -> S
     fun ballot(polls: String, pollId: BigInteger, nf: BigInteger): Slot {
         val w = words(call(polls, selector("ballots(uint256,uint256)") + word(pollId) + word(nf)))
         return Slot(w[0].substring(0, 56), big(w[1]).toInt())
+    }
+    /**
+     * getResult returns a static struct of 16 words: counts[4], finalBallotChain, transcriptHash,
+     * archiveHash, D[4][2] (8 words), publishedAt. Only the counts and the time are used here.
+     */
+    fun result(polls: String, pollId: BigInteger): Result {
+        val w = words(call(polls, selector("getResult(uint256)") + word(pollId)))
+        if (w.size < 16) throw java.io.IOException("unexpected result record")
+        return Result((0 until 4).map { big(w[it]) }, big(w[15]).toLong())
     }
 }
 

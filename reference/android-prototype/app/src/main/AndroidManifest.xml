@@ -27,6 +27,7 @@
         <activity android:name=".FaceActivity" android:exported="false" />
         <activity android:name=".DocProofActivity" android:exported="false" />
         <activity android:name=".EnrolActivity" android:exported="false" />
+        <activity android:name=".PollsActivity" android:exported="false" />
         <activity android:name=".VoteActivity" android:exported="false" />
         <!-- Lets the camera app write the selfie into this app's cache; deleted once read. -->
         <provider android:name="androidx.core.content.FileProvider"
