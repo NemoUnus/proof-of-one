@@ -245,6 +245,88 @@
      ]
     }
    }
+  },
+  {
+   "chainId": "84532",
+   "polls": "0x50Bd199Ff42FaBa4b4Bf5C545a84E91003D51F5F",
+   "pollId": "4",
+   "metadataHash": "0x0c1e3ff44cd2d65b67e3cd07a12b2bb9f2af12ca313ab07174154129717bed88",
+   "textJson": "{\"category\":\"agenda\",\"en\":{\"question\":\"Which topic should one of the next pilot polls be about?\",\"options\":[\"Sleep and rest\",\"Reading and learning\",\"Food and cooking\",\"Travel and free time\"]},\"fa\":{\"question\":\"یکی از نظرسنجی‌های بعدی آزمایش درباره‌ی کدام موضوع باشد؟\",\"options\":[\"خواب و استراحت\",\"کتاب و یادگیری\",\"غذا و آشپزی\",\"سفر و اوقات فراغت\"]},\"ar\":{\"question\":\"عن أي موضوع ينبغي أن يكون أحد استطلاعات التجربة القادمة؟\",\"options\":[\"النوم والراحة\",\"القراءة والتعلّم\",\"الطعام والطبخ\",\"السفر وأوقات الفراغ\"]},\"fr\":{\"question\":\"Sur quel sujet devrait porter l'un des prochains sondages de l'essai ?\",\"options\":[\"Le sommeil et le repos\",\"La lecture et l'apprentissage\",\"La nourriture et la cuisine\",\"Les voyages et les loisirs\"]},\"es\":{\"question\":\"¿Sobre qué tema debería ser una de las próximas encuestas de la prueba?\",\"options\":[\"El sueño y el descanso\",\"La lectura y el aprendizaje\",\"La comida y la cocina\",\"Los viajes y el tiempo libre\"]},\"de\":{\"question\":\"Um welches Thema soll es in einer der nächsten Umfragen des Pilotversuchs gehen?\",\"options\":[\"Schlaf und Erholung\",\"Lesen und Lernen\",\"Essen und Kochen\",\"Reisen und Freizeit\"]},\"ru\":{\"question\":\"О какой теме должен быть один из следующих опросов пилотного испытания?\",\"options\":[\"Сон и отдых\",\"Чтение и учёба\",\"Еда и кулинария\",\"Путешествия и свободное время\"]},\"zh\":{\"question\":\"试点的下一次问卷之一应该关于哪个主题？\",\"options\":[\"睡眠与休息\",\"阅读与学习\",\"饮食与烹饪\",\"旅行与休闲\"]}}",
+   "text": {
+    "category": "agenda",
+    "en": {
+     "question": "Which topic should one of the next pilot polls be about?",
+     "options": [
+      "Sleep and rest",
+      "Reading and learning",
+      "Food and cooking",
+      "Travel and free time"
+     ]
+    },
+    "fa": {
+     "question": "یکی از نظرسنجی‌های بعدی آزمایش درباره‌ی کدام موضوع باشد؟",
+     "options": [
+      "خواب و استراحت",
+      "کتاب و یادگیری",
+      "غذا و آشپزی",
+      "سفر و اوقات فراغت"
+     ]
+    },
+    "ar": {
+     "question": "عن أي موضوع ينبغي أن يكون أحد استطلاعات التجربة القادمة؟",
+     "options": [
+      "النوم والراحة",
+      "القراءة والتعلّم",
+      "الطعام والطبخ",
+      "السفر وأوقات الفراغ"
+     ]
+    },
+    "fr": {
+     "question": "Sur quel sujet devrait porter l'un des prochains sondages de l'essai ?",
+     "options": [
+      "Le sommeil et le repos",
+      "La lecture et l'apprentissage",
+      "La nourriture et la cuisine",
+      "Les voyages et les loisirs"
+     ]
+    },
+    "es": {
+     "question": "¿Sobre qué tema debería ser una de las próximas encuestas de la prueba?",
+     "options": [
+      "El sueño y el descanso",
+      "La lectura y el aprendizaje",
+      "La comida y la cocina",
+      "Los viajes y el tiempo libre"
+     ]
+    },
+    "de": {
+     "question": "Um welches Thema soll es in einer der nächsten Umfragen des Pilotversuchs gehen?",
+     "options": [
+      "Schlaf und Erholung",
+      "Lesen und Lernen",
+      "Essen und Kochen",
+      "Reisen und Freizeit"
+     ]
+    },
+    "ru": {
+     "question": "О какой теме должен быть один из следующих опросов пилотного испытания?",
+     "options": [
+      "Сон и отдых",
+      "Чтение и учёба",
+      "Еда и кулинария",
+      "Путешествия и свободное время"
+     ]
+    },
+    "zh": {
+     "question": "试点的下一次问卷之一应该关于哪个主题？",
+     "options": [
+      "睡眠与休息",
+      "阅读与学习",
+      "饮食与烹饪",
+      "旅行与休闲"
+     ]
+    }
+   }
   }
  ]
 }

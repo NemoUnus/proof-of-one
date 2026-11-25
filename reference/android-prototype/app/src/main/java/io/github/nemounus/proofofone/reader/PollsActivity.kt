@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Proof of One — the polls, in two screens (app v0.15; founder's proposal, mockups approved).
 //
-// 1. The categories: polls about the project, social polls, and polls about the place where
-//    members live, each with a line of description and the number of its open polls.
+// 1. The categories: polls about the project, social polls, polls about the place where
+//    members live, and polls that choose the topics of later polls (v0.16), each with a line
+//    of description and the number of its open polls.
 // 2. One category's polls, in three groups:
 //      - open, not answered yet;
 //      - answered, still open (the answer can be changed until the poll closes);
@@ -43,13 +44,16 @@ class PollsActivity : Activity() {
         val CATEGORIES = listOf(
             Triple("project", "catProject", "catProjectDesc"),
             Triple("social", "catSocial", "catSocialDesc"),
-            Triple("regional", "catRegional", "catRegionalDesc"))
+            Triple("regional", "catRegional", "catRegionalDesc"),
+            // choosing the topics of later polls (Decisions #15 and #18, in a first, simple form)
+            Triple("agenda", "catAgenda", "catAgendaDesc"))
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         L10n.load(this)
+        if (!Profiles.guard(this)) return
         category = intent.getStringExtra("category")
         val title = CATEGORIES.firstOrNull { it.first == category }?.second?.let { L10n.t(it) } ?: L10n.t("pollsBtn")
         val pg = Ui.page(this, title, 0) { Ui.menu(this, listOf(L10n.t("language") to { Ui.language(this) })) }
@@ -60,6 +64,7 @@ class PollsActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        if (!Profiles.guard(this)) return
         load()   // again after answering, so that the groups are current
     }
 
@@ -69,7 +74,7 @@ class PollsActivity : Activity() {
         for (i in list.childCount - 1 downTo 1) list.removeViewAt(i)
         Thread {
             try {
-                val m = JSONObject(Registration.memberFile(this).readText())
+                val m = Profiles.read()
                 val s = m.getJSONObject("member").getString("s")
                 val chain = Chain()
                 val r = EnrolService(Registration.RELAY).polls()

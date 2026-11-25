@@ -18,6 +18,8 @@
 //    the replaced ballot (rebuilt from the secret) to the contract, which subtracts it.
 // 4. Sent through the relay; the phone then reads the recorded ballot back from the chain and
 //    checks that it opens to the answer chosen.
+// Before a ballot is proved, the member's face is checked on the phone against the chip photo's
+// template (FaceCheckActivity; v0.16, Decisions #54 and #67): a deterrent, not a defence.
 // 5. A closed poll shows its result instead (v0.15): the counts the contract accepted with a
 //    valid proof of the count (getResult), as bars; and, if this member's ballot is on the
 //    ledger, that it is counted, with the recorded answer shown on this phone only (R1). Before
@@ -57,7 +59,8 @@ class VoteActivity : Activity() {
     private lateinit var summary: TextView      // result view: "n people answered · closed …"
     private lateinit var bars: LinearLayout     // result view: one row and bar per option
     private lateinit var after: LinearLayout    // result view: "your answer is counted", the note
-    private val log = mutableListOf("Proof of One pilot ballot (app v0.15)")
+    private val log = mutableListOf("Proof of One pilot ballot (app v0.16)")
+    private var pendingChoice = -1
     @Volatile private var busy = false
 
     // what the screen was loaded with
@@ -70,6 +73,7 @@ class VoteActivity : Activity() {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE) // the answer is on screen: no screenshots
         L10n.load(this)
+        if (!Profiles.guard(this)) return
         val pg = Ui.page(this, L10n.t(if (intent.getBooleanExtra("result", false)) "resultTitle" else "voteTitle"), 0) {
             Ui.menu(this, listOf(L10n.t("language") to { Ui.language(this) }, L10n.t("shareResult") to { shareLog() }))
         }
@@ -141,6 +145,12 @@ class VoteActivity : Activity() {
         // A published result: the counts the contract accepted with a valid proof of the count.
         val res = if (cp.state == 3) chain.result(polls, pid) else null
         if (res != null) log += "chain: result of poll $pollId read from the contract: ${res.counts.joinToString("·")}"
+        // Statistics from public counters (Decision #66, point 1), for a closed poll.
+        val closedNow = cp.state != 1 || System.currentTimeMillis() / 1000 >= cp.closeTime
+        val stats = if (!closedNow) null else JSONObject()
+            .put("voters", chain.uintOf(polls, "distinctVoters", pid).toString())
+            .put("submissions", chain.uintOf(polls, "totalSubmissions", pid).toString())
+            .put("members", n.toString())
         val s = EnrolService(Registration.RELAY).state(pollId, null)
         if (!s.optString("polls").equals(polls, ignoreCase = true)) error("the relay serves another polls contract than this app's")
         val all = s.getJSONObject("identity").getJSONArray("leaves")
@@ -161,6 +171,7 @@ class VoteActivity : Activity() {
             .put("revocation", JSONObject().put("root", revRoot.toString()).put("revoked", s.getJSONObject("revocation").getJSONArray("revoked")))
             .put("ballot", JSONObject().put("ballotHash", slot.ballotHash).put("count", slot.count))
             .put("verifiedText", if (textOk) JSONObject(textJson) else JSONObject.NULL)
+            .put("stats", stats ?: JSONObject.NULL)
             .put("result", if (res != null) JSONArray(res.counts.map { it.toString() }) else JSONObject.NULL)
             .put("now", System.currentTimeMillis() / 1000)
     }
@@ -170,8 +181,7 @@ class VoteActivity : Activity() {
         say(L10n.t("voteLoading"))
         Thread {
             try {
-                val f = Registration.memberFile(this)
-                val m = JSONObject(f.readText())
+                val m = Profiles.read()
                 if (m.optJSONObject("registered") == null) { say(L10n.t("voteNotRegistered")); return@Thread }
                 member = m
                 val relay = EnrolService(Registration.RELAY)
@@ -263,6 +273,7 @@ class VoteActivity : Activity() {
         val mine = if (r != null && !r.isNull("choice")) r.getInt("choice") else null
         val counts = s.optJSONArray("result")
         if (!textOk) bars.addView(Ui.note(this, L10n.t("voteTextUnverified")))
+        s.optJSONObject("stats")?.let { st -> after.addView(statsCard(st)) }
         when {
             state == "Final" && counts != null -> {
                 val n = (0 until counts.length()).map { counts.getString(it).toLong() }
@@ -297,6 +308,19 @@ class VoteActivity : Activity() {
         }
     }
 
+    /**
+     * Statistics from the contract's public counters (Decision #66, point 1): how many took part
+     * of the memberships registered so far, and how many times answers were changed. Which
+     * answer anyone changed from or to is never known.
+     */
+    private fun statsCard(st: JSONObject) = Ui.card(this, tint = true).apply {
+        val voters = st.getString("voters").toLong(); val subs = st.getString("submissions").toLong(); val members = st.getString("members").toLong()
+        val pct = if (members > 0) Math.round(100.0 * voters / members) else 0
+        addView(Ui.note(context, L10n.t("statsTitle")).apply { typeface = Ui.font(context, true) })
+        addView(Ui.body(context, L10n.t("statTook", Ui.digits(voters.toString()), Ui.digits(members.toString()), Ui.digits(pct.toString()))))
+        addView(Ui.body(context, L10n.t("statChanges", Ui.digits(maxOf(0L, subs - voters).toString()))))
+    }
+
     /** The green card: this member's ballot is in the published result; its answer, on this phone only. */
     private fun countedCard(answer: String) = Ui.card(this).apply {
         val pal = Ui.c(context)
@@ -308,12 +332,32 @@ class VoteActivity : Activity() {
         addView(Ui.note(context, L10n.t("resultYours", answer)).apply { setTextColor(pal.text) })
     }
 
+    override fun onResume() { super.onResume(); if (!busy && !Profiles.isOpen()) Profiles.guard(this) }
+
+    /** The answer is chosen: first the face check on the phone (v0.16), then the ballot. */
     private fun submit() {
         val choice = options.checkedRadioButtonId - 1000
         if (choice < 0) { say(L10n.t("voteChoose")); return }
         val r = recorded
         if (r != null && !r.isNull("choice") && r.getInt("choice") == choice) { say(L10n.t("voteSame")); return }
         if (busy) return
+        pendingChoice = choice
+        @Suppress("DEPRECATION") startActivityForResult(Intent(this, FaceCheckActivity::class.java), 7)
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        @Suppress("DEPRECATION") super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != 7) return
+        if (resultCode != RESULT_OK) { say(L10n.t("faceCheckNeeded")); return }
+        log += "face check before the ballot: passed on the phone (similarity %.2f, threshold %.2f); no face data sent".format(
+            java.util.Locale.ROOT, data?.getFloatExtra("similarity", 0f) ?: 0f, FaceMatcher.THRESHOLD)
+        runOnUiThread { status.text = L10n.t("faceCheckOk") }
+        cast(pendingChoice)
+    }
+
+    private fun cast(choice: Int) {
+        if (choice < 0 || busy) return
         busy = true; send.isEnabled = false
         Thread {
             var stage = "state"

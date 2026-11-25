@@ -14,6 +14,8 @@
 //   - the newest identity root and the number of leaves (root, leafCount), and the
 //     revocation root (root);
 //   - the ballot recorded for the member's nullifier (ballots);
+//   - a closed poll's numbers of distinct voters and of ballots sent (distinctVoters,
+//     totalSubmissions), for the statistics shown with its result (Decision #66);
 //   - a closed poll's published result: the four counts, which the contract accepted only
 //     with a valid proof of the count (getResult; v0.15);
 //   - after registration, the member's leaf at its position (getLeaves).
@@ -85,6 +87,8 @@ class Chain(private val rpc: String = RPC, private val transport: ((String) -> S
     }
     fun address(contract: String, fn: String) = addr(words(call(contract, selector("$fn()")))[0])
     fun uint(contract: String, fn: String) = big(words(call(contract, selector("$fn()")))[0])
+    /** A view taking one uint256, e.g. distinctVoters(pollId), totalSubmissions(pollId). */
+    fun uintOf(contract: String, fn: String, arg: BigInteger) = big(words(call(contract, selector("$fn(uint256)") + word(arg)))[0])
     fun isHistoricalRoot(identity: String, root: BigInteger) = big(words(call(identity, selector("isHistoricalRoot(uint256)") + word(root)))[0]).signum() != 0
     fun leafAt(identity: String, index: Long): BigInteger? {
         // getLeaves(start, 1) returns a dynamic array: offset, length, element

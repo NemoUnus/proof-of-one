@@ -1,0 +1,2076 @@
+{
+  "title": "Proof of One — pilot poll 4 (agenda: the topic of a later poll) on deployment 6",
+  "warning": "TEST-ONLY trusted setups. Not audited. The test wallet never holds real funds.",
+  "chainId": "84532",
+  "deployer": "0x6FbCf03F4b89715df2c8F9cC77AF0D0C5a4b79dB",
+  "startNonce": 26,
+  "pollId": "4",
+  "tally": "proof",
+  "contracts": {
+    "Poseidon(2)": "0x9e36D27D0D0115D84843d8d011981bC6eA606143",
+    "RegistrationVerifier": "0xBddD70613128B2630Bb95F5Cb477adabF999700f",
+    "BatchInsertVerifier": "0xE7189a32CDA60b53A50AA7A8b4eB87A709a75b9A",
+    "IdentityRegistry": "0x945cBfd04c6Bda5E2eC3Ce48d0Ce52cDFbA3784b",
+    "RevokeVerifier": "0x566AB619149E1c2042f7E110e87287E2998C957e",
+    "RevocationRegistry": "0xb89Eff017fd6d29276937546E91aa267D65250B5",
+    "Groth16Verifier": "0xBb9E341C50f5195b331E53887cF73aad0E82887d",
+    "BallotBatchVerifier": "0x24ac6065CdE8356b7095CD45a34c2db5214fAf8A",
+    "Poseidon(3)": "0xec0f50Db7f16fE55C0b5D9Ac46712Dba340364a2",
+    "Poseidon(5)": "0x4Fa80650063584b60A5F3715C10CeA7b66221Ab8",
+    "ProofOfOnePolls": "0x50Bd199Ff42FaBa4b4Bf5C545a84E91003D51F5F",
+    "TallyVerifier": "0x44d6C45DF5fa0e8bF6Aa71855C1e83eaa919C0D6",
+    "RevocationRegistryV1": "0x417f4eA3AB48BaCD0A4a2f5A803f38f7d1983f1D",
+    "ProofOfOnePollsV1": "0x64Bf8A3db2D45a993304eBE228dcD7d81d6098CC",
+    "TallyVerifierV2": "0x370A01281c7DA95617361921c9127D22F54711EE",
+    "RecoveryVerifier": "0x802Cc43CD7a9beD92F09C782dae7E78a0D1Dfda3",
+    "ProofOfOnePollsV2": "0xe452f371DF42b58a022a6C0F3F7f46507b7fe4bB",
+    "DocVerifier": "0x78657778ee5C48Fd4FB792884b9C660D48D31de8",
+    "RegistrationVerifierV1": "0xa6D84C4D8bc530B18Df96432611dfC59fbC1d074",
+    "IdentityRegistryV1": "0xcb01c33b24b4CAC194B6eE6a649Aef413c307091",
+    "RevocationRegistryV2": "0x722d4FCe8f71337062205497bB92f4de484C67C6",
+    "Groth16VerifierV1": "0x78A67338C3e88b14b96e8beC6e333BB341589a31",
+    "BallotBatchVerifierV1": "0x6Ee5a6318Bb624B550B2Eccee4F3DF88DAD55523",
+    "RecoveryVerifierV1": "0x11BC41b865006fafb9110354b804E0Bf367B9ddB",
+    "ProofOfOnePollsV3": "0xbfD100fC025Cd71b0D979F4D8FaE64a2Fa06FF58",
+    "ProofOfOnePollsV4": "0xaD174b869FD926c249AE6e9516e58D0901b9aD6E"
+  },
+  "keySet": {
+    "root": "3472063742960412377469484366739866747510628411572475512648978653190708911550"
+  },
+  "policy": {
+    "maxBirthDay": 39776,
+    "minBirthDay": 0,
+    "minExpiryMonth": 24323,
+    "requiredNat": 0
+  },
+  "abi": {
+    "ProofOfOnePolls": [
+      {
+        "inputs": [
+          {
+            "internalType": "contract IBallotVerifier",
+            "name": "verifier_",
+            "type": "address"
+          },
+          {
+            "internalType": "contract IBallotBatchVerifier",
+            "name": "batchVerifier_",
+            "type": "address"
+          },
+          {
+            "internalType": "contract IIdentityRegistry",
+            "name": "identity_",
+            "type": "address"
+          },
+          {
+            "internalType": "contract IRevocationRegistry",
+            "name": "revocation_",
+            "type": "address"
+          },
+          {
+            "internalType": "contract IPoseidon3",
+            "name": "p3",
+            "type": "address"
+          },
+          {
+            "internalType": "contract IPoseidon5",
+            "name": "p5",
+            "type": "address"
+          },
+          {
+            "internalType": "contract ITallyVerifier",
+            "name": "tallyVerifier_",
+            "type": "address"
+          },
+          {
+            "internalType": "contract IRecoveryVerifier",
+            "name": "recoveryVerifier_",
+            "type": "address"
+          }
+        ],
+        "stateMutability": "nonpayable",
+        "type": "constructor"
+      },
+      {
+        "inputs": [],
+        "name": "BadBatch",
+        "type": "error"
+      },
+      {
+        "inputs": [],
+        "name": "BadPartials",
+        "type": "error"
+      },
+      {
+        "inputs": [],
+        "name": "BadPrevious",
+        "type": "error"
+      },
+      {
+        "inputs": [],
+        "name": "BadState",
+        "type": "error"
+      },
+      {
+        "inputs": [],
+        "name": "BadTimes",
+        "type": "error"
+      },
+      {
+        "inputs": [],
+        "name": "BadTrustees",
+        "type": "error"
+      },
+      {
+        "inputs": [],
+        "name": "ChainMismatch",
+        "type": "error"
+      },
+      {
+        "inputs": [],
+        "name": "CountsMismatch",
+        "type": "error"
+      },
+      {
+        "inputs": [],
+        "name": "DeadlineNotReached",
+        "type": "error"
+      },
+      {
+        "inputs": [],
+        "name": "DecryptionMismatch",
+        "type": "error"
+      },
+      {
+        "inputs": [],
+        "name": "InvalidProof",
+        "type": "error"
+      },
+      {
+        "inputs": [],
+        "name": "InvalidTallyKey",
+        "type": "error"
+      },
+      {
+        "inputs": [],
+        "name": "InvalidTallyProof",
+        "type": "error"
+      },
+      {
+        "inputs": [],
+        "name": "NotClosed",
+        "type": "error"
+      },
+      {
+        "inputs": [],
+        "name": "NotInvited",
+        "type": "error"
+      },
+      {
+        "inputs": [],
+        "name": "NotSampled",
+        "type": "error"
+      },
+      {
+        "inputs": [],
+        "name": "PollNotOpen",
+        "type": "error"
+      },
+      {
+        "inputs": [],
+        "name": "Recovered",
+        "type": "error"
+      },
+      {
+        "inputs": [],
+        "name": "RevoteCapReached",
+        "type": "error"
+      },
+      {
+        "inputs": [],
+        "name": "SeedNotFixed",
+        "type": "error"
+      },
+      {
+        "inputs": [],
+        "name": "SeedTooEarly",
+        "type": "error"
+      },
+      {
+        "inputs": [],
+        "name": "TooManyVoters",
+        "type": "error"
+      },
+      {
+        "inputs": [],
+        "name": "UnknownRoot",
+        "type": "error"
+      },
+      {
+        "anonymous": false,
+        "inputs": [
+          {
+            "indexed": true,
+            "internalType": "uint256",
+            "name": "pollId",
+            "type": "uint256"
+          },
+          {
+            "indexed": true,
+            "internalType": "uint256",
+            "name": "nf",
+            "type": "uint256"
+          },
+          {
+            "indexed": false,
+            "internalType": "uint256[16]",
+            "name": "ciphertexts",
+            "type": "uint256[16]"
+          },
+          {
+            "indexed": false,
+            "internalType": "uint16",
+            "name": "count",
+            "type": "uint16"
+          }
+        ],
+        "name": "Ballot",
+        "type": "event"
+      },
+      {
+        "anonymous": false,
+        "inputs": [
+          {
+            "indexed": true,
+            "internalType": "uint256",
+            "name": "pollId",
+            "type": "uint256"
+          },
+          {
+            "indexed": false,
+            "internalType": "address",
+            "name": "creator",
+            "type": "address"
+          },
+          {
+            "indexed": false,
+            "internalType": "uint256",
+            "name": "idRoot",
+            "type": "uint256"
+          },
+          {
+            "indexed": false,
+            "internalType": "uint256",
+            "name": "revRoot",
+            "type": "uint256"
+          },
+          {
+            "indexed": false,
+            "internalType": "uint64",
+            "name": "openTime",
+            "type": "uint64"
+          },
+          {
+            "indexed": false,
+            "internalType": "uint64",
+            "name": "closeTime",
+            "type": "uint64"
+          },
+          {
+            "indexed": false,
+            "internalType": "bytes32",
+            "name": "metadataHash",
+            "type": "bytes32"
+          }
+        ],
+        "name": "PollCreated",
+        "type": "event"
+      },
+      {
+        "anonymous": false,
+        "inputs": [
+          {
+            "indexed": true,
+            "internalType": "uint256",
+            "name": "pollId",
+            "type": "uint256"
+          },
+          {
+            "indexed": false,
+            "internalType": "uint256",
+            "name": "revRoot",
+            "type": "uint256"
+          },
+          {
+            "indexed": false,
+            "internalType": "uint256",
+            "name": "pollHash",
+            "type": "uint256"
+          }
+        ],
+        "name": "PollRevocationRoot",
+        "type": "event"
+      },
+      {
+        "anonymous": false,
+        "inputs": [
+          {
+            "indexed": true,
+            "internalType": "uint256",
+            "name": "pollId",
+            "type": "uint256"
+          },
+          {
+            "indexed": true,
+            "internalType": "uint256",
+            "name": "nf",
+            "type": "uint256"
+          }
+        ],
+        "name": "RecoveryBallot",
+        "type": "event"
+      },
+      {
+        "anonymous": false,
+        "inputs": [
+          {
+            "indexed": true,
+            "internalType": "uint256",
+            "name": "pollId",
+            "type": "uint256"
+          }
+        ],
+        "name": "ResultFinal",
+        "type": "event"
+      },
+      {
+        "anonymous": false,
+        "inputs": [
+          {
+            "indexed": true,
+            "internalType": "uint256",
+            "name": "pollId",
+            "type": "uint256"
+          },
+          {
+            "indexed": false,
+            "internalType": "uint256[4]",
+            "name": "counts",
+            "type": "uint256[4]"
+          },
+          {
+            "indexed": false,
+            "internalType": "uint256[2][4]",
+            "name": "D",
+            "type": "uint256[2][4]"
+          },
+          {
+            "indexed": false,
+            "internalType": "uint256[]",
+            "name": "trustees",
+            "type": "uint256[]"
+          },
+          {
+            "indexed": false,
+            "internalType": "bytes32",
+            "name": "transcriptHash",
+            "type": "bytes32"
+          },
+          {
+            "indexed": false,
+            "internalType": "bytes32",
+            "name": "archiveHash",
+            "type": "bytes32"
+          }
+        ],
+        "name": "ResultPublished",
+        "type": "event"
+      },
+      {
+        "anonymous": false,
+        "inputs": [
+          {
+            "indexed": true,
+            "internalType": "uint256",
+            "name": "pollId",
+            "type": "uint256"
+          }
+        ],
+        "name": "ResultWithheld",
+        "type": "event"
+      },
+      {
+        "anonymous": false,
+        "inputs": [
+          {
+            "indexed": true,
+            "internalType": "uint256",
+            "name": "pollId",
+            "type": "uint256"
+          },
+          {
+            "indexed": false,
+            "internalType": "uint64",
+            "name": "threshold",
+            "type": "uint64"
+          },
+          {
+            "indexed": false,
+            "internalType": "uint64",
+            "name": "seedBlock",
+            "type": "uint64"
+          }
+        ],
+        "name": "SampledPoll",
+        "type": "event"
+      },
+      {
+        "anonymous": false,
+        "inputs": [
+          {
+            "indexed": true,
+            "internalType": "uint256",
+            "name": "pollId",
+            "type": "uint256"
+          },
+          {
+            "indexed": false,
+            "internalType": "uint256",
+            "name": "seed",
+            "type": "uint256"
+          }
+        ],
+        "name": "SeedFixed",
+        "type": "event"
+      },
+      {
+        "anonymous": false,
+        "inputs": [
+          {
+            "indexed": true,
+            "internalType": "uint256",
+            "name": "pollId",
+            "type": "uint256"
+          },
+          {
+            "indexed": false,
+            "internalType": "uint256[2][]",
+            "name": "keys",
+            "type": "uint256[2][]"
+          },
+          {
+            "indexed": false,
+            "internalType": "uint8",
+            "name": "threshold",
+            "type": "uint8"
+          }
+        ],
+        "name": "TrusteeKeys",
+        "type": "event"
+      },
+      {
+        "inputs": [],
+        "name": "K",
+        "outputs": [
+          {
+            "internalType": "uint256",
+            "name": "",
+            "type": "uint256"
+          }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "inputs": [],
+        "name": "MAX_TRUSTEES",
+        "outputs": [
+          {
+            "internalType": "uint8",
+            "name": "",
+            "type": "uint8"
+          }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "inputs": [],
+        "name": "MIN_DURATION",
+        "outputs": [
+          {
+            "internalType": "uint64",
+            "name": "",
+            "type": "uint64"
+          }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "inputs": [],
+        "name": "REVOCATION_GRACE",
+        "outputs": [
+          {
+            "internalType": "uint64",
+            "name": "",
+            "type": "uint64"
+          }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "inputs": [],
+        "name": "SEED_DELAY_BLOCKS",
+        "outputs": [
+          {
+            "internalType": "uint64",
+            "name": "",
+            "type": "uint64"
+          }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "inputs": [],
+        "name": "SNARK_FIELD",
+        "outputs": [
+          {
+            "internalType": "uint256",
+            "name": "",
+            "type": "uint256"
+          }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "inputs": [],
+        "name": "TALLY_T",
+        "outputs": [
+          {
+            "internalType": "uint8",
+            "name": "",
+            "type": "uint8"
+          }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "inputs": [],
+        "name": "WITHHOLD_DEADLINE",
+        "outputs": [
+          {
+            "internalType": "uint64",
+            "name": "",
+            "type": "uint64"
+          }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "inputs": [
+          {
+            "internalType": "uint256",
+            "name": "pollId",
+            "type": "uint256"
+          }
+        ],
+        "name": "aggregate",
+        "outputs": [
+          {
+            "internalType": "uint256[2][8]",
+            "name": "out",
+            "type": "uint256[2][8]"
+          }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "inputs": [
+          {
+            "internalType": "uint256",
+            "name": "",
+            "type": "uint256"
+          }
+        ],
+        "name": "ballotChain",
+        "outputs": [
+          {
+            "internalType": "bytes32",
+            "name": "",
+            "type": "bytes32"
+          }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "inputs": [
+          {
+            "internalType": "uint256",
+            "name": "",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "",
+            "type": "uint256"
+          }
+        ],
+        "name": "ballots",
+        "outputs": [
+          {
+            "internalType": "bytes28",
+            "name": "ballotHash",
+            "type": "bytes28"
+          },
+          {
+            "internalType": "uint32",
+            "name": "count",
+            "type": "uint32"
+          }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "inputs": [],
+        "name": "batchVerifier",
+        "outputs": [
+          {
+            "internalType": "contract IBallotBatchVerifier",
+            "name": "",
+            "type": "address"
+          }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "inputs": [
+          {
+            "internalType": "uint256",
+            "name": "pollId",
+            "type": "uint256"
+          }
+        ],
+        "name": "contextHash",
+        "outputs": [
+          {
+            "internalType": "uint256",
+            "name": "",
+            "type": "uint256"
+          }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "inputs": [
+          {
+            "components": [
+              {
+                "internalType": "uint256[2]",
+                "name": "tallyPK",
+                "type": "uint256[2]"
+              },
+              {
+                "internalType": "uint32",
+                "name": "maxBirthDay",
+                "type": "uint32"
+              },
+              {
+                "internalType": "uint32",
+                "name": "minBirthDay",
+                "type": "uint32"
+              },
+              {
+                "internalType": "uint32",
+                "name": "minExpiryMonth",
+                "type": "uint32"
+              },
+              {
+                "internalType": "uint32",
+                "name": "requiredNat",
+                "type": "uint32"
+              },
+              {
+                "internalType": "uint16",
+                "name": "maxRevotes",
+                "type": "uint16"
+              },
+              {
+                "internalType": "uint64",
+                "name": "openTime",
+                "type": "uint64"
+              },
+              {
+                "internalType": "uint64",
+                "name": "closeTime",
+                "type": "uint64"
+              },
+              {
+                "internalType": "bytes32",
+                "name": "metadataHash",
+                "type": "bytes32"
+              },
+              {
+                "internalType": "uint256[2][]",
+                "name": "trusteeKeys",
+                "type": "uint256[2][]"
+              },
+              {
+                "internalType": "uint8",
+                "name": "threshold",
+                "type": "uint8"
+              },
+              {
+                "internalType": "uint64",
+                "name": "sampleThreshold",
+                "type": "uint64"
+              }
+            ],
+            "internalType": "struct ProofOfOnePolls.PollParams",
+            "name": "p",
+            "type": "tuple"
+          }
+        ],
+        "name": "createPoll",
+        "outputs": [
+          {
+            "internalType": "uint256",
+            "name": "pollId",
+            "type": "uint256"
+          }
+        ],
+        "stateMutability": "nonpayable",
+        "type": "function"
+      },
+      {
+        "inputs": [
+          {
+            "internalType": "uint256",
+            "name": "pollId",
+            "type": "uint256"
+          }
+        ],
+        "name": "distinctVoters",
+        "outputs": [
+          {
+            "internalType": "uint256",
+            "name": "",
+            "type": "uint256"
+          }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "inputs": [
+          {
+            "internalType": "uint256",
+            "name": "pollId",
+            "type": "uint256"
+          }
+        ],
+        "name": "fixSeed",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+      },
+      {
+        "inputs": [
+          {
+            "internalType": "uint256",
+            "name": "pollId",
+            "type": "uint256"
+          }
+        ],
+        "name": "getPoll",
+        "outputs": [
+          {
+            "components": [
+              {
+                "internalType": "address",
+                "name": "creator",
+                "type": "address"
+              },
+              {
+                "internalType": "uint256",
+                "name": "idRoot",
+                "type": "uint256"
+              },
+              {
+                "internalType": "uint256",
+                "name": "revRoot",
+                "type": "uint256"
+              },
+              {
+                "internalType": "uint256",
+                "name": "eligible",
+                "type": "uint256"
+              },
+              {
+                "internalType": "uint256[2]",
+                "name": "tallyPK",
+                "type": "uint256[2]"
+              },
+              {
+                "internalType": "uint32",
+                "name": "maxBirthDay",
+                "type": "uint32"
+              },
+              {
+                "internalType": "uint32",
+                "name": "minBirthDay",
+                "type": "uint32"
+              },
+              {
+                "internalType": "uint32",
+                "name": "minExpiryMonth",
+                "type": "uint32"
+              },
+              {
+                "internalType": "uint32",
+                "name": "requiredNat",
+                "type": "uint32"
+              },
+              {
+                "internalType": "uint16",
+                "name": "maxRevotes",
+                "type": "uint16"
+              },
+              {
+                "internalType": "uint64",
+                "name": "openTime",
+                "type": "uint64"
+              },
+              {
+                "internalType": "uint64",
+                "name": "closeTime",
+                "type": "uint64"
+              },
+              {
+                "internalType": "bytes32",
+                "name": "metadataHash",
+                "type": "bytes32"
+              },
+              {
+                "internalType": "uint256",
+                "name": "pollHash",
+                "type": "uint256"
+              },
+              {
+                "internalType": "bytes32",
+                "name": "trusteeKeysHash",
+                "type": "bytes32"
+              },
+              {
+                "internalType": "uint8",
+                "name": "threshold",
+                "type": "uint8"
+              },
+              {
+                "internalType": "uint8",
+                "name": "trustees",
+                "type": "uint8"
+              },
+              {
+                "internalType": "uint64",
+                "name": "resultDeadline",
+                "type": "uint64"
+              },
+              {
+                "internalType": "enum ProofOfOnePolls.State",
+                "name": "state",
+                "type": "uint8"
+              }
+            ],
+            "internalType": "struct ProofOfOnePolls.Poll",
+            "name": "",
+            "type": "tuple"
+          }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "inputs": [
+          {
+            "internalType": "uint256",
+            "name": "pollId",
+            "type": "uint256"
+          }
+        ],
+        "name": "getResult",
+        "outputs": [
+          {
+            "components": [
+              {
+                "internalType": "uint256[4]",
+                "name": "counts",
+                "type": "uint256[4]"
+              },
+              {
+                "internalType": "bytes32",
+                "name": "finalBallotChain",
+                "type": "bytes32"
+              },
+              {
+                "internalType": "bytes32",
+                "name": "transcriptHash",
+                "type": "bytes32"
+              },
+              {
+                "internalType": "bytes32",
+                "name": "archiveHash",
+                "type": "bytes32"
+              },
+              {
+                "internalType": "uint256[2][4]",
+                "name": "D",
+                "type": "uint256[2][4]"
+              },
+              {
+                "internalType": "uint64",
+                "name": "publishedAt",
+                "type": "uint64"
+              }
+            ],
+            "internalType": "struct ProofOfOnePolls.Result",
+            "name": "",
+            "type": "tuple"
+          }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "inputs": [],
+        "name": "identity",
+        "outputs": [
+          {
+            "internalType": "contract IIdentityRegistry",
+            "name": "",
+            "type": "address"
+          }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "inputs": [
+          {
+            "internalType": "uint256",
+            "name": "pollId",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "nf",
+            "type": "uint256"
+          }
+        ],
+        "name": "invited",
+        "outputs": [
+          {
+            "internalType": "bool",
+            "name": "",
+            "type": "bool"
+          }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "inputs": [
+          {
+            "internalType": "uint256",
+            "name": "pollId",
+            "type": "uint256"
+          }
+        ],
+        "name": "markWithheld",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+      },
+      {
+        "inputs": [],
+        "name": "pollCount",
+        "outputs": [
+          {
+            "internalType": "uint256",
+            "name": "",
+            "type": "uint256"
+          }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "inputs": [
+          {
+            "internalType": "uint256",
+            "name": "",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "",
+            "type": "uint256"
+          }
+        ],
+        "name": "pollHashAt",
+        "outputs": [
+          {
+            "internalType": "uint256",
+            "name": "",
+            "type": "uint256"
+          }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "inputs": [],
+        "name": "poseidon3",
+        "outputs": [
+          {
+            "internalType": "contract IPoseidon3",
+            "name": "",
+            "type": "address"
+          }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "inputs": [],
+        "name": "poseidon5",
+        "outputs": [
+          {
+            "internalType": "contract IPoseidon5",
+            "name": "",
+            "type": "address"
+          }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "inputs": [
+          {
+            "internalType": "uint256",
+            "name": "pollId",
+            "type": "uint256"
+          },
+          {
+            "components": [
+              {
+                "internalType": "uint256[4]",
+                "name": "counts",
+                "type": "uint256[4]"
+              },
+              {
+                "internalType": "bytes32",
+                "name": "finalBallotChain",
+                "type": "bytes32"
+              },
+              {
+                "internalType": "bytes32",
+                "name": "transcriptHash",
+                "type": "bytes32"
+              },
+              {
+                "internalType": "bytes32",
+                "name": "archiveHash",
+                "type": "bytes32"
+              },
+              {
+                "internalType": "uint256[2][4]",
+                "name": "D",
+                "type": "uint256[2][4]"
+              },
+              {
+                "internalType": "uint64",
+                "name": "publishedAt",
+                "type": "uint64"
+              }
+            ],
+            "internalType": "struct ProofOfOnePolls.Result",
+            "name": "r",
+            "type": "tuple"
+          },
+          {
+            "internalType": "uint256[]",
+            "name": "trustees",
+            "type": "uint256[]"
+          },
+          {
+            "internalType": "uint256[2][]",
+            "name": "keys",
+            "type": "uint256[2][]"
+          },
+          {
+            "internalType": "uint256[2]",
+            "name": "a",
+            "type": "uint256[2]"
+          },
+          {
+            "internalType": "uint256[2][2]",
+            "name": "b",
+            "type": "uint256[2][2]"
+          },
+          {
+            "internalType": "uint256[2]",
+            "name": "c",
+            "type": "uint256[2]"
+          }
+        ],
+        "name": "publish",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+      },
+      {
+        "inputs": [
+          {
+            "internalType": "uint256",
+            "name": "",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "",
+            "type": "uint256"
+          }
+        ],
+        "name": "recovered",
+        "outputs": [
+          {
+            "internalType": "bool",
+            "name": "",
+            "type": "bool"
+          }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "inputs": [],
+        "name": "recoveryVerifier",
+        "outputs": [
+          {
+            "internalType": "contract IRecoveryVerifier",
+            "name": "",
+            "type": "address"
+          }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "inputs": [
+          {
+            "internalType": "uint256",
+            "name": "pollId",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "nf",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "idRootNow",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "idRoot",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256[16]",
+            "name": "ct",
+            "type": "uint256[16]"
+          },
+          {
+            "internalType": "uint256[16]",
+            "name": "prev",
+            "type": "uint256[16]"
+          },
+          {
+            "internalType": "uint256[2]",
+            "name": "pa",
+            "type": "uint256[2]"
+          },
+          {
+            "internalType": "uint256[2][2]",
+            "name": "pb",
+            "type": "uint256[2][2]"
+          },
+          {
+            "internalType": "uint256[2]",
+            "name": "pc",
+            "type": "uint256[2]"
+          }
+        ],
+        "name": "recoveryVote",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+      },
+      {
+        "inputs": [],
+        "name": "revocation",
+        "outputs": [
+          {
+            "internalType": "contract IRevocationRegistry",
+            "name": "",
+            "type": "address"
+          }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "inputs": [
+          {
+            "internalType": "uint256",
+            "name": "",
+            "type": "uint256"
+          }
+        ],
+        "name": "sampling",
+        "outputs": [
+          {
+            "internalType": "uint64",
+            "name": "threshold",
+            "type": "uint64"
+          },
+          {
+            "internalType": "uint64",
+            "name": "seedBlock",
+            "type": "uint64"
+          },
+          {
+            "internalType": "bool",
+            "name": "seedFixed",
+            "type": "bool"
+          },
+          {
+            "internalType": "uint256",
+            "name": "seed",
+            "type": "uint256"
+          }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "inputs": [],
+        "name": "tallyVerifier",
+        "outputs": [
+          {
+            "internalType": "contract ITallyVerifier",
+            "name": "",
+            "type": "address"
+          }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "inputs": [
+          {
+            "internalType": "uint256",
+            "name": "pollId",
+            "type": "uint256"
+          }
+        ],
+        "name": "totalSubmissions",
+        "outputs": [
+          {
+            "internalType": "uint256",
+            "name": "",
+            "type": "uint256"
+          }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "inputs": [],
+        "name": "verifier",
+        "outputs": [
+          {
+            "internalType": "contract IBallotVerifier",
+            "name": "",
+            "type": "address"
+          }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "inputs": [
+          {
+            "internalType": "uint256",
+            "name": "pollId",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "nf",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "idRoot",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256[16]",
+            "name": "ct",
+            "type": "uint256[16]"
+          },
+          {
+            "internalType": "uint256[16]",
+            "name": "prev",
+            "type": "uint256[16]"
+          },
+          {
+            "internalType": "uint256[2]",
+            "name": "pa",
+            "type": "uint256[2]"
+          },
+          {
+            "internalType": "uint256[2][2]",
+            "name": "pb",
+            "type": "uint256[2][2]"
+          },
+          {
+            "internalType": "uint256[2]",
+            "name": "pc",
+            "type": "uint256[2]"
+          }
+        ],
+        "name": "vote",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+      },
+      {
+        "inputs": [
+          {
+            "internalType": "uint256",
+            "name": "pollId",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256[]",
+            "name": "nfs",
+            "type": "uint256[]"
+          },
+          {
+            "internalType": "uint256[]",
+            "name": "idRoots",
+            "type": "uint256[]"
+          },
+          {
+            "internalType": "uint256[16][]",
+            "name": "cts",
+            "type": "uint256[16][]"
+          },
+          {
+            "components": [
+              {
+                "internalType": "uint256[2]",
+                "name": "a",
+                "type": "uint256[2]"
+              },
+              {
+                "internalType": "uint256[2][2]",
+                "name": "b",
+                "type": "uint256[2][2]"
+              },
+              {
+                "internalType": "uint256[2]",
+                "name": "c",
+                "type": "uint256[2]"
+              }
+            ],
+            "internalType": "struct IBallotBatchVerifier.Proof[]",
+            "name": "proofs",
+            "type": "tuple[]"
+          },
+          {
+            "internalType": "uint256[16][]",
+            "name": "prevs",
+            "type": "uint256[16][]"
+          }
+        ],
+        "name": "voteBatch",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+      }
+    ],
+    "IdentityRegistry": [
+      {
+        "inputs": [
+          {
+            "internalType": "contract IPoseidon2",
+            "name": "poseidon_",
+            "type": "address"
+          },
+          {
+            "internalType": "contract IRegistrationVerifier",
+            "name": "verifier_",
+            "type": "address"
+          },
+          {
+            "internalType": "uint256",
+            "name": "keySetRoot_",
+            "type": "uint256"
+          },
+          {
+            "internalType": "address",
+            "name": "governance_",
+            "type": "address"
+          }
+        ],
+        "stateMutability": "nonpayable",
+        "type": "constructor"
+      },
+      {
+        "inputs": [],
+        "name": "CredentialUsed",
+        "type": "error"
+      },
+      {
+        "inputs": [],
+        "name": "InvalidProof",
+        "type": "error"
+      },
+      {
+        "inputs": [],
+        "name": "NotGovernance",
+        "type": "error"
+      },
+      {
+        "inputs": [],
+        "name": "TreeFull",
+        "type": "error"
+      },
+      {
+        "anonymous": false,
+        "inputs": [
+          {
+            "indexed": false,
+            "internalType": "uint256",
+            "name": "keySetRoot",
+            "type": "uint256"
+          }
+        ],
+        "name": "KeySetUpdated",
+        "type": "event"
+      },
+      {
+        "anonymous": false,
+        "inputs": [
+          {
+            "indexed": true,
+            "internalType": "uint256",
+            "name": "leaf",
+            "type": "uint256"
+          },
+          {
+            "indexed": true,
+            "internalType": "uint256",
+            "name": "cn",
+            "type": "uint256"
+          },
+          {
+            "indexed": false,
+            "internalType": "uint256",
+            "name": "index",
+            "type": "uint256"
+          }
+        ],
+        "name": "Registered",
+        "type": "event"
+      },
+      {
+        "inputs": [],
+        "name": "DEPTH",
+        "outputs": [
+          {
+            "internalType": "uint256",
+            "name": "",
+            "type": "uint256"
+          }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "inputs": [
+          {
+            "internalType": "uint256",
+            "name": "",
+            "type": "uint256"
+          }
+        ],
+        "name": "credentialUsed",
+        "outputs": [
+          {
+            "internalType": "bool",
+            "name": "",
+            "type": "bool"
+          }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "inputs": [
+          {
+            "internalType": "uint256",
+            "name": "",
+            "type": "uint256"
+          }
+        ],
+        "name": "filledSubtrees",
+        "outputs": [
+          {
+            "internalType": "uint256",
+            "name": "",
+            "type": "uint256"
+          }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "inputs": [
+          {
+            "internalType": "uint256",
+            "name": "start",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "count",
+            "type": "uint256"
+          }
+        ],
+        "name": "getLeaves",
+        "outputs": [
+          {
+            "internalType": "uint256[]",
+            "name": "out",
+            "type": "uint256[]"
+          }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "inputs": [],
+        "name": "governance",
+        "outputs": [
+          {
+            "internalType": "address",
+            "name": "",
+            "type": "address"
+          }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "inputs": [
+          {
+            "internalType": "uint256",
+            "name": "",
+            "type": "uint256"
+          }
+        ],
+        "name": "isHistoricalRoot",
+        "outputs": [
+          {
+            "internalType": "bool",
+            "name": "",
+            "type": "bool"
+          }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "inputs": [],
+        "name": "keySetRoot",
+        "outputs": [
+          {
+            "internalType": "uint256",
+            "name": "",
+            "type": "uint256"
+          }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "inputs": [],
+        "name": "leafCount",
+        "outputs": [
+          {
+            "internalType": "uint256",
+            "name": "",
+            "type": "uint256"
+          }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "inputs": [],
+        "name": "poseidon",
+        "outputs": [
+          {
+            "internalType": "contract IPoseidon2",
+            "name": "",
+            "type": "address"
+          }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "inputs": [
+          {
+            "internalType": "uint256",
+            "name": "leaf",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "cn",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256[2]",
+            "name": "a",
+            "type": "uint256[2]"
+          },
+          {
+            "internalType": "uint256[2][2]",
+            "name": "b",
+            "type": "uint256[2][2]"
+          },
+          {
+            "internalType": "uint256[2]",
+            "name": "c",
+            "type": "uint256[2]"
+          }
+        ],
+        "name": "register",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+      },
+      {
+        "inputs": [],
+        "name": "registeredCount",
+        "outputs": [
+          {
+            "internalType": "uint256",
+            "name": "",
+            "type": "uint256"
+          }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "inputs": [],
+        "name": "root",
+        "outputs": [
+          {
+            "internalType": "uint256",
+            "name": "",
+            "type": "uint256"
+          }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "inputs": [
+          {
+            "internalType": "uint256",
+            "name": "",
+            "type": "uint256"
+          }
+        ],
+        "name": "rootTime",
+        "outputs": [
+          {
+            "internalType": "uint64",
+            "name": "",
+            "type": "uint64"
+          }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "inputs": [
+          {
+            "internalType": "uint256",
+            "name": "newRoot",
+            "type": "uint256"
+          }
+        ],
+        "name": "setKeySetRoot",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+      },
+      {
+        "inputs": [],
+        "name": "verifier",
+        "outputs": [
+          {
+            "internalType": "contract IRegistrationVerifier",
+            "name": "",
+            "type": "address"
+          }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "inputs": [
+          {
+            "internalType": "uint256",
+            "name": "",
+            "type": "uint256"
+          }
+        ],
+        "name": "zeros",
+        "outputs": [
+          {
+            "internalType": "uint256",
+            "name": "",
+            "type": "uint256"
+          }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      }
+    ],
+    "RevocationRegistry": [
+      {
+        "inputs": [
+          {
+            "internalType": "contract IRevokeVerifier",
+            "name": "verifier_",
+            "type": "address"
+          },
+          {
+            "internalType": "address",
+            "name": "enclaveOperator_",
+            "type": "address"
+          },
+          {
+            "internalType": "uint256",
+            "name": "initialRoot",
+            "type": "uint256"
+          }
+        ],
+        "stateMutability": "nonpayable",
+        "type": "constructor"
+      },
+      {
+        "inputs": [],
+        "name": "InvalidProof",
+        "type": "error"
+      },
+      {
+        "inputs": [],
+        "name": "NotOperator",
+        "type": "error"
+      },
+      {
+        "anonymous": false,
+        "inputs": [
+          {
+            "indexed": true,
+            "internalType": "uint256",
+            "name": "rn",
+            "type": "uint256"
+          },
+          {
+            "indexed": false,
+            "internalType": "uint8",
+            "name": "reason",
+            "type": "uint8"
+          },
+          {
+            "indexed": false,
+            "internalType": "uint256",
+            "name": "index",
+            "type": "uint256"
+          }
+        ],
+        "name": "Revoked",
+        "type": "event"
+      },
+      {
+        "inputs": [],
+        "name": "DEPTH",
+        "outputs": [
+          {
+            "internalType": "uint256",
+            "name": "",
+            "type": "uint256"
+          }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "inputs": [],
+        "name": "enclaveOperator",
+        "outputs": [
+          {
+            "internalType": "address",
+            "name": "",
+            "type": "address"
+          }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "inputs": [
+          {
+            "internalType": "uint256",
+            "name": "start",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "count",
+            "type": "uint256"
+          }
+        ],
+        "name": "getRevoked",
+        "outputs": [
+          {
+            "internalType": "uint256[]",
+            "name": "out",
+            "type": "uint256[]"
+          }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "inputs": [
+          {
+            "internalType": "uint256",
+            "name": "",
+            "type": "uint256"
+          }
+        ],
+        "name": "isHistoricalRoot",
+        "outputs": [
+          {
+            "internalType": "bool",
+            "name": "",
+            "type": "bool"
+          }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "inputs": [],
+        "name": "nextIndex",
+        "outputs": [
+          {
+            "internalType": "uint256",
+            "name": "",
+            "type": "uint256"
+          }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "inputs": [],
+        "name": "previousRoot",
+        "outputs": [
+          {
+            "internalType": "uint256",
+            "name": "",
+            "type": "uint256"
+          }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "inputs": [
+          {
+            "internalType": "uint256",
+            "name": "rn",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint8",
+            "name": "reason",
+            "type": "uint8"
+          },
+          {
+            "internalType": "uint256",
+            "name": "newRoot",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256[2]",
+            "name": "a",
+            "type": "uint256[2]"
+          },
+          {
+            "internalType": "uint256[2][2]",
+            "name": "b",
+            "type": "uint256[2][2]"
+          },
+          {
+            "internalType": "uint256[2]",
+            "name": "c",
+            "type": "uint256[2]"
+          }
+        ],
+        "name": "revoke",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+      },
+      {
+        "inputs": [],
+        "name": "revokedCount",
+        "outputs": [
+          {
+            "internalType": "uint256",
+            "name": "",
+            "type": "uint256"
+          }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "inputs": [],
+        "name": "root",
+        "outputs": [
+          {
+            "internalType": "uint256",
+            "name": "",
+            "type": "uint256"
+          }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "inputs": [],
+        "name": "rootSince",
+        "outputs": [
+          {
+            "internalType": "uint64",
+            "name": "",
+            "type": "uint64"
+          }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "inputs": [],
+        "name": "verifier",
+        "outputs": [
+          {
+            "internalType": "contract IRevokeVerifier",
+            "name": "",
+            "type": "address"
+          }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      }
+    ]
+  },
+  "txs": [
+    {
+      "step": 1,
+      "kind": "createPoll",
+      "name": "Create pilot poll 4 (agenda; 4 options, open for 14 days, text in eight languages)",
+      "to": "0x50Bd199Ff42FaBa4b4Bf5C545a84E91003D51F5F",
+      "params": {
+        "tallyPK": [
+          "13449614960702061342515433277144444818028754459825572078556925823249876705691",
+          "10645469650475967542672224866163774489431313771359540022686419435084269142836"
+        ],
+        "maxBirthDay": 39776,
+        "minBirthDay": 0,
+        "minExpiryMonth": 24323,
+        "requiredNat": 0,
+        "maxRevotes": 20,
+        "metadataHash": "0x0c1e3ff44cd2d65b67e3cd07a12b2bb9f2af12ca313ab07174154129717bed88",
+        "trusteeKeys": [
+          [
+            "2852472252211080526635685702114783514314883951146162823762619017862531434042",
+            "9531178287570025540463684736975402132772246149022793720772299029946925822590"
+          ],
+          [
+            "9317878226119342411880606631648033191183808212955411542587940469127707100234",
+            "606271416235609620859492897019503260872713576990244851916784452990087794735"
+          ],
+          [
+            "21204490284515124936615522997321999161188358131722779596658224755396782908206",
+            "18682396442473697227099168144475701748766045203253627709222728418933119469401"
+          ],
+          [
+            "18171055004836276825002437473690685908504487413272377943443188586751437931050",
+            "6899274310061029841878883584349995268650263890864037796108949158494876985849"
+          ],
+          [
+            "12945888547881431386927433748891679709229559977166884496853524483692205678827",
+            "172232524325634001495026122677178693560036331357976815943075598508236026078"
+          ]
+        ],
+        "threshold": 3,
+        "sampleThreshold": 0
+      },
+      "duration": "1209600",
+      "check": {
+        "type": "pollCount",
+        "min": 4
+      }
+    }
+  ]
+}

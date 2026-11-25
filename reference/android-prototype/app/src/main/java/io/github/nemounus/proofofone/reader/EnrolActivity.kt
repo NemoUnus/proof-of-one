@@ -17,8 +17,11 @@
 //   7. /backup: the member file, encrypted under the member's password and the backup seed.
 // When the person is already enrolled, the service answers with the encrypted backup instead,
 // and the member's password restores the same membership on this phone (#59).
-// The secrets and the credential are kept in this app's private storage (member.json);
-// uninstalling the app deletes them. The face, MRZ, document number, personal number and
+// The secrets and the credential are kept in this app's private storage, encrypted under the
+// member's password and the phone's secure hardware, as one of up to four members on this
+// phone (Profiles.kt; v0.16, Decision #67), with the chip photo's face template for the face
+// check before each ballot; the template is never sent and is not in the backup. Uninstalling
+// the app deletes them. The face, MRZ, document number, personal number and
 // name never leave the phone. TEST: TEST-ONLY proving key, test network, pilot service.
 package io.github.nemounus.proofofone.reader
 
@@ -53,6 +56,8 @@ class EnrolActivity : Activity() {
     private var report: TextView? = null
     private var pw1: EditText? = null
     private var pw2: EditText? = null
+    private var labelField: EditText? = null
+    @Volatile private var savedHere = false
     private var start: Button? = null
     private var restore: Button? = null
     private var bottom: LinearLayout? = null
@@ -84,7 +89,7 @@ class EnrolActivity : Activity() {
         L10n.load(this)
         window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
         when {
-            hasMember() -> done(t("alreadyHere"), true, JSONObject(memberFile().readText()).optString("number"))
+            Profiles.list(this).size >= Profiles.MAX -> stop(t("membersFull", Profiles.MAX))
             DocStore.chip == null -> stop(t("readFirst"))
             DocStore.chip?.dscDer == null -> stop(t("noCert"))
             // Clear reasons first, on the phone, before the face check (v0.10.1).
@@ -101,7 +106,7 @@ class EnrolActivity : Activity() {
         if (shareText.isNotEmpty()) t("shareResult") to { share() } else null))
     private fun share() = startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, shareText) }, "Share"))
 
-    private fun clear() { status = null; report = null; pw1 = null; pw2 = null; start = null; restore = null; faceStatus = null; selfieBtn = null; bottom = null }
+    private fun clear() { status = null; report = null; pw1 = null; pw2 = null; labelField = null; start = null; restore = null; faceStatus = null; selfieBtn = null; bottom = null }
 
     // ---- a reason to stop before step 3
     private fun stop(why: String) {
@@ -112,7 +117,7 @@ class EnrolActivity : Activity() {
         pg.bottom.addView(Ui.primary(this, t("back")) { finish() })
     }
 
-    // ---- step 3: information and consent (docs/pilot/consent-v0.3*.md; Decision #57, point 4)
+    // ---- step 3: information and consent (docs/pilot/consent-v0.4*.md; Decision #57, point 4)
     private fun consent() {
         page = P.CONSENT; clear()
         val pg = Ui.page(this, t("consentStep"), 3) { menu() }
@@ -120,7 +125,7 @@ class EnrolActivity : Activity() {
         val card = Ui.card(this, tint = true)
         card.addView(Ui.body(this, t("consentSummary")))
         card.addView(Ui.secondary(this, t("consentRead")) {
-            val f = if (L10n.lang == "fa") "consent-v0.3-fa.md" else "consent-v0.3.md"
+            val f = if (L10n.lang == "fa") "consent-v0.4-fa.md" else "consent-v0.4.md"
             startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/NemoUnus/proof-of-one/blob/main/docs/pilot/$f")))
         })
         pg.content.addView(card)
@@ -154,6 +159,10 @@ class EnrolActivity : Activity() {
     private fun password() {
         page = P.PASSWORD; clear()
         val pg = Ui.page(this, t("pwStep"), 5) { menu() }
+        val (b0, e0) = Ui.field(this, t("memberLabel"), t("memberLabelHint"))
+        e0.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_WORDS
+        if (Profiles.list(this).isEmpty()) e0.setText(t("memberSelf"))
+        pg.content.addView(b0); labelField = e0
         pg.content.addView(Ui.body(this, t("pwLabel")))
         val (b1, e1) = Ui.field(this, t("pw1"), "", password = true)
         val (b2, e2) = Ui.field(this, t("pw2"), "", password = true)
@@ -194,7 +203,6 @@ class EnrolActivity : Activity() {
         pg.bottom.addView(Ui.primary(this, t("next")) { finish() })
     }
 
-    private fun hasMember() = memberFile().exists() && Registration.state(this) !is Registration.State.Old
 
     /** The expiry date in the MRZ is before today (π_doc would refuse it: document_core, step 6). */
     private fun expired(c: DocInput.Chip): Boolean = try {
@@ -281,12 +289,24 @@ class EnrolActivity : Activity() {
         super.onDestroy(); selfie.delete(); matcher?.close()
     }
 
-    private fun memberFile() = File(filesDir, "member.json")
     // A restored membership registers again after its own random delay; if the old phone
     // had already registered it, the relay answers "already registered" and nothing is sent.
     private fun restored(plain: String, day: LocalDate): String =
         JSONObject(plain).put("restoredDay", day.toString()).put("registerAfter", Registration.pickTime()).toString()
-    private fun saveMember(j: String) { val tmp = File(filesDir, "member.json.part"); tmp.writeText(j); tmp.renameTo(memberFile()) }
+    /**
+     * Keeps the membership as a member of this phone, with the chip photo's face template
+     * (Decision #67). Returns null, or why it was not kept: the same membership is already here.
+     * Slow (Argon2): not on the UI thread.
+     */
+    private fun saveMember(j: String, password: String): String? {
+        val m = JSONObject(j)
+        Profiles.withNumber(this, m.optString("number"))?.let { return t("memberHere", it.label) }
+        chipFace?.let { m.put("face", Profiles.faceJson(it.embedding)) }
+        val label = labelField?.text?.toString()?.trim().orEmpty().ifEmpty { t("memberDefault", Profiles.list(this).size + 1) }
+        Profiles.create(this, label, password, m)
+        savedHere = true
+        return null
+    }
 
     private fun file(name: String): String {
         val f = File(filesDir, name)
@@ -305,6 +325,7 @@ class EnrolActivity : Activity() {
         restore?.let { Ui.enable(it, false) }
         thread {
             val plain = Backup.open(blob, pw, seed)
+            val notKept = plain?.let { saveMember(restored(it, LocalDate.now()), pw) }
             runOnUiThread {
                 restore?.let { Ui.enable(it, true) }
                 restoreTries++
@@ -313,9 +334,9 @@ class EnrolActivity : Activity() {
                     shareText += "\nretry $restoreTries: backup not opened (password)"
                     return@runOnUiThread
                 }
-                saveMember(restored(plain, LocalDate.now()))
-                shareText += "\nretry $restoreTries: RESTORED with the password"
                 pendingBackup = null; pendingSeed = null
+                if (notKept != null) { shareText += "\nretry $restoreTries: backup opened; this membership is already on this phone"; done(notKept, false, null); return@runOnUiThread }
+                shareText += "\nretry $restoreTries: RESTORED with the password"
                 done(L10n.t("restored"), true, JSONObject(plain).optString("number"))
             }
         }
@@ -332,7 +353,7 @@ class EnrolActivity : Activity() {
         if (password != pw2?.text.toString()) { say(t("pwDiffer"), 2); return }
         start?.let { Ui.enable(it, false) }
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        val log = mutableListOf("Proof of One pilot enrolment v0.15", "consent: information text v0.3 read and agreed",
+        val log = mutableListOf("Proof of One pilot enrolment v0.16", "consent: information text v0.4 read and agreed",
             "face check: passed on the phone (similarity %.2f, threshold %.2f, %d selfie%s); no face data sent".format(
                 java.util.Locale.ROOT, faceSim, FaceMatcher.THRESHOLD, faceTries, if (faceTries == 1) "" else "s"))
         fun step(s: String) = runOnUiThread { status?.let { Ui.say(it, s) } }
@@ -405,11 +426,12 @@ class EnrolActivity : Activity() {
                         log += "ALREADY ENROLLED: the service recognised this person" + if (b.isNull("backup")) " (no backup kept)" else " (encrypted backup returned)"
                         val blob = if (b.isNull("backup")) null else b.getString("backup")
                         val plain = blob?.let { Backup.open(it, password, backupSeed) }
-                        if (plain != null) saveMember(restored(plain, today))
-                        log += if (plain != null) "RESTORED with the password" else if (blob != null) "backup not opened (password)" else "nothing to restore"
+                        val notKept = plain?.let { saveMember(restored(it, today), password) }
+                        log += if (notKept != null) "backup opened; this membership is already on this phone" else if (plain != null) "RESTORED with the password; face template of the chip photo kept on this phone only" else if (blob != null) "backup not opened (password)" else "nothing to restore"
                         shareText = log.joinToString("\n")
                         runOnUiThread {
                             when {
+                                notKept != null -> done(notKept, false, null)
                                 plain != null -> done(t("already") + "\n\n" + t("restored"), true, number)
                                 blob != null -> {
                                     pendingBackup = blob; pendingSeed = backupSeed
@@ -436,8 +458,9 @@ class EnrolActivity : Activity() {
                     .put("credential", cred).put("msg", res.getString("msg"))
                     .put("serviceKeys", JSONObject().put("K", info.getJSONArray("K")).put("A", info.getJSONArray("A")).put("keyLeaf", info.getString("keyLeaf")))
                     .put("registerAfter", Registration.pickTime())
-                saveMember(saved.toString())
-                log += "ENROLLED: credential signed by the service and kept on this phone (member.json)"
+                saveMember(saved.toString(), password)?.let { error(it) }
+                log += "ENROLLED: credential signed by the service and kept on this phone, encrypted under the password and the phone's secure hardware"
+                log += "face template of the chip photo: kept on this phone only, encrypted; not in the backup"
                 log += "credential key equals the published key: ${if (cred.getJSONArray("A").toString() == info.getJSONArray("A").toString()) "yes" else "NO"}"
                 // The encrypted backup, in the same session (#59).
                 stage = "backup"; step(t("sBackup"))
@@ -451,7 +474,7 @@ class EnrolActivity : Activity() {
             } catch (e: EnrolService.Failure) {
                 log += "REFUSED at step '$stage' (HTTP ${e.status}): ${e.message}"
                 shareText = log.joinToString("\n")
-                runOnUiThread { say(explain(e, stage), 2); showDetailsButton(); start?.let { Ui.enable(it, !hasMember()) } }
+                runOnUiThread { say(explain(e, stage), 2); showDetailsButton(); start?.let { Ui.enable(it, !savedHere) } }
             } catch (e: Throwable) {
                 log += "ERROR at step '$stage': ${e.javaClass.simpleName}: ${e.message}"
                 shareText = log.joinToString("\n")
@@ -460,7 +483,7 @@ class EnrolActivity : Activity() {
                     stage == "proof" -> t("proofFail")
                     else -> t("error", stage, e.message ?: "")
                 }
-                runOnUiThread { say(why, 2); showDetailsButton(); start?.let { Ui.enable(it, !hasMember()) } }
+                runOnUiThread { say(why, 2); showDetailsButton(); start?.let { Ui.enable(it, !savedHere) } }
             } finally {
                 runOnUiThread { window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
             }

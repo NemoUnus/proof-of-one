@@ -8,6 +8,7 @@
 // The service that signed the credential cannot recognise leaf or cn. In the pilot the same
 // operator runs the service and the relay; with a delay of minutes it can more easily link a
 // person to their registry entry, never to their answers (#62).
+// From v0.16 the member file is the open member's, encrypted (Profiles.kt, Decision #67).
 package io.github.nemounus.proofofone.reader
 
 import android.content.Context
@@ -33,25 +34,25 @@ object Registration {
         class Done(val index: String?, val registry: String?) : State()
     }
 
-    fun memberFile(ctx: Context) = File(ctx.filesDir, "member.json")
+    /** The single, unencrypted member file of versions before 0.16; moved into Profiles on first start. */
+    fun legacyFile(ctx: Context) = File(ctx.filesDir, "member.json")
 
+    /** The open member's state; None when no member is open. */
     fun state(ctx: Context): State {
-        val f = memberFile(ctx); if (!f.exists()) return State.None
-        val m = JSONObject(f.readText())
+        if (!Profiles.isOpen()) return State.None
+        val m = Profiles.read()
         if (m.optInt("version", 0) < FORMAT) return State.Old
         m.optJSONObject("registered")?.let { return State.Done(it.optString("index").ifEmpty { null }, it.optString("registry").ifEmpty { null }) }
         return State.Waiting(m.optLong("registerAfter", 0L))
     }
 
     @Synchronized
-    private fun save(ctx: Context, m: JSONObject) {
-        val tmp = File(ctx.filesDir, "member.json.part"); tmp.writeText(m.toString()); tmp.renameTo(memberFile(ctx))
-    }
+    private fun save(ctx: Context, m: JSONObject) = Profiles.write(ctx, m)
 
     /** The relay now names another identity registry (a new deployment): register there too. */
     fun registryChanged(ctx: Context) {
-        val f = memberFile(ctx); if (!f.exists()) return
-        val m = JSONObject(f.readText())
+        if (!Profiles.isOpen()) return
+        val m = Profiles.read()
         m.remove("registered"); save(ctx, m.put("registerAfter", 0L))
     }
 
@@ -63,7 +64,8 @@ object Registration {
      */
     @Synchronized
     fun run(ctx: Context): String {
-        val m = JSONObject(memberFile(ctx).readText())
+        val id = Profiles.current
+        val m = Profiles.read()
         if (m.has("registered")) return "already registered"
         // The registry is the one the polls contract uses, read from the chain (review of
         // deployment 5, C2); the relay must be sending to the same one.
@@ -111,6 +113,8 @@ object Registration {
         if (index == null) throw java.io.IOException("the registration is not on the public ledger yet")
         val rec = JSONObject().put("leaf", leaf).put("day", LocalDate.now().toString()).put("registry", registry)
             .put("tx", r.optString("tx")).put("index", index.toString())
+        // the member may have been closed or switched while this ran
+        if (Profiles.current != id) throw java.io.IOException("the member was closed; registering again when it is opened")
         save(ctx, m.put("registered", rec))
         return if (r.optBoolean("already")) "registration: this credential was already on the ledger (restored membership)"
         else "registration: π_reg made and verified on the phone in $ms ms; sent through the relay; read back from the ledger at position $index"

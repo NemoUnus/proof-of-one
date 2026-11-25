@@ -31,6 +31,8 @@ fun main(a: Array<String>) {
         "leafAt0" to (c.leafAt(identity, 0)?.toString() ?: "null"),
         "ballotHash" to slot.ballotHash, "count" to slot.count.toString(),
         "resultCounts" to res.counts.joinToString(","), "resultPublishedAt" to res.publishedAt.toString(),
+        "distinctVoters" to c.uintOf(polls, "distinctVoters", BigInteger(pollId)).toString(),
+        "totalSubmissions" to c.uintOf(polls, "totalSubmissions", BigInteger(pollId)).toString(),
         "keccakAbc" to Chain.hex(Keccak.k256("abc".toByteArray())),
     )
     println("{" + out.entries.joinToString(",") { "\"${it.key}\":\"${it.value}\"" } + "}")

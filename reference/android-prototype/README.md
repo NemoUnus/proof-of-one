@@ -48,6 +48,17 @@ The secrets and the credential stay in the app's private storage (`member.json`,
 - **What it is not.** A check made on the phone can be bypassed by a modified app, and it does not detect a printed photo or a screen held to the camera. In the pilot it stops honest mistakes (someone else's passport picked up at home) and gives the measurements; the design's defences (the attested enclave's face comparison, Decision #33) are not in the pilot.
 - **Translated.** The face check's texts are in the six languages. The technical test tools (face check test, enrolment proof test, ballot proof benchmark) stay in English and are folded under **▸ Test tools (English)** on the first screen, so that volunteers do not meet them.
 
+### v0.16: several members on one phone, a face check before each answer (Decisions #54, #66, #67)
+
+- **Up to four members per phone.** The first screen lists them by a name each member chooses (kept only on the phone). Each opens with **their own password**, the one chosen at enrolment, which also protects the backup, so there is only one to remember (founder's choice). A member closes after five minutes without use; slower retries after five wrong passwords.
+- **Encrypted member files** (`Profiles.kt`). Each member file is encrypted twice: AES-256-GCM under Argon2id(password, salt; 64 MiB, 3 passes), then AES-256-GCM under a key held in the phone's secure hardware (Android Keystore) for that member, so a copied file cannot be attacked away from the phone. A membership kept by an earlier version (`member.json`) is moved into this store on first start, under a password the member chooses.
+- **Face template and the face check before each answer** (`FaceCheckActivity.kt`). At enrolment and restore, the 512-number ArcFace template of the chip photo is kept in the member's encrypted file; it is never sent and is not in the backup. Before each ballot, a selfie is compared with it on the phone (same threshold as enrolment, three tries); the selfie is deleted at once. A deterrent only: a modified app can skip it, and a face shows presence, not free choice (Decision #54).
+- **The same membership twice** on one phone is refused: the member file's SHA-256 of the member number is compared before a restored membership is kept.
+- **Statistics with each result** (Decision #66, point 1): how many took part of the memberships registered so far (`distinctVoters`, the registry's `leafCount`) and how many times answers were changed (`totalSubmissions − distinctVoters`), read from the contract. Breakdowns by group are not shown.
+- **A fourth category**: polls that choose the topic of a later poll (testnet `plan10.js`, poll 4).
+- **Consent text v0.4** (`docs/pilot/consent-v0.4*.md`): the face template, shared phones, statistics.
+- **One fixed signing key** (Decision #67, point 6): a release build signed in the workflow with the key from the repository's secrets, made once in the browser with [tools/signing-key](../tools/signing-key/). From this version on, updates install over the previous version.
+
 ### v0.15: polls by category (founder's proposal)
 
 - **Polls** opens two screens (mockups approved by the founder). First the three categories — *about the project*, *social* and *where you live* — each with a line of description and the number of its open polls. Then one category's polls, in three groups: *open, not answered yet*; *answered, still open* (the answer can be changed until the poll closes); and *finished*, each marked "result published", "waiting for the count" or "not published in time". The category is part of each poll's text, so it is bound by the poll's `metadataHash`; a poll is listed only if its text matches the hash read from the contract. Whether an answer is recorded comes from the contract, never which answer.
@@ -144,9 +155,9 @@ The benchmark screen's enrolment button now proves suite 2 from a synthetic pass
 
 ## Build
 
-The APK is built by GitHub Actions ([workflow](../../.github/workflows/android-prototype.yml)) on every change to this folder. Open the repository's **Actions** tab, choose the latest run of "Android chip reader (test build)" and download the artifact `proof-of-one-reader-debug-apk`. It contains the APK and its SHA-256.
+The APK is built by GitHub Actions ([workflow](../../.github/workflows/android-prototype.yml)) on every change to this folder. Open the repository's **Actions** tab, choose the latest run of "Android chip reader (test build)" and download the artifact `proof-of-one-pilot-apk`. It contains the APK, its SHA-256 and its signing certificate. Since v0.16 the APK is a release build signed with the pilot's one fixed key (Decision #67), kept only in the repository's secrets and made with [tools/signing-key](../tools/signing-key/); later versions install over earlier ones.
 
-To build locally: Android SDK (API 35), JDK 17 and Gradle 8.10; first build the native prover into `app/src/main/jniLibs/` and copy `ballot.graph`, `ballot_test.zkey` and `input.json` into `app/src/main/assets/`, as the workflow does; then `gradle assembleDebug` in this folder.
+To build locally: Android SDK (API 35), JDK 17 and Gradle 8.10; first build the native prover into `app/src/main/jniLibs/` and copy `ballot.graph`, `ballot_test.zkey` and `input.json` into `app/src/main/assets/`, as the workflow does; then `gradle assembleRelease` in this folder (without the pilot key, the local build is signed with the debug key and cannot replace an installed pilot app).
 
 ## Install on a phone
 

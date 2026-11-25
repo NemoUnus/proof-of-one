@@ -5,6 +5,11 @@
 // member's home; EnrolActivity holds steps 3–5:
 //   (welcome, once) → 1 passport details → 2 reading the chip → [3 information and consent →
 //   4 face check → 5 password and enrolment] → 6 registration on the public ledger → home.
+// From v0.16 (Decisions #54 and #67) a phone holds up to four members. With none, the app
+// opens on the welcome and step 1; otherwise on the list of members, each opened with their
+// own password (the one chosen at enrolment, also used for the backup). A member closes after
+// five minutes without use. A membership kept by an older version (member.json) is moved into
+// the encrypted store on first start, under a password the member chooses.
 // The three values from the passport's machine-readable zone open the chip (BAC/PACE); they
 // stay in memory only and are cleared after each read. The chip is checked on the phone. The
 // technical test tools are behind "⋮", with the language. The report that can be shared holds
@@ -31,12 +36,15 @@ import java.security.Security
 
 class MainActivity : Activity(), NfcAdapter.ReaderCallback {
 
-    private enum class P { WELCOME, DETAILS, CHIP, REG, HOME, OLD }
+    private enum class P { WELCOME, DETAILS, CHIP, REG, HOME, OLD, MEMBERS, UNLOCK, MIGRATE }
     private var page: P? = null
     private var nfc: NfcAdapter? = null
     private var key: BACKey? = null
     private var shareText = ""
-    private var reenrol = false            // an older membership chose to enrol again
+    private var adding = false             // enrolling one more member (or the first)
+    private var unlockId: String? = null   // the member whose password is being asked
+    private var wrongTries = 0
+    private var waitUntil = 0L
     private val timer = android.os.Handler(android.os.Looper.getMainLooper())
 
     // views of the current page (replaced when the page changes)
@@ -45,6 +53,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
     private var docNo: EditText? = null
     private var birth: EditText? = null
     private var expiry: EditText? = null
+    private var pw: EditText? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -58,6 +67,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
 
     override fun onResume() {
         super.onResume()
+        Profiles.isOpen()   // closes a member left unused for too long
         route()
         nfc?.enableReaderMode(this, this,
             NfcAdapter.FLAG_READER_NFC_A or NfcAdapter.FLAG_READER_NFC_B or NfcAdapter.FLAG_READER_SKIP_NDEF_CHECK, null)
@@ -72,13 +82,24 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
     private fun t(k: String, vararg a: Any) = L10n.t(k, *a)
     private val prefs get() = getSharedPreferences("prefs", Context.MODE_PRIVATE)
 
-    /** Which page the member's state calls for. */
+    /** Which page the members' state calls for. */
     private fun route() {
-        val want = when (Registration.state(this)) {
-            is Registration.State.None -> if (page == P.DETAILS || page == P.CHIP) page!! else if (prefs.getBoolean("welcomed", false)) P.DETAILS else P.WELCOME
-            is Registration.State.Old -> if (reenrol && (page == P.DETAILS || page == P.CHIP)) page!! else P.OLD
-            is Registration.State.Waiting -> P.REG
-            is Registration.State.Done -> P.HOME
+        val members = Profiles.list(this)
+        val enrolling = if (page == P.DETAILS || page == P.CHIP) page!! else if (members.isEmpty() && !prefs.getBoolean("welcomed", false)) P.WELCOME else P.DETAILS
+        val want = when {
+            Registration.legacyFile(this).exists() -> P.MIGRATE
+            !Profiles.isOpen() -> when {
+                adding || members.isEmpty() -> enrolling
+                unlockId != null && members.any { it.id == unlockId } -> P.UNLOCK
+                else -> P.MEMBERS
+            }
+            else -> { adding = false; unlockId = null
+                when (Registration.state(this)) {
+                    is Registration.State.None -> P.MEMBERS
+                    is Registration.State.Old -> P.OLD
+                    is Registration.State.Waiting -> P.REG
+                    is Registration.State.Done -> P.HOME
+                } }
         }
         if (want != page) show(want)
         if (want == P.REG || want == P.HOME) checkRegistration()
@@ -86,6 +107,10 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
 
     private fun menu() {
         val items = mutableListOf<Pair<String, () -> Unit>>(t("language") to { Ui.language(this) })
+        if (Profiles.isOpen()) {
+            items += t("switchMember") to { Profiles.lock(); route() }
+            items += t("removeMember") to { confirmRemove() }
+        }
         if (shareText.isNotEmpty()) items += t("shareReport") to { share(shareText) }
         if (FaceStore.chipPhoto != null) items += "Face check test (chip photo vs. a selfie)" to { startActivity(Intent(this, FaceActivity::class.java)) }
         if (DocStore.chip != null) items += "Enrolment proof test (from this passport)" to { startActivity(Intent(this, DocProofActivity::class.java)) }
@@ -99,7 +124,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
 
     private fun show(p: P) {
         page = p
-        status = null; report = null; docNo = null; birth = null; expiry = null
+        status = null; report = null; docNo = null; birth = null; expiry = null; pw = null
         when (p) {
             P.WELCOME -> welcome()
             P.DETAILS -> details()
@@ -107,6 +132,9 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             P.REG -> reg()
             P.HOME -> home()
             P.OLD -> old()
+            P.MEMBERS -> members()
+            P.UNLOCK -> unlock()
+            P.MIGRATE -> migrate()
         }
     }
 
@@ -140,6 +168,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             nfc == null -> Ui.say(st, t("noNfc"), 2)
             nfc?.isEnabled != true -> Ui.say(st, t("nfcOff"), 2)
         }
+        if (Profiles.list(this).isNotEmpty()) pg.bottom.addView(Ui.secondary(this, t("back")) { adding = false; route() })
         pg.bottom.addView(Ui.primary(this, t("next")) { arm() })
     }
 
@@ -210,7 +239,89 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
     private fun old() {
         val pg = Ui.page(this, t("appName"), 0) { menu() }
         pg.content.addView(Ui.body(this, t("regOld")))
-        pg.bottom.addView(Ui.primary(this, t("enrolAgain")) { reenrol = true; show(P.DETAILS) })
+        pg.bottom.addView(Ui.primary(this, t("enrolAgain")) { Profiles.removeCurrent(this); adding = true; show(P.DETAILS) })
+    }
+
+    // ---- the members of this phone (v0.16)
+    private fun members() {
+        val pg = Ui.page(this, t("appName"), 0) { menu() }
+        val list = Profiles.list(this)
+        pg.content.addView(Ui.Logo(this, 72))
+        pg.content.addView(Ui.heading(this, t("whichMember")).apply { gravity = android.view.Gravity.CENTER })
+        for (m in list) pg.content.addView(Ui.row(this, m.label, t("memberSince", m.added), null) { unlockId = m.id; wrongTries = 0; show(P.UNLOCK) })
+        pg.content.addView(Ui.note(this, t("membersNote")).apply { setPadding(0, Ui.dp(context, 12), 0, 0) })
+        if (list.size < Profiles.MAX) pg.bottom.addView(Ui.secondary(this, "+ " + t("addMember", list.size, Profiles.MAX)) { adding = true; show(P.DETAILS) })
+    }
+
+    // ---- opening a member with their password
+    private fun unlock() {
+        val m = Profiles.meta(this, unlockId ?: return) ?: run { unlockId = null; route(); return }
+        val pg = Ui.page(this, m.label, 0) { menu() }
+        pg.content.addView(Ui.Logo(this, 56))
+        pg.content.addView(Ui.body(this, t("unlockBody")))
+        val (b, e) = Ui.field(this, t("pw1"), "", password = true)
+        e.textDirection = View.TEXT_DIRECTION_LTR
+        pg.content.addView(b); pw = e
+        val st = Ui.status(this); status = st; pg.content.addView(st)
+        pg.content.addView(Ui.note(this, t("unlockForgot")).apply { setPadding(0, Ui.dp(context, 14), 0, 0) })
+        val open = Ui.primary(this, t("unlockBtn")) {}
+        open.setOnClickListener {
+            val now = System.currentTimeMillis()
+            if (now < waitUntil) { Ui.say(st, t("unlockWait", (waitUntil - now) / 1000 + 1), 2); return@setOnClickListener }
+            val p = e.text.toString(); if (p.isEmpty()) return@setOnClickListener
+            Ui.enable(open, false); Ui.say(st, t("unlocking"))
+            Thread {
+                val ok = try { Profiles.unlock(this, m.id, p) } catch (x: Exception) { false }
+                runOnUiThread {
+                    Ui.enable(open, true)
+                    if (ok) { wrongTries = 0; unlockId = null; e.text.clear(); route() }
+                    else {
+                        wrongTries++
+                        if (wrongTries >= 5) waitUntil = System.currentTimeMillis() + 30_000L * (wrongTries - 4)   // slower after five wrong tries
+                        Ui.say(st, t("unlockWrong"), 2); e.text.clear()
+                    }
+                }
+            }.start()
+        }
+        pg.bottom.addView(open)
+        pg.bottom.addView(Ui.secondary(this, t("backToMembers")) { unlockId = null; show(P.MEMBERS) })
+    }
+
+    // ---- a membership kept by an older version: protect it with a password (once)
+    private fun migrate() {
+        val pg = Ui.page(this, t("appName"), 0) { menu() }
+        pg.content.addView(Ui.body(this, t("migrateBody")))
+        val (b0, e0) = Ui.field(this, t("memberLabel"), t("memberLabelHint"))
+        e0.setText(t("memberSelf"))
+        val (b1, e1) = Ui.field(this, t("pw1"), "", password = true)
+        val (b2, e2) = Ui.field(this, t("pw2"), "", password = true)
+        pg.content.addView(b0); pg.content.addView(b1); pg.content.addView(b2)
+        val st = Ui.status(this); status = st; pg.content.addView(st)
+        val go = Ui.primary(this, t("migrateBtn")) {}
+        go.setOnClickListener {
+            val p1 = e1.text.toString()
+            if (p1.length < 8) { Ui.say(st, t("pwShort"), 2); return@setOnClickListener }
+            if (p1 != e2.text.toString()) { Ui.say(st, t("pwDiffer"), 2); return@setOnClickListener }
+            Ui.enable(go, false); Ui.say(st, t("unlocking"))
+            Thread {
+                try {
+                    val f = Registration.legacyFile(this)
+                    Profiles.create(this, e0.text.toString(), p1, JSONObject(f.readText()))
+                    f.delete()
+                    runOnUiThread { route() }
+                } catch (x: Exception) { runOnUiThread { Ui.enable(go, true); Ui.say(st, t("regFailed", x.message ?: x.javaClass.simpleName), 2) } }
+            }.start()
+        }
+        pg.bottom.addView(go)
+    }
+
+    private fun confirmRemove() {
+        val label = Profiles.current?.let { Profiles.meta(this, it)?.label } ?: return
+        android.app.AlertDialog.Builder(this)
+            .setMessage(t("removeAsk", label))
+            .setNegativeButton(t("back"), null)
+            .setPositiveButton(t("removeMember")) { _, _ -> Profiles.removeCurrent(this); route() }
+            .show()
     }
 
     // ---- step 6: registration on the public ledger
@@ -229,6 +340,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         val card = Ui.card(this, tint = true)
         card.addView(TextView(this).apply { text = "✓  " + t("memberActive"); textSize = 18f; typeface = Ui.font(context, true); setTextColor(c.good) })
         val st = Ui.note(this, t("regDone")); status = st; card.addView(st)
+        Profiles.current?.let { Profiles.meta(this, it) }?.let { m -> card.addView(Ui.note(this, t("memberIs", m.label))) }
         pg.content.addView(card)
         numberCard(pg.content)
         val polls = Ui.card(this)
@@ -240,7 +352,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
 
     /** The member number (Decision #59), shown with the warning to keep it private. */
     private fun numberCard(parent: android.widget.LinearLayout) {
-        val n = try { JSONObject(File(filesDir, "member.json").readText()).optString("number") } catch (e: Exception) { "" }
+        val n = try { Profiles.read().optString("number") } catch (e: Exception) { "" }
         if (n.isEmpty()) return
         val card = Ui.card(this)
         card.addView(Ui.note(this, t("yourNumber")))
@@ -277,7 +389,9 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
                 if (wait > 0) {
                     val at = java.time.Instant.ofEpochMilli(st.after).atZone(java.time.ZoneId.systemDefault())
                     say(t("regWaiting", at.format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))))
-                    timer.postDelayed({ checkRegistration() }, wait + 500)   // registers while the app stays open
+                    // registers while the app stays open; checked every minute, which also keeps the
+                    // member open while the app waits (members close after five minutes without use)
+                    timer.postDelayed({ checkRegistration() }, minOf(wait + 500, 60_000L))
                     return
                 }
                 if (registering) return
@@ -286,7 +400,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
                 Thread {
                     try {
                         val line = Registration.run(this)
-                        shareText = "Proof of One registration (app v0.15)\n$line"
+                        shareText = "Proof of One registration (app v0.16)\n$line"
                         registryChecked = true
                         runOnUiThread { checkRegistration() }
                     } catch (e: Registration.NotReady) {
@@ -294,7 +408,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
                     } catch (e: java.io.IOException) {
                         say(t("regOffline"), 2)
                     } catch (e: Throwable) {
-                        shareText = "Proof of One registration (app v0.15)\nFAILED: ${e.javaClass.simpleName}: ${e.message}"
+                        shareText = "Proof of One registration (app v0.16)\nFAILED: ${e.javaClass.simpleName}: ${e.message}"
                         say(t("regFailed", e.message ?: e.javaClass.simpleName), 2)
                     } finally { registering = false }
                 }.start()

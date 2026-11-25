@@ -233,7 +233,7 @@ Prepared by `plan8.js` (`web/plan8.json`, start nonce 26):
 | 1 | ProofOfOnePolls (review fixes B2, C5; registries and verifiers of deployment 5) | `0x50Bd199Ff42FaBa4b4Bf5C545a84E91003D51F5F` |
 | 2 | Create the pilot's poll (poll id 1 of deployment 6; 4 options, open for 14 days, text in eight languages) | `0x50Bd199Ff42FaBa4b4Bf5C545a84E91003D51F5F` |
 
-Reused from deployment 5: IdentityRegistry, RevocationRegistry, RegistrationVerifier, Groth16Verifier, BallotBatchVerifier, RecoveryVerifier; and Poseidon, RevokeVerifier, TallyVerifier from earlier deployments. The relay (`wrangler.toml`) and app v0.14 (`Chain.kt`) point at the new polls contract. Not yet sent.
+Reused from deployment 5: IdentityRegistry, RevocationRegistry, RegistrationVerifier, Groth16Verifier, BallotBatchVerifier, RecoveryVerifier; and Poseidon, RevokeVerifier, TallyVerifier from earlier deployments. The relay (`wrangler.toml`) and app v0.14 (`Chain.kt`) point at the new polls contract. Both steps were sent on 24 November 2026. Poll 1 is the pilot's first poll; the founder answered it with app v0.15 on 25 November.
 
 
 ## Pilot polls 2 and 3 (deployment 6)
@@ -245,4 +245,15 @@ Prepared by `plan9.js` (`web/plan9.json`): two `createPoll` calls on `0x50Bd199F
 | 1 | Create pilot poll 2 (social; 4 options, open for 14 days, text in eight languages) |
 | 2 | Create pilot poll 3 (regional; 4 options, open for 14 days, text in eight languages) |
 
-The relay accepts ballots for polls 1, 2 and 3 (`POLL_IDS`). Not yet sent.
+The relay accepts ballots for polls 1, 2 and 3 (`POLL_IDS`). Both steps were sent on 25 November 2026; the founder answered both with app v0.15 the same day.
+
+
+## Pilot poll 4: the topic of a later poll (deployment 6)
+
+Prepared by `plan10.js` (`web/plan10.json`): one `createPoll` call on `0x50Bd199Ff42FaBa4b4Bf5C545a84E91003D51F5F`, no new contracts. Founder's proposal of 25 November 2026: a fourth category, polls that choose what later polls ask about (a first, simple form of Decisions #15 and #18).
+
+| Step | What |
+|---|---|
+| 1 | Create pilot poll 4 (agenda: which of four everyday topics one of the next pilot polls is about; 4 options, open for 14 days, text in eight languages) |
+
+The relay accepts ballots for polls 1 to 4 (`POLL_IDS`). Not yet sent.

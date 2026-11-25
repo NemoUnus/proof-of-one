@@ -14,7 +14,7 @@
 //     (two phones, or a retry) share no random values, and only one is accepted;
 //   - the app's chain reader (android-prototype/app/.../Chain.kt), run on the JVM when
 //     CHAINCHECK_JAR is set, reads the same values from the contracts as ethers does.
-// Usage: node test/pilot.test.mjs ../testnet/web/plan7.json ../testnet/web/plan8.json [../testnet/web/plan9.json]
+// Usage: node test/pilot.test.mjs ../testnet/web/plan7.json ../testnet/web/plan8.json [../testnet/web/plan9.json [../testnet/web/plan10.json]]
 import { createRequire } from "module";
 import assert from "assert";
 import { handle } from "../src/index.js";
@@ -79,7 +79,7 @@ const registry = new ethers.Contract(old.IdentityRegistry, plan.abi.IdentityRegi
 assert.strictEqual((await registry.keySetRoot()).toString(), plan.keySet.root);
 
 const pilot = JSON.parse(fs.readFileSync(path.join(import.meta.dirname, "..", "src", "pilot-polls.json"), "utf8"));
-const env = { RELAY_KEY: relayKey.privateKey, CHAIN_ID: plan.chainId, POLLS: old.ProofOfOnePolls, POLL_IDS: plans.length > 2 ? "1,2,3" : "1", REGISTRY: old.IdentityRegistry };
+const env = { RELAY_KEY: relayKey.privateKey, CHAIN_ID: plan.chainId, POLLS: old.ProofOfOnePolls, POLL_IDS: ["1", "1", "1", "1,2,3", "1,2,3,4"][plans.length], REGISTRY: old.IdentityRegistry };
 const deps = { provider };
 const post = (route, body) => handle(new Request("https://relay.test" + route, { method: "POST", body: JSON.stringify(body) }), env, deps);
 const get = async (q) => { const r = await handle(new Request("https://relay.test/state?" + q), env, deps); return [r.status, await r.json()]; };
@@ -218,6 +218,7 @@ if (process.env.CHAINCHECK_JAR) {
     isHistoricalRoot: "true", isHistoricalRootBogus: "false", revRoot: (await revocationC.root()).toString(), keySetRoot: (await identity.keySetRoot()).toString(),
     leafIndex: "1", leafAt0: m1.leaf.toString(), ballotHash: slot.ballotHash.slice(2), count: slot.count.toString(),
     resultCounts: res.counts.map(String).join(","), resultPublishedAt: res.publishedAt.toString(),
+    distinctVoters: (await polls.distinctVoters(1)).toString(), totalSubmissions: (await polls.totalSubmissions(1)).toString(),
     keccakAbc: "4e03657aea45a94fc7d47ba826c8d667c0d1e6e33a64a036ec44f58fa12d6c45",
   };
   assert.deepStrictEqual(out, want);
@@ -228,12 +229,13 @@ if (process.env.CHAINCHECK_JAR) {
 if (plans.length > 2) {
   const rl = await handle(new Request("https://relay.test/polls"), env, deps);
   const lst = await rl.json();
-  assert.strictEqual(lst.entries.length, 3);
+  const cats = ["project", "social", "regional", "agenda"].slice(0, plans.length);
+  assert.strictEqual(lst.entries.length, cats.length);
   for (const e of lst.entries) {
     const gp = await polls.getPoll(e.pollId);
     assert.strictEqual(ethers.keccak256(ethers.toUtf8Bytes(e.textJson)), gp.metadataHash, `poll ${e.pollId}: text bound by metadataHash`);
   }
-  assert.deepStrictEqual(lst.entries.map((e) => JSON.parse(e.textJson).category || "project"), ["project", "social", "regional"]);
+  assert.deepStrictEqual(lst.entries.map((e) => JSON.parse(e.textJson).category || "project"), cats);
   // member 2 answers the social poll too
   let [st2, s2] = await get("poll=2");
   const b22 = await ballot(s2, m2, 1, 0);
@@ -242,7 +244,7 @@ if (plans.length > 2) {
   await provider.send("evm_mine", []);
   [st2, s2] = await get(`poll=2&nf=${b22.nf}`);
   assert.strictEqual(s2.ballot.count, 1);
-  console.log("v0.15: /polls lists 3 polls (project, social, regional), each text bound by its hash; a ballot in poll 2 accepted");
+  console.log(`v0.15/v0.16: /polls lists ${cats.length} polls (${cats.join(", ")}), each text bound by its hash; a ballot in poll 2 accepted`);
 }
 
 // ---- refusals
