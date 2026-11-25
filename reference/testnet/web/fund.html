@@ -104,7 +104,7 @@ async function balances() {
 
 async function connect() {
   try {
-    [account] = await eth("eth_requestAccounts", []);
+    account = ethers.getAddress((await eth("eth_requestAccounts", []))[0]);
     $("who").innerHTML = "Connected as <code>" + account + "</code>";
     ["go1", "go2", "reload"].forEach((id) => ($(id).disabled = false));
     await balances();
@@ -126,9 +126,16 @@ async function send(net, to, amountField, what) {
     msg("Switching MetaMask to " + net.chainName + "… approve it if MetaMask asks.");
     await onChain(net);
     msg("Approve the transaction in MetaMask: network <b>" + net.chainName + "</b>, amount <b>" + ethers.formatEther(value) + " ETH</b>, to <code>" + to + "</code>.");
+    // MetaMask on phones keeps the page's connection per network: after a switch, ask again for
+    // the account on this network (it may ask to connect once more), and send from that account.
+    let from = ((await eth("eth_accounts", [])) || [])[0];
+    if (!from) from = ((await eth("eth_requestAccounts", [])) || [])[0];
+    if (!from) throw new Error("MetaMask gave no account on " + net.chainName + "; press Connect wallet, then try again");
+    from = ethers.getAddress(from);
+    if (from.toLowerCase() !== account.toLowerCase()) throw new Error("MetaMask is on another account (" + from + ") than the one connected (" + account + "); choose the test-only account in MetaMask");
     let hash;
     try {
-      hash = await eth("eth_sendTransaction", [{ from: account, to, value: ethers.toQuantity(value), gas: ethers.toQuantity(gas + gas / 4n) }]);
+      hash = await eth("eth_sendTransaction", [{ from, to: ethers.getAddress(to), value: ethers.toQuantity(value), gas: ethers.toQuantity(gas + gas / 4n) }]);
     } catch (e) {
       if (e && e.code === 4001) throw new Error("declined in MetaMask");
       throw new Error("MetaMask did not send it (" + why(e) + ")");
