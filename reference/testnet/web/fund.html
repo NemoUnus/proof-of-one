@@ -1,0 +1,137 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<!-- Proof of One — fund the relay with test coins, from the test-only wallet, in two steps:
+     1. on Ethereum Sepolia, send test ETH to Base's official bridge (L1StandardBridge of Base
+        Sepolia, 0xfd0Bf71F60660E2f608ed56e1659C450eB113120, docs.base.org/chain/base-contracts);
+        the bridge credits the same amount to the same address on Base Sepolia, after a few minutes;
+     2. on Base Sepolia, send test ETH to the relay, which pays the volunteers' registrations and
+        ballots (reference/relay).
+     Every transaction is simulated first and approved by the founder in MetaMask. Test coins only:
+     the page refuses any network but these two test networks, and never asks for anything else. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fund the relay</title>
+<style>
+  :root { --bg:#f8fafc; --card:#fff; --t:#111827; --m:#6B7280; --l:#E5E7EB; --a:#1F7F84; --ok:#15803d; --err:#b91c1c; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0B0F14; --card:#111827; --t:#E5E7EB; --m:#9CA3AF; --l:#1F2937; --a:#2DD4BF; --ok:#4ade80; --err:#f87171; } }
+  body { background:var(--bg); color:var(--t); font:16px/1.55 system-ui, sans-serif; margin:0; padding:20px 16px; }
+  main { max-width:620px; margin:0 auto; }
+  h1 { font-size:22px; margin:0 0 6px; }
+  .mut { color:var(--m); } .done { color:var(--ok); font-weight:600; } .err { color:var(--err); }
+  .card { background:var(--card); border:1px solid var(--l); border-radius:12px; padding:16px; margin:14px 0; }
+  .warn { background:#FDF6EC; border-color:#E8C98E; color:#111827; }
+  button { background:var(--a); color:#fff; border:0; border-radius:10px; padding:12px 16px; font-size:16px; width:100%; margin-top:10px; }
+  button:disabled { opacity:.45; }
+  code { font-size:13px; word-break:break-all; }
+  label { display:block; margin-top:8px; }
+  input { font-size:16px; padding:8px; width:7em; border:1px solid var(--l); border-radius:8px; background:var(--bg); color:var(--t); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Fund the relay (test coins)</h1>
+  <p class="mut">Two steps from your test-only wallet. Each one is checked first and then shown in MetaMask for your approval.</p>
+  <div class="card warn">Test networks only: Ethereum Sepolia and Base Sepolia. Never use a wallet that holds real funds.</div>
+
+  <div class="card">
+    <button id="connect" disabled>Connect wallet</button>
+    <p id="who" class="mut"></p>
+  </div>
+
+  <div class="card">
+    <b>Step 1 — Sepolia → Base Sepolia (official Base bridge)</b>
+    <p class="mut">Sends test ETH on <b>Ethereum Sepolia</b> to Base's official bridge, <code>0xfd0Bf71F60660E2f608ed56e1659C450eB113120</code>. The same amount arrives at your own address on Base Sepolia after about 5–15 minutes.</p>
+    <p>Your balance on Ethereum Sepolia: <b id="balL1">–</b></p>
+    <label>Amount: <input id="amt1" value="0.1" inputmode="decimal"> ETH</label>
+    <button id="go1" disabled>Send to the bridge</button>
+  </div>
+
+  <div class="card">
+    <b>Step 2 — Base Sepolia → the relay</b>
+    <p class="mut">When the coins have arrived on Base Sepolia, send part of them to the relay, <code id="relayAddr"></code>, which pays the volunteers' registrations and answers.</p>
+    <p>Your balance on Base Sepolia: <b id="balL2">–</b> · the relay's: <b id="balRelay">–</b></p>
+    <label>Amount: <input id="amt2" value="0.06" inputmode="decimal"> ETH</label>
+    <button id="go2" disabled>Send to the relay</button>
+    <button id="reload" disabled style="background:transparent;color:var(--a);border:1px solid var(--a)">Refresh balances</button>
+  </div>
+
+  <p id="msg" class="mut"></p>
+</main>
+<script src="ethers.umd.min.js"></script>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const BRIDGE = "0xfd0Bf71F60660E2f608ed56e1659C450eB113120";   // Base Sepolia's L1StandardBridge on Ethereum Sepolia
+const RELAY = "0x3dB9d15202Bd291558889b42eb4291e288797fb9";    // the pilot relay's account on Base Sepolia
+const SEPOLIA = { chainId: "0xaa36a7", chainName: "Sepolia", rpcUrls: ["https://ethereum-sepolia-rpc.publicnode.com"], nativeCurrency: { name: "Sepolia ETH", symbol: "ETH", decimals: 18 }, blockExplorerUrls: ["https://sepolia.etherscan.io"] };
+const BASE_SEPOLIA = { chainId: "0x14a34", chainName: "Base Sepolia", rpcUrls: ["https://sepolia.base.org"], nativeCurrency: { name: "Sepolia ETH", symbol: "ETH", decimals: 18 }, blockExplorerUrls: ["https://sepolia.basescan.org"] };
+const EXPLORER = { 11155111: "https://sepolia.etherscan.io", 84532: "https://sepolia.basescan.org" };
+let provider, account;
+$("relayAddr").textContent = RELAY;
+const msg = (t, cls) => { $("msg").className = cls || "mut"; $("msg").innerHTML = t; };
+const fmt = (wei) => Number(ethers.formatEther(wei)).toFixed(5) + " ETH";
+
+async function onChain(net) {
+  const want = parseInt(net.chainId, 16);
+  if (Number((await provider.getNetwork()).chainId) === want) return;
+  try { await window.ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: net.chainId }] }); }
+  catch (e) { await window.ethereum.request({ method: "wallet_addEthereumChain", params: [net] }); }
+  provider = new ethers.BrowserProvider(window.ethereum);
+  if (Number((await provider.getNetwork()).chainId) !== want) throw new Error("MetaMask is not on " + net.chainName);
+}
+
+// Balances are read from public endpoints, whatever network MetaMask shows.
+const l1 = new ethers.JsonRpcProvider(SEPOLIA.rpcUrls[0], 11155111, { staticNetwork: true });
+const l2 = new ethers.JsonRpcProvider(BASE_SEPOLIA.rpcUrls[0], 84532, { staticNetwork: true });
+async function balances() {
+  try { $("balL1").textContent = fmt(await l1.getBalance(account)); } catch (e) { $("balL1").textContent = "(could not read)"; }
+  try { $("balL2").textContent = fmt(await l2.getBalance(account)); } catch (e) { $("balL2").textContent = "(could not read)"; }
+  try { $("balRelay").textContent = fmt(await l2.getBalance(RELAY)); } catch (e) { $("balRelay").textContent = "(could not read)"; }
+}
+
+async function connect() {
+  try {
+    provider = new ethers.BrowserProvider(window.ethereum);
+    [account] = await provider.send("eth_requestAccounts", []);
+    $("who").innerHTML = "Connected as <code>" + account + "</code>";
+    ["go1", "go2", "reload"].forEach((id) => ($(id).disabled = false));
+    await balances();
+    msg("Step 1 first. Then, when the coins have arrived on Base Sepolia (about 5–15 minutes; press Refresh balances), step 2.");
+  } catch (e) { msg("Wallet error: " + (e.shortMessage || e.message), "err"); }
+}
+
+async function send(net, to, amountField, what) {
+  const btn = what === 1 ? $("go1") : $("go2");
+  btn.disabled = true;
+  try {
+    const value = ethers.parseEther($(amountField).value.trim());
+    if (value <= 0n || value > ethers.parseEther("1")) throw new Error("the amount must be more than 0 and at most 1 ETH");
+    msg("Switching MetaMask to " + net.chainName + "… approve it if MetaMask asks.");
+    await onChain(net);
+    const signer = await provider.getSigner();
+    // Simulate first: a transfer that would fail is not sent.
+    await provider.call({ from: account, to, value });
+    msg("Approve the transaction in MetaMask: network <b>" + net.chainName + "</b>, amount <b>" + ethers.formatEther(value) + " ETH</b>, to <code>" + to + "</code>.");
+    const tx = await signer.sendTransaction({ to, value });
+    msg("Sent. Waiting for it to be included… <a target=_blank rel=noopener href='" + EXPLORER[parseInt(net.chainId, 16)] + "/tx/" + tx.hash + "'>see it on the explorer</a>");
+    const rc = await tx.wait();
+    if (rc.status !== 1) throw new Error("the transaction failed");
+    msg(what === 1
+      ? "Step 1 done. The coins arrive on Base Sepolia in about 5–15 minutes: press Refresh balances, then do step 2."
+      : "Step 2 done: the relay has been funded.", "done");
+  } catch (e) { msg("Not sent: " + (e.shortMessage || e.message), "err"); }
+  btn.disabled = false;
+  await balances();
+}
+
+if (window.ethereum) { $("connect").disabled = false; msg("Press Connect wallet."); }
+else msg("No wallet found. Open this page inside MetaMask's browser (MetaMask → Explore or the browser tab), with your test-only wallet.", "err");
+$("connect").onclick = connect;
+$("go1").onclick = () => send(SEPOLIA, BRIDGE, "amt1", 1);
+$("go2").onclick = () => send(BASE_SEPOLIA, RELAY, "amt2", 2);
+$("reload").onclick = balances;
+</script>
+</body>
+</html>

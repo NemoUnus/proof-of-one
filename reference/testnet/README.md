@@ -66,6 +66,7 @@ The plan also publishes the receipts of the four synthetic voters. With them, an
 ## Pilot polls 2 and 3 (deployment 6)
 
 - **`plan9.js`** creates two more polls on the polls contract of deployment 6, with their category in the text: poll 2 (social: time spent on the phone outside work) and poll 3 (where you live: the skill children most need for the future). Both are harmless (Decision #57, point 2), open to every member, in eight languages. The relay serves their texts at `GET /polls`.
+- **`web/fund.html`** funds the relay with test coins from the test-only wallet, in two simulated and approved steps: test ETH on Ethereum Sepolia to Base Sepolia's official bridge (`L1StandardBridge`, `0xfd0Bf71F60660E2f608ed56e1659C450eB113120`, from docs.base.org), which credits the same address on Base Sepolia; then part of it to the relay's account. Test networks only. Coins for Sepolia come from a proof-of-work faucet in the browser, which needs no account.
 - **`plan10.js`** creates poll 4 on the same contract, in a fourth category (agenda): which of four everyday topics (sleep and rest, reading and learning, food and cooking, travel and free time) one of the next pilot polls is about. Founder's proposal; a first, simple form of members choosing the topics (Decisions #15 and #18).
 
 ## Limits
