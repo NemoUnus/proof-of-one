@@ -58,6 +58,7 @@
   </div>
 
   <p id="msg" class="mut"></p>
+  <p id="diag" class="mut" style="font-size:13px"></p>
 </main>
 <script src="ethers.umd.min.js"></script>
 <script>
@@ -133,13 +134,25 @@ async function send(net, to, amountField, what) {
     if (!from) throw new Error("MetaMask gave no account on " + net.chainName + "; press Connect wallet, then try again");
     from = ethers.getAddress(from);
     if (from.toLowerCase() !== account.toLowerCase()) throw new Error("MetaMask is on another account (" + from + ") than the one connected (" + account + "); choose the test-only account in MetaMask");
-    let hash;
-    try {
-      hash = await eth("eth_sendTransaction", [{ from, to: ethers.getAddress(to), value: ethers.toQuantity(value), gas: ethers.toQuantity(gas + gas / 4n) }]);
-    } catch (e) {
-      if (e && e.code === 4001) throw new Error("declined in MetaMask");
-      throw new Error("MetaMask did not send it (" + why(e) + ")");
+    // What MetaMask says right before sending, shown on the page so that a refusal can be understood.
+    const diag = { chain: await eth("eth_chainId", []), accounts: await eth("eth_accounts", []).catch((e) => "error: " + why(e)) };
+    $("diag").textContent = "Diagnostics: MetaMask network " + diag.chain + ", accounts on it " + JSON.stringify(diag.accounts) + ", sending from " + from + ".";
+    // Some MetaMask versions on phones refuse some forms of the same request: try the plain form,
+    // then the lowercase address without a gas limit. The amount and the receiver never change.
+    const attempts = [
+      { from, to: ethers.getAddress(to), value: ethers.toQuantity(value), gas: ethers.toQuantity(gas + gas / 4n) },
+      { from: from.toLowerCase(), to: to.toLowerCase(), value: ethers.toQuantity(value) },
+    ];
+    let hash, last;
+    for (const tx of attempts) {
+      try { hash = await eth("eth_sendTransaction", [tx]); break; }
+      catch (e) {
+        if (e && e.code === 4001) throw new Error("declined in MetaMask");
+        last = e;
+        if (!(e && e.code === -32602)) break;
+      }
     }
+    if (!hash) throw new Error("MetaMask did not send it (" + why(last) + ")");
     msg("Sent. Waiting for it to be included… <a target=_blank rel=noopener href='" + EXPLORER[parseInt(net.chainId, 16)] + "/tx/" + hash + "'>see it on the explorer</a>");
     const rc = await rpc.waitForTransaction(hash, 1, 180000);
     if (!rc) throw new Error("not included after 3 minutes; check it on the explorer");
