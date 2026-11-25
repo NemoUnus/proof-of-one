@@ -47,12 +47,23 @@ const k = () => BigInt("0x" + env.OPRF_KEY) % FP.L;
 const env = {
   OPRF_KEY: randomHex(64), CREDENTIAL_KEY: randomHex(64), REVOCATION_KEY: randomHex(64),
   RULES: JSON.stringify({ UTO: { path: 1, pnSrc: 0 }, ZZZ: { path: 1, pnSrc: 1, pnTag: "5F10" } }),
-  DSC_ROOTS: `999, ${ROOT}`, RPC_URL: "https://rpc.test", DOC_VERIFIER: "0x0000000000000000000000000000000000000001", EPOCH: "0", DAILY_SESSIONS: "300",
+  DSC_ROOTS: `999, ${ROOT}`, RPC_URL: "https://rpc.test", RPC_FALLBACKS: "https://f1.test, https://f2.test,https://f3.test", DOC_VERIFIER: "0x0000000000000000000000000000000000000001", EPOCH: "0", DAILY_SESSIONS: "300",
 };
 let chainSays = true, calls = [];
+// endpoint behaviour, per URL: undefined = answers chainSays; "down" = throws; "busy" = HTTP 429;
+// "error" = a JSON-RPC error; true/false = answers that value (a dishonest endpoint)
+let endpoint = {};
 const deps = {
-  core, now: () => clock,
-  fetch: async (url, init) => { calls.push(JSON.parse(init.body)); return { json: async () => ({ jsonrpc: "2.0", id: 1, result: "0x" + (chainSays ? "1" : "0").padStart(64, "0") }) }; },
+  core, now: () => clock, sleep: async () => {},
+  fetch: async (url, init) => {
+    calls.push({ url, ...JSON.parse(init.body) });
+    const how = endpoint[url];
+    if (how === "down") throw new Error("connection refused");
+    if (how === "busy") return { ok: false, status: 429, json: async () => { throw new Error("not JSON"); } };
+    if (how === "error") return { ok: true, json: async () => ({ jsonrpc: "2.0", id: 1, error: { code: -32016, message: "over rate limit" } }) };
+    const says = typeof how === "boolean" ? how : chainSays;
+    return { ok: true, json: async () => ({ jsonrpc: "2.0", id: 1, result: "0x" + (says ? "1" : "0").padStart(64, "0") }) };
+  },
 };
 const call = async (method, p, body) => {
   const r = await handle(new Request("https://enrol.test" + p, { method, headers: { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) }), env, deps);
@@ -60,7 +71,7 @@ const call = async (method, p, body) => {
 };
 
 test.before(async () => { FP = await FPm.init(); eddsa = await buildEddsa(); });
-test.beforeEach(() => { env.DB = fakeD1(); chainSays = true; calls = []; clock = Date.UTC(2026, 10, 21, 10); });
+test.beforeEach(() => { env.DB = fakeD1(); chainSays = true; calls = []; endpoint = {}; clock = Date.UTC(2026, 10, 21, 10); });
 
 const A = { surname: "TESTER", given: "ALEX", number: "X12345678", birth: "900101", sex: "F", expiry: "350101", personal: "12345678901234" };
 const dg1 = (p) => Buffer.from(I.dg1Of(I.mrzTD3(p)));
@@ -246,4 +257,41 @@ test("key set (Decision #61): this service's path, or null until it is published
   assert.strictEqual(keySet({}, "7"), null);
   assert.strictEqual(keySet({ KEY_SET: JSON.stringify(ks) }, "8"), null, "a key not in the set");
   assert.strictEqual(keySet({ KEY_SET: "not json" }, "7"), null);
+});
+
+// ---- the test network's endpoints (25 November 2026: the public endpoint refused the service)
+async function enrolWith(person) { return (await phone(person)).enrol(); }
+test("the primary endpoint is asked again when it does not answer, and its answer is used", async () => {
+  let n = 0;
+  const real = deps.fetch;
+  deps.fetch = async (url, init) => (url === env.RPC_URL && n++ < 2 ? { ok: false, status: 429, json: async () => ({}) } : real(url, init));
+  try {
+    const r = await enrolWith(A);
+    assert.strictEqual(r.status, 200, JSON.stringify(r.body));
+    assert.strictEqual(calls.filter((c) => c.url === env.RPC_URL).length, 1);   // the third try answered
+    assert.strictEqual(calls.filter((c) => c.url !== env.RPC_URL).length, 0);   // no fallback needed
+  } finally { deps.fetch = real; }
+});
+test("the primary endpoint is down: two independent endpoints that agree decide", async () => {
+  endpoint[env.RPC_URL] = "down"; endpoint["https://f3.test"] = "busy";
+  const r = await enrolWith(A);
+  assert.strictEqual(r.status, 200, JSON.stringify(r.body));
+  assert.strictEqual(calls.filter((c) => c.url === env.RPC_URL).length, 3);
+});
+test("the primary endpoint is down: a forged proof is refused when the endpoints that answer say so", async () => {
+  endpoint[env.RPC_URL] = "error"; chainSays = false;
+  const r = await enrolWith(A);
+  assert.strictEqual(r.status, 403, JSON.stringify(r.body));
+});
+test("one dishonest endpoint cannot make a forged proof pass: endpoints that disagree are refused", async () => {
+  endpoint[env.RPC_URL] = "busy"; chainSays = false; endpoint["https://f2.test"] = true;
+  const r = await enrolWith(A);
+  assert.strictEqual(r.status, 502, JSON.stringify(r.body));
+  assert.match(r.body.error, /disagree/);
+});
+test("only one endpoint answers: no decision, try again", async () => {
+  endpoint[env.RPC_URL] = "down"; endpoint["https://f1.test"] = "down"; endpoint["https://f2.test"] = "busy";
+  const r = await enrolWith(A);
+  assert.strictEqual(r.status, 502, JSON.stringify(r.body));
+  assert.match(r.body.error, /did not answer/);
 });

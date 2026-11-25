@@ -33,6 +33,8 @@
 //   DSC_ROOTS      extra accepted roots (comma-separated), for tests; the tree's own roots
 //                  are always accepted
 //   RPC_URL, DOC_VERIFIER   the test network and π_doc's verifier contract
+//   RPC_FALLBACKS           independent endpoints of the same network, asked only when RPC_URL
+//                           does not answer; two must agree (see verifyOnChain)
 //   EPOCH, DAILY_SESSIONS   credential epoch ("0"); sessions per day (300)
 //   DB             the D1 database (schema.sql)
 import { randomHex } from "./core.js";
@@ -95,13 +97,41 @@ export function verifyCalldata(proof, signals) {
   const words = [a[0], a[1], b[0][1], b[0][0], b[1][1], b[1][0], c[0], c[1], ...signals];
   return "0x" + SELECTOR + words.map((w) => BigInt(w).toString(16).padStart(64, "0")).join("");
 }
+// The public endpoint of the test network is free, rate limited and best effort (Base's own
+// documentation), and the pilot met refusals from it (25 November 2026). So:
+//   1. the primary endpoint RPC_URL is asked up to three times, a moment apart; its answer is
+//      trusted as before;
+//   2. if it never answers, the independent endpoints in RPC_FALLBACKS (comma-separated) are
+//      asked, and their answer counts only if at least two of them answer and all that answer
+//      agree, so that one dishonest or broken endpoint cannot make a forged proof pass (nor
+//      refuse a genuine one on its own).
+// No answer at all: 502, and the phone says to try again in a few minutes.
+async function rpcAnswer(doFetch, url, data, env) {
+  try {
+    const r = await doFetch(url, { method: "POST", headers: { "content-type": "application/json" },
+      signal: typeof AbortSignal !== "undefined" && AbortSignal.timeout ? AbortSignal.timeout(8000) : undefined,
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_call", params: [{ to: env.DOC_VERIFIER, data }, "latest"] }) });
+    if (r.ok === false) return null;
+    const j = await r.json();
+    if (j.error || typeof j.result !== "string" || !/^0x[0-9a-fA-F]{1,64}$/.test(j.result)) return null;
+    return BigInt(j.result);
+  } catch (e) { return null; }
+}
 async function verifyOnChain(env, deps, data) {
   const doFetch = deps.fetch || fetch;
-  const r = await doFetch(env.RPC_URL, { method: "POST", headers: { "content-type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_call", params: [{ to: env.DOC_VERIFIER, data }, "latest"] }) });
-  const j = await r.json();
-  if (j.error || typeof j.result !== "string") refuse(502, "the test network did not answer; try again");
-  return BigInt(j.result) === 1n;
+  const sleep = deps.sleep || ((ms) => new Promise((ok) => setTimeout(ok, ms)));
+  for (const wait of [0, 500, 1500]) {
+    if (wait) await sleep(wait);
+    const v = await rpcAnswer(doFetch, env.RPC_URL, data, env);
+    if (v !== null) return v === 1n;
+  }
+  const others = String(env.RPC_FALLBACKS || "").split(",").map((u) => u.trim()).filter(Boolean);
+  const answers = (await Promise.all(others.map((u) => rpcAnswer(doFetch, u, data, env)))).filter((v) => v !== null);
+  if (answers.length >= 2) {
+    if (answers.every((v) => v === answers[0])) return answers[0] === 1n;
+    refuse(502, "the test network's endpoints disagree; try again later");
+  }
+  refuse(502, "the test network did not answer; try again");
 }
 
 async function info(env, deps) {
