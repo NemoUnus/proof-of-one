@@ -1,10 +1,14 @@
 # SPDX-License-Identifier: Apache-2.0
 # Builds the test app (reference/android-prototype) on GitHub's servers and attaches the APK
 # to the run, so anyone can check that the published APK comes from this source. Test build,
-# not for distribution. Since v0.16 (Decision #67) it is a release build signed with the
-# pilot's one fixed key, held only in the repository's secrets POO_KEYSTORE_B64 and
-# POO_KEYSTORE_PASSWORD (made with reference/tools/signing-key/), so that each new version installs
-# over the previous one. The key is written to a temporary file for the build and deleted.
+# not for distribution. Since v0.16 (Decision #67) the APK is signed with the pilot's one fixed
+# key, so that each new version installs over the previous one. Since v0.17 (second review of
+# the app, N2) the key is never in the job that builds: that job downloads and runs many tools.
+# The build job makes an unsigned APK; a separate job, "sign", which checks out nothing and runs
+# only the Android SDK's apksigner, signs it. That job runs only for the main branch, in the
+# GitHub environment "pilot-signing", which alone holds the secrets POO_KEYSTORE_B64 and
+# POO_KEYSTORE_PASSWORD (made with reference/tools/signing-key/) and waits for the founder's
+# approval. Actions are pinned to commits, and downloaded tools to their SHA-256.
 # Since v0.2 the app includes the native prover (reference/native-prover, Rust), built here
 # for 64-bit ARM, and the ballot proof's TEST-ONLY key and witness graph as assets.
 # Since v0.5 it also makes the enrolment proof π_doc (suite 2) from a real passport's chip
@@ -32,12 +36,12 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with:
           distribution: temurin
           java-version: "17"
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
         with:
           gradle-version: "8.10.2"
       - name: Tools for the native prover
@@ -64,7 +68,7 @@ jobs:
             cargo build --release --locked --lib --target aarch64-linux-android
           mkdir -p ../android-prototype/app/src/main/jniLibs/arm64-v8a
           cp target/aarch64-linux-android/release/libpoo_native_prover.so ../android-prototype/app/src/main/jniLibs/arm64-v8a/
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "20"
       # Enrolment proof π_doc, suite 2 (challenge 2 of Decision Log #57): everything is made here
@@ -73,7 +77,10 @@ jobs:
       # graph, a synthetic passport's input and witness, and a random TEST-ONLY key (prove-mem).
       - name: Enrolment proof files (π_doc suite 2, TEST-ONLY random key)
         run: |
-          mkdir -p $HOME/bin && curl -sSL -o $HOME/bin/circom https://github.com/iden3/circom/releases/download/v2.1.9/circom-linux-amd64 && chmod +x $HOME/bin/circom
+          # circom publishes no checksum: this one was taken from the release on 2026-11-26
+          mkdir -p $HOME/bin && curl -sSL -o $HOME/bin/circom https://github.com/iden3/circom/releases/download/v2.1.9/circom-linux-amd64
+          echo "e5575829252d763b7818049df9de2ef9304df834697de77fa63ce7babc23c967  $HOME/bin/circom" | sha256sum -c -
+          chmod +x $HOME/bin/circom
           export PATH=$HOME/bin:$PATH
           git clone -q --depth 1 --branch v0.3.0 https://github.com/iden3/circom-witnesscalc $RUNNER_TEMP/cw
           (cd $RUNNER_TEMP/cw && cargo build --release --locked -p build-circuit --bin build-circuit && cargo build --release --locked --bin calc-witness)
@@ -128,6 +135,8 @@ jobs:
       - name: Check the phone's enrolment input builder
         run: |
           curl -sSL -o $RUNNER_TEMP/kc.zip https://github.com/JetBrains/kotlin/releases/download/v2.0.21/kotlin-compiler-2.0.21.zip
+          # the checksum JetBrains publishes with the release
+          echo "0352c0a45bd22f80f6b26e485cd04da8047baa5de54865281fb9f89a4a7bcf2a  $RUNNER_TEMP/kc.zip" | sha256sum -c -
           unzip -q $RUNNER_TEMP/kc.zip -d $RUNNER_TEMP
           (cd reference/document-circuit && node scripts/doc-input-vectors.js $RUNNER_TEMP/vectors)
           cd reference/android-prototype
@@ -157,29 +166,53 @@ jobs:
           unzip -o -q $RUNNER_TEMP/buffalo_sc.zip -d $RUNNER_TEMP/face
           cp $RUNNER_TEMP/face/det_500m.onnx $RUNNER_TEMP/face/w600k_mbf.onnx $A/
           (cd $A && sha256sum -c ../../../../face/models.sha256)
-      - name: Build the signed APK
+      - name: Build the APK, unsigned
         working-directory: reference/android-prototype
+        run: |
+          gradle --no-daemon assembleRelease
+          ls -la app/build/outputs/apk/release/
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: unsigned-apk
+          path: reference/android-prototype/app/build/outputs/apk/release/app-release-unsigned.apk
+          retention-days: 1
+
+  # Signs the APK built above with the pilot key. Nothing from the repository runs here: no
+  # checkout, no build, only the SDK's apksigner on the downloaded APK. The secrets exist only in
+  # the environment "pilot-signing" (main branch only, approval required).
+  sign:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: pilot-signing
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: unsigned-apk
+      - name: Sign with the pilot key
         env:
           POO_KEYSTORE_B64: ${{ secrets.POO_KEYSTORE_B64 }}
           POO_KEYSTORE_PASSWORD: ${{ secrets.POO_KEYSTORE_PASSWORD }}
         run: |
           if [ -z "$POO_KEYSTORE_B64" ] || [ -z "$POO_KEYSTORE_PASSWORD" ]; then
-            echo "::error::The signing key is not set: add the secrets POO_KEYSTORE_B64 and POO_KEYSTORE_PASSWORD (reference/tools/signing-key/)."
+            echo "::error::The signing key is not set: add the secrets POO_KEYSTORE_B64 and POO_KEYSTORE_PASSWORD to the environment pilot-signing (reference/tools/signing-key/)."
             exit 1
           fi
-          export POO_KEYSTORE="$RUNNER_TEMP/pilot.p12"
-          echo "$POO_KEYSTORE_B64" | base64 -d > "$POO_KEYSTORE"
-          gradle --no-daemon assembleRelease
-          rm -f "$POO_KEYSTORE"
-      - name: Checksum and signing certificate
-        run: |
-          APK=reference/android-prototype/app/build/outputs/apk/release/app-release.apk
-          sha256sum $APK | tee apk-sha256.txt
-          $ANDROID_HOME/build-tools/$(ls $ANDROID_HOME/build-tools | sort -V | tail -1)/apksigner verify --print-certs $APK | tee -a apk-sha256.txt
-      - uses: actions/upload-artifact@v4
+          umask 077
+          KS="$RUNNER_TEMP/pilot.p12"
+          trap 'rm -f "$KS"' EXIT
+          echo "$POO_KEYSTORE_B64" | base64 -d > "$KS"
+          BT=$ANDROID_HOME/build-tools/$(ls $ANDROID_HOME/build-tools | sort -V | tail -1)
+          $BT/zipalign -p -f 4 app-release-unsigned.apk aligned.apk
+          $BT/apksigner sign --ks "$KS" --ks-type pkcs12 --ks-key-alias pilot \
+            --ks-pass env:POO_KEYSTORE_PASSWORD --key-pass env:POO_KEYSTORE_PASSWORD \
+            --out app-release.apk aligned.apk
+          sha256sum app-release.apk | tee apk-sha256.txt
+          $BT/apksigner verify --print-certs app-release.apk | tee -a apk-sha256.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: proof-of-one-pilot-apk
           path: |
-            reference/android-prototype/app/build/outputs/apk/release/app-release.apk
+            app-release.apk
             apk-sha256.txt
           retention-days: 30
