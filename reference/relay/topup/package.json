@@ -1,0 +1,9 @@
+{
+  "name": "proof-of-one-relay-topup",
+  "private": true,
+  "type": "module",
+  "description": "Keeps the pilot relay's account funded with test ETH from Coinbase's developer faucet (Decision #69).",
+  "license": "AGPL-3.0-or-later",
+  "scripts": { "test": "node --test topup.test.mjs", "dry": "node topup.mjs --dry" },
+  "dependencies": { "@coinbase/cdp-sdk": "1.62.0" }
+}

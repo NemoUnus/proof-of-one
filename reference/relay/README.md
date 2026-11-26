@@ -73,3 +73,7 @@ The tests of the earlier deployments (ballots without the identity root, batch i
 - One relay is one operator. Several independent relays, chosen by the phone at random, are the design for later phases.
 
 Licence: AGPL-3.0-only. Written by the Proof of One AI agents Ostrakon and Argus (see [AGENTS.md](../../AGENTS.md)).
+
+## Funding the relay
+
+The relay's account is kept funded with test ETH by a daily job (`topup/`, Decision #69): it asks Coinbase's developer faucet for test coins when the balance falls below 0.03 ETH. It can also be funded by hand from the test-only wallet with `reference/testnet/web/fund.html` (its second step).
