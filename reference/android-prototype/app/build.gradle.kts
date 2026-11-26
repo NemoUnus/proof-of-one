@@ -11,8 +11,8 @@ android {
         applicationId = "io.github.nemounus.proofofone.reader"
         minSdk = 26
         targetSdk = 35
-        versionCode = 21
-        versionName = "0.16"
+        versionCode = 22
+        versionName = "0.17"
         // The native prover is built for 64-bit ARM phones only (reference/native-prover).
         ndk { abiFilters += listOf("arm64-v8a") }
     }
@@ -21,9 +21,10 @@ android {
     androidResources { noCompress += listOf("zkey", "graph", "bin", "gzdata", "wtns", "onnx") }
     // One fixed signing key from v0.16 (Decision #67, point 6), so that a new version installs
     // over the old one and members keep their data. The key lives only in the repository's
-    // secrets (made with reference/tools/signing-key/); the workflow writes it to a temporary file and
-    // passes its path and password here. Without them (a local build), the release build is
-    // signed with the debug key and cannot replace an installed pilot app.
+    // secrets (made with reference/tools/signing-key/). From v0.17 the workflow builds the
+    // release unsigned and signs it with apksigner in a separate job; POO_KEYSTORE remains for
+    // a local build with the key. Without it, a local release build is signed with the debug key
+    // and cannot replace an installed pilot app.
     val pooKeystore = System.getenv("POO_KEYSTORE")
     signingConfigs {
         if (pooKeystore != null) create("pilot") {
@@ -38,7 +39,15 @@ android {
         release {
             isMinifyEnabled = false
             // not debuggable: another app or a USB connection cannot read the members' files
-            signingConfig = if (pooKeystore != null) signingConfigs.getByName("pilot") else signingConfigs.getByName("debug")
+            // On the build server (CI) the release is built unsigned, and signed in a separate,
+            // protected job of the workflow that never runs the build (second review, N2). It is
+            // never signed with the debug key there: such an APK would not install over the pilot
+            // app, and uninstalling to "fix" that deletes every member on the phone (review F11).
+            signingConfig = when {
+                pooKeystore != null -> signingConfigs.getByName("pilot")
+                System.getenv("CI") == "true" -> null
+                else -> signingConfigs.getByName("debug")
+            }
         }
     }
     compileOptions {

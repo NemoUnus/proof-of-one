@@ -47,13 +47,14 @@ object Registration {
     }
 
     @Synchronized
-    private fun save(ctx: Context, m: JSONObject) = Profiles.write(ctx, m)
+    private fun save(ctx: Context, id: String?, m: JSONObject) = Profiles.write(ctx, id, m)   // only into the member it was read from
 
     /** The relay now names another identity registry (a new deployment): register there too. */
     fun registryChanged(ctx: Context) {
         if (!Profiles.isOpen()) return
+        val id = Profiles.current
         val m = Profiles.read()
-        m.remove("registered"); save(ctx, m.put("registerAfter", 0L))
+        m.remove("registered"); save(ctx, id, m.put("registerAfter", 0L))
     }
 
     class NotReady(message: String) : Exception(message)
@@ -115,7 +116,7 @@ object Registration {
             .put("tx", r.optString("tx")).put("index", index.toString())
         // the member may have been closed or switched while this ran
         if (Profiles.current != id) throw java.io.IOException("the member was closed; registering again when it is opened")
-        save(ctx, m.put("registered", rec))
+        save(ctx, id, m.put("registered", rec))
         return if (r.optBoolean("already")) "registration: this credential was already on the ledger (restored membership)"
         else "registration: π_reg made and verified on the phone in $ms ms; sent through the relay; read back from the ledger at position $index"
     }

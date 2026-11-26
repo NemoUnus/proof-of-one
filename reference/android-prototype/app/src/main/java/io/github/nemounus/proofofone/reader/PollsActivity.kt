@@ -62,8 +62,11 @@ class PollsActivity : Activity() {
         list.addView(status)
     }
 
+    private val idle = Profiles.IdleWatch(this)
+    override fun onPause() { super.onPause(); idle.stop() }
     override fun onResume() {
         super.onResume()
+        idle.start()
         if (!Profiles.guard(this)) return
         load()   // again after answering, so that the groups are current
     }

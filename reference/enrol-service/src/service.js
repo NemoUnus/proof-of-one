@@ -33,8 +33,8 @@
 //   DSC_ROOTS      extra accepted roots (comma-separated), for tests; the tree's own roots
 //                  are always accepted
 //   RPC_URL, DOC_VERIFIER   the test network and π_doc's verifier contract
-//   RPC_FALLBACKS           independent endpoints of the same network, asked only when RPC_URL
-//                           does not answer; two must agree (see verifyOnChain)
+//   RPC_FALLBACKS           independent endpoints of the same network: one confirms a "yes"
+//                           from RPC_URL, two decide when it does not answer (verifyOnChain)
 //   EPOCH, DAILY_SESSIONS   credential epoch ("0"); sessions per day (300)
 //   DB             the D1 database (schema.sql)
 import { randomHex } from "./core.js";
@@ -98,14 +98,17 @@ export function verifyCalldata(proof, signals) {
   return "0x" + SELECTOR + words.map((w) => BigInt(w).toString(16).padStart(64, "0")).join("");
 }
 // The public endpoint of the test network is free, rate limited and best effort (Base's own
-// documentation), and the pilot met refusals from it (25 November 2026). So:
-//   1. the primary endpoint RPC_URL is asked up to three times, a moment apart; its answer is
-//      trusted as before;
-//   2. if it never answers, the independent endpoints in RPC_FALLBACKS (comma-separated) are
-//      asked, and their answer counts only if at least two of them answer and all that answer
-//      agree, so that one dishonest or broken endpoint cannot make a forged proof pass (nor
-//      refuse a genuine one on its own).
-// No answer at all: 502, and the phone says to try again in a few minutes.
+// documentation), and the pilot met refusals from it (25 November 2026). Endpoints may also be
+// wrong or dishonest. So (review of app v0.17, N9):
+//   1. the primary endpoint RPC_URL is asked up to three times, a moment apart. If it says the
+//      proof is wrong, it is refused: a lying "no" can only turn a volunteer away;
+//   2. if it says the proof is right, at least one of the independent endpoints in RPC_FALLBACKS
+//      (comma-separated, distinct, other than RPC_URL) must say so too, and none may say no, so
+//      that the primary alone cannot make a forged proof pass;
+//   3. if the primary never answers, at least two of the independent endpoints must answer, and
+//      all that answer must agree.
+// Anything else (no answer, endpoints that disagree): 502, and the session is given back so that
+// the phone can send the same enrolment again (see /enrol).
 async function rpcAnswer(doFetch, url, data, env) {
   try {
     const r = await doFetch(url, { method: "POST", headers: { "content-type": "application/json" },
@@ -113,24 +116,36 @@ async function rpcAnswer(doFetch, url, data, env) {
       body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_call", params: [{ to: env.DOC_VERIFIER, data }, "latest"] }) });
     if (r.ok === false) return null;
     const j = await r.json();
-    if (j.error || typeof j.result !== "string" || !/^0x[0-9a-fA-F]{1,64}$/.test(j.result)) return null;
+    if (j.error || typeof j.result !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(j.result)) return null;   // one 32-byte word
     return BigInt(j.result);
   } catch (e) { return null; }
+}
+/** The independent endpoints: listed once each, and never the primary. */
+function fallbacks(env) {
+  const primary = String(env.RPC_URL || "").trim().toLowerCase();
+  return [...new Set(String(env.RPC_FALLBACKS || "").split(",").map((u) => u.trim()).filter(Boolean))]
+    .filter((u) => u.toLowerCase() !== primary);
 }
 async function verifyOnChain(env, deps, data) {
   const doFetch = deps.fetch || fetch;
   const sleep = deps.sleep || ((ms) => new Promise((ok) => setTimeout(ok, ms)));
+  let primary = null;
   for (const wait of [0, 500, 1500]) {
     if (wait) await sleep(wait);
-    const v = await rpcAnswer(doFetch, env.RPC_URL, data, env);
-    if (v !== null) return v === 1n;
+    primary = await rpcAnswer(doFetch, env.RPC_URL, data, env);
+    if (primary !== null) break;
   }
-  const others = String(env.RPC_FALLBACKS || "").split(",").map((u) => u.trim()).filter(Boolean);
-  const answers = (await Promise.all(others.map((u) => rpcAnswer(doFetch, u, data, env)))).filter((v) => v !== null);
-  if (answers.length >= 2) {
-    if (answers.every((v) => v === answers[0])) return answers[0] === 1n;
-    refuse(502, "the test network's endpoints disagree; try again later");
+  if (primary !== null && primary !== 1n) return false;   // "no" from the primary: refused
+  const answers = (await Promise.all(fallbacks(env).map((u) => rpcAnswer(doFetch, u, data, env)))).filter((v) => v !== null);
+  if (answers.some((v) => v !== answers[0])) refuse(502, "the test network's endpoints disagree; try again later");
+  if (primary === 1n) {
+    if (answers.length >= 1) {
+      if (answers[0] === 1n) return true;
+      refuse(502, "the test network's endpoints disagree; try again later");
+    }
+    refuse(502, "the test network could not be checked by a second endpoint; try again");
   }
+  if (answers.length >= 2) return answers[0] === 1n;
   refuse(502, "the test network did not answer; try again");
 }
 
@@ -210,7 +225,16 @@ async function enrol(env, deps, body, now) {
   // one attempt per session
   const claim = await env.DB.prepare("UPDATE sessions SET state = 2 WHERE id = ?1 AND state = 1").bind(s.id).run();
   if (claim.meta.changes !== 1) refuse(409, "this session has already been used; start again");
-  if (!(await verifyOnChain(env, deps, verifyCalldata(body.proof, ps)))) refuse(403, "the enrolment proof does not verify");
+  let verified;
+  try { verified = await verifyOnChain(env, deps, verifyCalldata(body.proof, ps)); }
+  catch (e) {
+    // The network could not be asked: the session is given back, so that the same enrolment can
+    // be sent again without a new session (review of app v0.17, N9).
+    if (e instanceof Refusal && e.status === 502)
+      await env.DB.prepare("UPDATE sessions SET state = 1 WHERE id = ?1 AND state = 2").bind(s.id).run();
+    throw e;
+  }
+  if (!verified) refuse(403, "the enrolment proof does not verify");
   // the credential first (pure), then the reservation, which is the commitment point
   const cred = getCore(deps).call("sign", { secrets: secrets(env), fp: v.personKey, attrs: [v.birthDay, v.sexCode, v.natCode, v.expMonth, "0", "0", "0", "0", "0"], // notBefore 0: the pilot issues first identities only (Decision #62)
     cm: v.cm, epoch: String(env.EPOCH ?? "0"), generation: "0", rand: randomHex(64) });

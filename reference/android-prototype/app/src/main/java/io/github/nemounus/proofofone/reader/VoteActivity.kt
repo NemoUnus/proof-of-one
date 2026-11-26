@@ -59,18 +59,20 @@ class VoteActivity : Activity() {
     private lateinit var summary: TextView      // result view: "n people answered · closed …"
     private lateinit var bars: LinearLayout     // result view: one row and bar per option
     private lateinit var after: LinearLayout    // result view: "your answer is counted", the note
-    private val log = mutableListOf("Proof of One pilot ballot (app v0.16)")
+    private val log = mutableListOf("Proof of One pilot ballot (app v0.17)")
     private var pendingChoice = -1
     @Volatile private var busy = false
 
     // what the screen was loaded with
     private var member: JSONObject? = null
+    private var memberId: String? = null   // whose member file [member] is (review F17)
     private var st: JSONObject? = null
     private var nf: String? = null
     private var recorded: JSONObject? = null   // {choice, revision, ct} or {choice: null}
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        pendingChoice = savedInstanceState?.getInt("pendingChoice", -1) ?: -1   // kept if the screen is rebuilt during the face check (F17)
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE) // the answer is on screen: no screenshots
         L10n.load(this)
         if (!Profiles.guard(this)) return
@@ -84,7 +86,7 @@ class VoteActivity : Activity() {
         qcard.addView(question)
         summary = Ui.note(this, "").apply { visibility = View.GONE }
         qcard.addView(summary)
-        options = RadioGroup(this).apply { visibility = View.GONE }
+        options = RadioGroup(this).apply { visibility = View.GONE; setOnCheckedChangeListener { _, _ -> Profiles.touch() } }   // choosing counts as use
         qcard.addView(options)
         bars = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; visibility = View.GONE }
         qcard.addView(bars)
@@ -183,7 +185,7 @@ class VoteActivity : Activity() {
             try {
                 val m = Profiles.read()
                 if (m.optJSONObject("registered") == null) { say(L10n.t("voteNotRegistered")); return@Thread }
-                member = m
+                member = m; memberId = Profiles.current
                 val relay = EnrolService(Registration.RELAY)
                 // The poll chosen in the list (PollsActivity, v0.15); otherwise the relay's first.
                 val pollId = intent.getStringExtra("pollId") ?: run {
@@ -332,7 +334,10 @@ class VoteActivity : Activity() {
         addView(Ui.note(context, L10n.t("resultYours", answer)).apply { setTextColor(pal.text) })
     }
 
-    override fun onResume() { super.onResume(); if (!busy && !Profiles.isOpen()) Profiles.guard(this) }
+    private val idle = Profiles.IdleWatch(this) { busy }   // N11: the recorded answer is not left on screen
+    override fun onResume() { super.onResume(); idle.start(); if (!busy && !Profiles.isOpen()) Profiles.guard(this) }
+    override fun onPause() { super.onPause(); idle.stop() }
+    override fun onSaveInstanceState(out: Bundle) { super.onSaveInstanceState(out); out.putInt("pendingChoice", pendingChoice) }
 
     /** The answer is chosen: first the face check on the phone (v0.16), then the ballot. */
     private fun submit() {
@@ -350,7 +355,13 @@ class VoteActivity : Activity() {
         @Suppress("DEPRECATION") super.onActivityResult(requestCode, resultCode, data)
         if (requestCode != 7) return
         if (resultCode != RESULT_OK) { say(L10n.t("faceCheckNeeded")); return }
-        log += "face check before the ballot: passed on the phone (similarity %.2f, threshold %.2f); no face data sent".format(
+        // F17: the member may have closed (five minutes) while the camera was open, or the screen
+        // may have been rebuilt and not be loaded yet: then nothing is sent, and the member is told.
+        if (!Profiles.isOpen()) { Profiles.guard(this); return }
+        if (member == null || st == null || nf == null || pendingChoice < 0) { say(L10n.t("voteAgain")); return }
+        if (Profiles.current != memberId) { finish(); return }   // another member is open now
+        member = Profiles.read()
+        log += "face check before the ballot: passed on the phone (similarity %.1f, threshold %.2f); no face data sent".format(
             java.util.Locale.ROOT, data?.getFloatExtra("similarity", 0f) ?: 0f, FaceMatcher.THRESHOLD)
         runOnUiThread { status.text = L10n.t("faceCheckOk") }
         cast(pendingChoice)

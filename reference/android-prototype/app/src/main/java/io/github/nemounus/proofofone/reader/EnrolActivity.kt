@@ -77,6 +77,13 @@ class EnrolActivity : Activity() {
     private var faceSim = 0f
     private var faceTries = 0
     private val selfie by lazy { File(cacheDir, "enrol_selfie.jpg") }
+    // the member open when this screen began (normally none): a new member is opened at the end
+    // only if it is still the open one (review F3)
+    private var openedAtStart: String? = null
+    // a membership already on this phone without a face template, to which it was added (review F6),
+    // or which waits for its own password to add it (review N3)
+    @Volatile private var faceAddedTo: String? = null
+    @Volatile private var pendingFaceFor: Profiles.Meta? = null
     // the result, for the last page
     private var doneText = ""
     private var doneGood = true
@@ -88,6 +95,7 @@ class EnrolActivity : Activity() {
         super.onCreate(savedInstanceState)
         L10n.load(this)
         window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
+        openedAtStart = Profiles.current
         when {
             Profiles.list(this).size >= Profiles.MAX -> stop(t("membersFull", Profiles.MAX))
             DocStore.chip == null -> stop(t("readFirst"))
@@ -117,7 +125,7 @@ class EnrolActivity : Activity() {
         pg.bottom.addView(Ui.primary(this, t("back")) { finish() })
     }
 
-    // ---- step 3: information and consent (docs/pilot/consent-v0.4*.md; Decision #57, point 4)
+    // ---- step 3: information and consent (docs/pilot/consent-v0.5*.md; Decision #57, point 4)
     private fun consent() {
         page = P.CONSENT; clear()
         val pg = Ui.page(this, t("consentStep"), 3) { menu() }
@@ -125,7 +133,7 @@ class EnrolActivity : Activity() {
         val card = Ui.card(this, tint = true)
         card.addView(Ui.body(this, t("consentSummary")))
         card.addView(Ui.secondary(this, t("consentRead")) {
-            val f = if (L10n.lang == "fa") "consent-v0.4-fa.md" else "consent-v0.4.md"
+            val f = if (L10n.lang == "fa") "consent-v0.5-fa.md" else "consent-v0.5.md"
             startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/NemoUnus/proof-of-one/blob/main/docs/pilot/$f")))
         })
         pg.content.addView(card)
@@ -184,6 +192,7 @@ class EnrolActivity : Activity() {
     private fun done(text: String, good: Boolean, number: String?) {
         page = P.DONE; clear()
         doneText = text; doneGood = good; doneNumber = number
+        Profiles.clearChip()   // the enrolment is over: the passport read is forgotten (review F1)
         val pg = Ui.page(this, t("enrolledTitle"), 5) { menu() }
         val c = Ui.c(this)
         pg.content.addView(Ui.symbol(this, if (good) "✓" else "!", if (good) c.good else c.accent))
@@ -287,6 +296,7 @@ class EnrolActivity : Activity() {
 
     override fun onDestroy() {
         super.onDestroy(); selfie.delete(); matcher?.close()
+        if (isFinishing) Profiles.clearChip()   // left for good, not only rebuilt (rotation)
     }
 
     // A restored membership registers again after its own random delay; if the old phone
@@ -303,10 +313,12 @@ class EnrolActivity : Activity() {
         Profiles.withNumber(this, m.optString("number"))?.let { return t("memberHere", it.label) }
         chipFace?.let { m.put("face", Profiles.faceJson(it.embedding)) }
         val label = labelField?.text?.toString()?.trim().orEmpty().ifEmpty { t("memberDefault", Profiles.list(this).size + 1) }
-        Profiles.create(this, label, password, m)
+        Profiles.create(this, label, password, m, openedAtStart)
         savedHere = true
         return null
     }
+    /** The message after a restore: restored, or the face check added to the member already here. */
+    private fun restoredText() = faceAddedTo?.let { t("faceAdded", it) } ?: t("restored")
 
     private fun file(name: String): String {
         val f = File(filesDir, name)
@@ -318,15 +330,54 @@ class EnrolActivity : Activity() {
         return f.absolutePath
     }
 
+    /**
+     * The same membership is already on this phone (found by its member number, known in this
+     * session from the service's answer): add the chip photo's face template to it, with that
+     * member's own password, if it has none (review F6, N3). Returns what to show.
+     */
+    private fun addFaceHere(here: Profiles.Meta, password: String): Pair<String, Boolean> {
+        val f = chipFace ?: return t("memberHere", here.label) to false
+        return when (val r = Profiles.addFace(this, here.id, password, Profiles.faceJson(f.embedding))) {
+            Profiles.FaceAdd.ADDED -> { pendingFaceFor = null; savedHere = true; t("faceAdded", here.label) to true }
+            Profiles.FaceAdd.HAD_ONE -> { pendingFaceFor = null; t("memberHere", here.label) to false }
+            is Profiles.Opened.Wait -> { pendingFaceFor = here; t("unlockWait", "%d:%02d".format(java.util.Locale.ROOT, r.seconds / 60, r.seconds % 60)) to false }
+            is Profiles.Opened.WrongPassword -> { pendingFaceFor = here; t("addFacePw", here.label) to false }
+            else -> { pendingFaceFor = null; t("unlockOtherPhone") to false }
+        }
+    }
+
     private fun retryRestore() {
+        pendingFaceFor?.let { here ->
+            val pw = pw1?.text.toString()
+            restore?.let { Ui.enable(it, false) }
+            thread {
+                val (text, ok) = try { addFaceHere(here, pw) } catch (e: OutOfMemoryError) { t("lowMemory") to false }
+                    catch (e: Throwable) { t("error", "face", e.message ?: e.javaClass.simpleName) to false }
+                runOnUiThread {
+                    restore?.let { Ui.enable(it, true) }; pw1?.text?.clear()
+                    when {
+                        ok -> done(text, true, null)
+                        pendingFaceFor != null -> status?.let { Ui.say(it, text, 2) }
+                        else -> done(text, false, null)
+                    }
+                }
+            }
+            return
+        }
         val blob = pendingBackup ?: return
         val seed = pendingSeed ?: return
         val pw = pw1?.text.toString()
         restore?.let { Ui.enable(it, false) }
         thread {
-            val plain = Backup.open(blob, pw, seed)
-            val notKept = plain?.let { saveMember(restored(it, LocalDate.now()), pw) }
+            // F9: a phone short of memory, or a full phone, gives a message instead of closing the app
+            val r = try {
+                val plain = Backup.open(blob, pw, seed)
+                Triple(plain, plain?.let { saveMember(restored(it, LocalDate.now()), pw) }, null as String?)
+            } catch (e: OutOfMemoryError) { Triple(null, null, t("lowMemory")) }
+              catch (e: Throwable) { Triple(null, null, t("error", "restore", e.message ?: e.javaClass.simpleName)) }
+            val (plain, notKept, failed) = r
             runOnUiThread {
+                if (failed != null) { restore?.let { Ui.enable(it, true) }; status?.let { Ui.say(it, failed, 2) }; return@runOnUiThread }
                 restore?.let { Ui.enable(it, true) }
                 restoreTries++
                 if (plain == null) {
@@ -337,13 +388,13 @@ class EnrolActivity : Activity() {
                 pendingBackup = null; pendingSeed = null
                 if (notKept != null) { shareText += "\nretry $restoreTries: backup opened; this membership is already on this phone"; done(notKept, false, null); return@runOnUiThread }
                 shareText += "\nretry $restoreTries: RESTORED with the password"
-                done(L10n.t("restored"), true, JSONObject(plain).optString("number"))
+                done(restoredText(), true, JSONObject(plain).optString("number"))
             }
         }
     }
 
     private fun run() {
-        val chip = DocStore.chip ?: return
+        val chip = DocStore.chip ?: run { status?.let { Ui.say(it, L10n.t("readFirst"), 2) }; return }   // N6
         fun t(k: String, vararg a: Any) = L10n.t(k, *a)
         val say = { s: String, k: Int -> status?.let { Ui.say(it, s, k) }; Unit }
         if (!consentOk) { say(t("consentFirst"), 2); return }
@@ -353,8 +404,8 @@ class EnrolActivity : Activity() {
         if (password != pw2?.text.toString()) { say(t("pwDiffer"), 2); return }
         start?.let { Ui.enable(it, false) }
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        val log = mutableListOf("Proof of One pilot enrolment v0.16", "consent: information text v0.4 read and agreed",
-            "face check: passed on the phone (similarity %.2f, threshold %.2f, %d selfie%s); no face data sent".format(
+        val log = mutableListOf("Proof of One pilot enrolment v0.17", "consent: information text v0.5 read and agreed",
+            "face check: passed on the phone (similarity %.1f, threshold %.2f, %d selfie%s); no face data sent".format(
                 java.util.Locale.ROOT, faceSim, FaceMatcher.THRESHOLD, faceTries, if (faceTries == 1) "" else "s"))
         fun step(s: String) = runOnUiThread { status?.let { Ui.say(it, s) } }
         thread {
@@ -423,6 +474,26 @@ class EnrolActivity : Activity() {
                 } catch (e: EnrolService.Failure) {
                     val b = e.body
                     if (e.status == 409 && b != null && b.optBoolean("alreadyEnrolled")) {
+                        // Already on this phone (moved from an older version, without a face
+                        // template): its own password adds the template; no backup is needed (N3).
+                        Profiles.withNumber(this@EnrolActivity, number ?: "")?.let { here ->
+                            log += "ALREADY ENROLLED, and this membership is on this phone: adding the face template"
+                            val (text, ok) = addFaceHere(here, password)
+                            log += if (ok) "face template added to the member on this phone" else "face template not added (${if (pendingFaceFor != null) "password" else "nothing to add"})"
+                            shareText = log.joinToString("\n")
+                            runOnUiThread {
+                                when {
+                                    ok -> done(text, true, null)
+                                    pendingFaceFor != null -> {
+                                        status?.let { Ui.say(it, text, 2) }
+                                        start?.visibility = View.GONE; restore?.visibility = View.VISIBLE
+                                        pw2?.visibility = View.GONE; pw1?.text?.clear()
+                                    }
+                                    else -> done(text, false, null)
+                                }
+                            }
+                            return@thread
+                        }
                         log += "ALREADY ENROLLED: the service recognised this person" + if (b.isNull("backup")) " (no backup kept)" else " (encrypted backup returned)"
                         val blob = if (b.isNull("backup")) null else b.getString("backup")
                         val plain = blob?.let { Backup.open(it, password, backupSeed) }
@@ -432,7 +503,7 @@ class EnrolActivity : Activity() {
                         runOnUiThread {
                             when {
                                 notKept != null -> done(notKept, false, null)
-                                plain != null -> done(t("already") + "\n\n" + t("restored"), true, number)
+                                plain != null -> done(t("already") + "\n\n" + restoredText(), true, number)
                                 blob != null -> {
                                     pendingBackup = blob; pendingSeed = backupSeed
                                     status?.let { Ui.say(it, t("already") + "\n\n" + t("wrongPw") + " " + t("restoreAsk"), 2) }
@@ -458,15 +529,23 @@ class EnrolActivity : Activity() {
                     .put("credential", cred).put("msg", res.getString("msg"))
                     .put("serviceKeys", JSONObject().put("K", info.getJSONArray("K")).put("A", info.getJSONArray("A")).put("keyLeaf", info.getString("keyLeaf")))
                     .put("registerAfter", Registration.pickTime())
-                saveMember(saved.toString(), password)?.let { error(it) }
-                log += "ENROLLED: credential signed by the service and kept on this phone, encrypted under the password and the phone's secure hardware"
-                log += "face template of the chip photo: kept on this phone only, encrypted; not in the backup"
+                log += "ENROLLED: credential signed by the service"
                 log += "credential key equals the published key: ${if (cred.getJSONArray("A").toString() == info.getJSONArray("A").toString()) "yes" else "NO"}"
-                // The encrypted backup, in the same session (#59).
+                // The encrypted backup first, in the same session (#59), so that a failure to keep
+                // the membership on this phone cannot lose it for good (review N4).
                 stage = "backup"; step(t("sBackup"))
                 val backedUp = try { svc.backup(ses.getString("session"), Backup.seal(saved.toString(), password, backupSeed)); true }
                     catch (x: Exception) { log += "backup NOT stored: ${x.message}"; false }
                 if (backedUp) log += "backup: stored, encrypted (Argon2id + AES-GCM)"
+                stage = "save"
+                val notSaved = try { saveMember(saved.toString(), password) } catch (x: OutOfMemoryError) { "lowMemory" } catch (x: Throwable) { x.message ?: x.javaClass.simpleName }
+                if (notSaved != null) {
+                    log += "NOT kept on this phone: $notSaved"
+                    shareText = log.joinToString("\n")
+                    runOnUiThread { done(if (backedUp) t("notSavedHere") else t("error", "save", notSaved), false, number) }
+                    return@thread
+                }
+                log += "kept on this phone, encrypted under the password and the phone's secure hardware; face template of the chip photo kept on this phone only, not in the backup"
                 log += "registration on the ledger: automatic, 1-10 minutes after enrolment (Decision #62)"
                 log += "total time: ${(System.currentTimeMillis() - t0) / 1000} s (after the files)"
                 shareText = log.joinToString("\n")

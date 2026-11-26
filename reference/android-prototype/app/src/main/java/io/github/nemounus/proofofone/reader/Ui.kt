@@ -178,6 +178,8 @@ object Ui {
             }
             background = rounded(p.surface, dp(ctx, 12).toFloat(), dp(ctx, 1), p.line)
             setPadding(dp(ctx, 14), dp(ctx, 12), dp(ctx, 14), dp(ctx, 12))
+            // keyboards must not learn document numbers, labels or passwords (review F19)
+            imeOptions = imeOptions or android.view.inputmethod.EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING
             minHeight = dp(ctx, 52)
         }
         box.addView(e, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(ctx, 4) })

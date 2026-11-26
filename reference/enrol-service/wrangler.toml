@@ -11,7 +11,8 @@ keep_vars = true      # keep the variables set in the dashboard when deploying f
 
 [vars]
 RPC_URL = "https://sepolia.base.org"
-# Asked only when RPC_URL does not answer three times; at least two must answer and agree.
+# Distinct operators, not RPC_URL. One must confirm a "yes" from RPC_URL; when RPC_URL does not
+# answer three times, at least two must answer and agree (service.js, verifyOnChain).
 RPC_FALLBACKS = "https://base-sepolia-rpc.publicnode.com,https://base-sepolia.drpc.org,https://base-sepolia.gateway.tenderly.co"
 DOC_VERIFIER = "0x78657778ee5C48Fd4FB792884b9C660D48D31de8"   # deployment 4 (21 Nov 2026), testnet/web/plan5.json
 EPOCH = "0"

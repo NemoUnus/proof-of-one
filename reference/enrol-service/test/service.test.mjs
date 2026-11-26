@@ -110,7 +110,7 @@ test("a member enrols once: credential verifies, fingerprints reserved, counts s
   assert.strictEqual(r.status, 200, JSON.stringify(r.body));
   const c = r.body.credential, F = eddsa.F;
   assert.ok(eddsa.verifyPoseidon(F.e(BigInt(r.body.msg)), { R8: c.R8.map((x) => F.e(BigInt(x))), S: BigInt(c.S) }, c.A.map((x) => F.e(BigInt(x)))));
-  assert.strictEqual(calls.length, 1);
+  assert.strictEqual(calls.filter((c) => c.url === env.RPC_URL).length, 1);   // and the fallbacks confirm it
   assert.strictEqual(calls[0].params[0].data.slice(0, 10), "0x4d01c5a0");
   assert.strictEqual(calls[0].params[0].data.length, 2 + 8 + 64 * (8 + 24));
   const rows = env.DB.sql.prepare("SELECT * FROM members").all();
@@ -261,7 +261,7 @@ test("key set (Decision #61): this service's path, or null until it is published
 
 // ---- the test network's endpoints (25 November 2026: the public endpoint refused the service)
 async function enrolWith(person) { return (await phone(person)).enrol(); }
-test("the primary endpoint is asked again when it does not answer, and its answer is used", async () => {
+test("the primary endpoint is asked again when it does not answer, and its yes is confirmed by another endpoint", async () => {
   let n = 0;
   const real = deps.fetch;
   deps.fetch = async (url, init) => (url === env.RPC_URL && n++ < 2 ? { ok: false, status: 429, json: async () => ({}) } : real(url, init));
@@ -269,7 +269,7 @@ test("the primary endpoint is asked again when it does not answer, and its answe
     const r = await enrolWith(A);
     assert.strictEqual(r.status, 200, JSON.stringify(r.body));
     assert.strictEqual(calls.filter((c) => c.url === env.RPC_URL).length, 1);   // the third try answered
-    assert.strictEqual(calls.filter((c) => c.url !== env.RPC_URL).length, 0);   // no fallback needed
+    assert.ok(calls.filter((c) => c.url !== env.RPC_URL).length >= 1);   // a second endpoint confirmed
   } finally { deps.fetch = real; }
 });
 test("the primary endpoint is down: two independent endpoints that agree decide", async () => {
@@ -294,4 +294,42 @@ test("only one endpoint answers: no decision, try again", async () => {
   const r = await enrolWith(A);
   assert.strictEqual(r.status, 502, JSON.stringify(r.body));
   assert.match(r.body.error, /did not answer/);
+});
+
+// ---- review of app v0.17, N9
+test("the primary alone cannot make a forged proof pass: its yes needs a second endpoint", async () => {
+  endpoint[env.RPC_URL] = true; chainSays = false;   // a lying primary; the others tell the truth
+  const r = await enrolWith(A);
+  assert.strictEqual(r.status, 502, JSON.stringify(r.body));
+  assert.match(r.body.error, /disagree/);
+});
+test("a yes from the primary with no second endpoint answering is not enough", async () => {
+  for (const u of ["https://f1.test", "https://f2.test", "https://f3.test"]) endpoint[u] = "down";
+  const r = await enrolWith(A);
+  assert.strictEqual(r.status, 502, JSON.stringify(r.body));
+  assert.match(r.body.error, /second endpoint/);
+});
+test("a no from the primary is a refusal", async () => {
+  endpoint[env.RPC_URL] = false;
+  const r = await enrolWith(A);
+  assert.strictEqual(r.status, 403, JSON.stringify(r.body));
+});
+test("no answer gives the session back: the same enrolment can be sent again", async () => {
+  const p = await phone(A);
+  for (const u of [env.RPC_URL, "https://f1.test", "https://f2.test", "https://f3.test"]) endpoint[u] = "down";
+  const r1 = await p.enrol();
+  assert.strictEqual(r1.status, 502, JSON.stringify(r1.body));
+  endpoint = {};
+  const r2 = await p.enrol();
+  assert.strictEqual(r2.status, 200, JSON.stringify(r2.body));
+});
+test("the same endpoint listed twice, or the primary listed again, does not count twice", async () => {
+  const saved = env.RPC_FALLBACKS;
+  env.RPC_FALLBACKS = `https://f1.test, https://f1.test, ${env.RPC_URL}`;
+  endpoint[env.RPC_URL] = "down";
+  try {
+    const r = await enrolWith(A);
+    assert.strictEqual(r.status, 502, JSON.stringify(r.body));
+    assert.match(r.body.error, /did not answer/);
+  } finally { env.RPC_FALLBACKS = saved; }
 });

@@ -26,12 +26,25 @@ import java.io.File
 import kotlin.concurrent.thread
 
 class FaceCheckActivity : Activity() {
-    companion object { const val MAX_TRIES = 3 }
+    companion object {
+        const val MAX_TRIES = 3
+        private const val COOL_DOWN = 10 * 60_000L
+        // Failed selfies per member, kept for the app's life (review F13): going back, or turning
+        // the phone, does not give new tries; after MAX_TRIES, a ten-minute wait.
+        private val failed = HashMap<String, Pair<Int, Long>>()   // member id → (fails, time of the last)
+        @Synchronized private fun fails(id: String): Int {
+            val (n, at) = failed[id] ?: return 0
+            if (System.currentTimeMillis() - at > COOL_DOWN) { failed.remove(id); return 0 }
+            return n
+        }
+        @Synchronized private fun fail(id: String) { failed[id] = (fails(id) + 1) to System.currentTimeMillis() }
+        @Synchronized private fun passed(id: String) { failed.remove(id) }
+    }
+    private var memberId: String? = null
     private lateinit var status: TextView
     private lateinit var take: Button
     private var matcher: FaceMatcher? = null
     private var template: FloatArray? = null
-    private var tries = 0
     private val selfie by lazy { File(cacheDir, "check_selfie.jpg") }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -49,7 +62,9 @@ class FaceCheckActivity : Activity() {
         pg.bottom.addView(take)
         pg.bottom.addView(Ui.secondary(this, L10n.t("cancel")) { setResult(RESULT_CANCELED); finish() })
         template = Profiles.faceTemplate(Profiles.read())
+        memberId = Profiles.current
         if (template == null) { Ui.say(status, L10n.t("faceCheckNoTemplate"), 2); Ui.enable(take, false); return }
+        if (fails(memberId!!) >= MAX_TRIES) { Ui.say(status, L10n.t("faceCheckGiveUp"), 2); Ui.enable(take, false); return }
         Ui.enable(take, false); Ui.say(status, L10n.t("facePrep"))
         thread {
             try { matcher = FaceMatcher(this); runOnUiThread { Ui.say(status, ""); Ui.enable(take, true) } }
@@ -83,18 +98,27 @@ class FaceCheckActivity : Activity() {
                 m.analyse(bm)?.let { FaceMatcher.cosine(t, it.embedding) }
             } catch (e: Throwable) { null }
             runOnUiThread {
-                tries++
+                val id = memberId ?: return@runOnUiThread
+                // the member may have closed while the camera was open
+                if (Profiles.current != id) { setResult(RESULT_CANCELED); finish(); return@runOnUiThread }
                 when {
                     sim != null && sim >= FaceMatcher.THRESHOLD -> {
-                        setResult(RESULT_OK, Intent().putExtra("similarity", sim)); finish()
+                        passed(id); setResult(RESULT_OK, Intent().putExtra("similarity", sim)); finish()
                     }
-                    tries >= MAX_TRIES -> { Ui.say(status, L10n.t("faceCheckGiveUp"), 2) }
-                    else -> { Ui.enable(take, true); Ui.say(status, L10n.t(if (sim == null) "faceNone" else "faceCheckFail", MAX_TRIES - tries), 2) }
+                    else -> {
+                        fail(id)
+                        val left = MAX_TRIES - fails(id)
+                        if (left <= 0) Ui.say(status, L10n.t("faceCheckGiveUp"), 2)
+                        else { Ui.enable(take, true); Ui.say(status, if (sim == null) L10n.t("faceNone") else L10n.t("faceCheckFail", left), 2) }
+                    }
                 }
             }
         }
     }
 
+    private val idle = Profiles.IdleWatch(this)
+    override fun onResume() { super.onResume(); idle.start() }
+    override fun onPause() { super.onPause(); idle.stop() }
     override fun onDestroy() { super.onDestroy(); selfie.delete(); matcher?.close() }
 
     /** A dashed oval with a simple face, as in the approved mockup. */
