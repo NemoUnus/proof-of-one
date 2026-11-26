@@ -1,0 +1,40 @@
+# Proof of One — keep the pilot relay's account funded with test ETH (Decision #69, point 6).
+# Once a day, reference/relay/topup/topup.mjs reads the relay's balance on Base Sepolia and,
+# below the target, asks Coinbase's developer faucet for test ETH sent straight to the relay's
+# account (0.0001 ETH a request, at most 0.1 ETH a day). Credentials: the repository secrets
+# CDP_API_KEY_ID and CDP_API_KEY_SECRET, set by the founder. No key of any wallet is used.
+name: Relay top-up (test coins)
+on:
+  schedule:
+    - cron: "41 2 * * *"      # every day, 02:41 UTC
+  workflow_dispatch:
+    inputs:
+      dry:
+        description: "Dry run: only read the balance"
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: relay-topup
+  cancel-in-progress: false
+jobs:
+  topup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: reference/relay/topup
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --ignore-scripts
+      - run: npm test
+      - name: Top up
+        env:
+          CDP_API_KEY_ID: ${{ secrets.CDP_API_KEY_ID }}
+          CDP_API_KEY_SECRET: ${{ secrets.CDP_API_KEY_SECRET }}
+          TOPUP_TARGET: "0.03"
+        run: node topup.mjs ${{ inputs.dry && '--dry' || '' }}
