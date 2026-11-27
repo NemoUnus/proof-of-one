@@ -38,6 +38,7 @@ import org.jmrtd.BACKey
 import org.json.JSONObject
 import java.io.File
 import java.security.Security
+import kotlin.concurrent.thread
 
 class MainActivity : Activity(), NfcAdapter.ReaderCallback {
 
@@ -245,7 +246,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         val ready = result.ok && result.chip?.dscDer != null
         // the signer's certificate only for a passport that could not be used, to find out why (review N13)
         shareText = result.report + (if (!ready) result.dscPem?.let { "\n$it\n" } ?: "" else "")
-        FaceStore.chipPhoto = result.faceImage; FaceStore.chipMime = result.faceMime
+        FaceStore.set(result.faceImage, result.faceMime)
         DocStore.chip = result.chip; DocStore.genuine = result.ok
         runOnUiThread {
             val st = status ?: return@runOnUiThread
@@ -253,6 +254,15 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             b.removeAllViews()
             if (ready) {
                 Ui.say(st, t("doneOk"), 1)
+                // the photo read from the chip, so the holder sees what was read (v0.17.2, founder's proposal)
+                thread {
+                    val bm = FaceStore.bitmap() ?: return@thread
+                    runOnUiThread {
+                        val parent = st.parent as? android.view.ViewGroup ?: return@runOnUiThread
+                        if (page != P.CHIP || FaceStore.chipBitmap !== bm || parent.findViewWithTag<View>("chipPhoto") != null) return@runOnUiThread
+                        parent.addView(Ui.photo(this, bm, t("chipPhoto")).also { v -> v.tag = "chipPhoto" }, parent.indexOfChild(st))
+                    }
+                }
                 b.addView(Ui.primary(this, t("next")) { startActivity(Intent(this, EnrolActivity::class.java)) })
             } else {
                 Ui.say(st, t("doneProblems"), 2)
@@ -455,7 +465,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
                 Thread {
                     try {
                         val line = Registration.run(this)
-                        shareText = "Proof of One registration (app v0.17.1)\n$line"
+                        shareText = "Proof of One registration (app v0.17.2)\n$line"
                         registryChecked = true
                         runOnUiThread { checkRegistration() }
                     } catch (e: Registration.NotReady) {
@@ -463,7 +473,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
                     } catch (e: java.io.IOException) {
                         say(t("regOffline"), 2)
                     } catch (e: Throwable) {
-                        shareText = "Proof of One registration (app v0.17.1)\nFAILED: ${e.javaClass.simpleName}: ${e.message}"
+                        shareText = "Proof of One registration (app v0.17.2)\nFAILED: ${e.javaClass.simpleName}: ${e.message}"
                         say(t("regFailed", e.message ?: e.javaClass.simpleName), 2)
                     } finally { registering = false }
                 }.start()

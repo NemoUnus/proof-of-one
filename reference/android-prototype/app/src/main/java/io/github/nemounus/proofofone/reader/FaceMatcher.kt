@@ -156,4 +156,13 @@ class FaceMatcher(ctx: Context) : AutoCloseable {
 object FaceStore {
     @Volatile var chipPhoto: ByteArray? = null
     @Volatile var chipMime: String? = null
+    /** The decoded chip photo, for showing on the reader and face-check screens (v0.17.2); never written to storage. */
+    @Volatile var chipBitmap: Bitmap? = null
+    @Synchronized fun bitmap(): Bitmap? = chipBitmap ?: chipPhoto?.let { b ->
+        runCatching { FaceMatcher.decodeChip(b, chipMime) }.getOrNull()?.also { chipBitmap = it }
+    }
+    /** A newly read passport: its photo replaces the last one, decoded copy included (review K2). */
+    @Synchronized fun set(photo: ByteArray?, mime: String?) { chipPhoto = photo; chipMime = mime; chipBitmap = null }
+    /** Forgets the photo. Synchronized with bitmap(), so a decode still running cannot put it back after (review K1). */
+    @Synchronized fun clear() { chipPhoto = null; chipMime = null; chipBitmap = null }
 }

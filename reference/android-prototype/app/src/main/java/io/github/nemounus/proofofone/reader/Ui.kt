@@ -12,6 +12,7 @@ package io.github.nemounus.proofofone.reader
 import android.app.Activity
 import android.content.Context
 import android.content.res.Configuration
+import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
@@ -31,6 +32,7 @@ import android.widget.Button
 import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -190,6 +192,16 @@ object Ui {
         text = s; textSize = 16f; typeface = font(ctx); setTextColor(p.text); buttonTintList = ColorStateList.valueOf(p.primary)
         setPadding(dp(ctx, 8), dp(ctx, 8), dp(ctx, 8), dp(ctx, 8))
         setOnCheckedChangeListener { _, v -> on(v) }
+    }
+    /** A photo with a caption, on screens that block screenshots (FLAG_SECURE) only (v0.17.2). */
+    fun photo(ctx: Context, bm: Bitmap, caption: String, height: Int = 180) = LinearLayout(ctx).apply {
+        orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL
+        setPadding(0, dp(ctx, 6), 0, dp(ctx, 2))
+        addView(ImageView(ctx).apply {
+            setImageBitmap(bm); scaleType = ImageView.ScaleType.CENTER_CROP; contentDescription = caption
+            background = rounded(c(ctx).soft, dp(ctx, 10).toFloat()); clipToOutline = true
+        }, LinearLayout.LayoutParams(dp(ctx, height * 3 / 4), dp(ctx, height)))
+        addView(note(ctx, caption).apply { gravity = Gravity.CENTER })
     }
     /** A large symbol at the top of a screen (✓, a phone on a passport, …). */
     fun symbol(ctx: Context, s: String, color: Int) = TextView(ctx).apply {

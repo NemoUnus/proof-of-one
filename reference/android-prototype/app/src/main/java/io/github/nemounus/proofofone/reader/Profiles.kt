@@ -298,7 +298,7 @@ object Profiles {
      * cannot see them (review F1).
      */
     fun clearChip() {
-        FaceStore.chipPhoto = null; FaceStore.chipMime = null
+        FaceStore.clear()
         DocStore.chip = null; DocStore.genuine = false
     }
 

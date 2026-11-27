@@ -77,6 +77,9 @@ class EnrolActivity : Activity() {
     private var faceSim = 0f
     private var faceTries = 0
     private val selfie by lazy { File(cacheDir, "enrol_selfie.jpg") }
+    // the two photos shown on the face-check screen (v0.17.2): held in memory only, dropped with the screen
+    private var photoBox: LinearLayout? = null
+    private var selfieShown: android.graphics.Bitmap? = null
     // the member open when this screen began (normally none): a new member is opened at the end
     // only if it is still the open one (review F3)
     private var openedAtStart: String? = null
@@ -114,7 +117,7 @@ class EnrolActivity : Activity() {
         if (shareText.isNotEmpty()) t("shareResult") to { share() } else null))
     private fun share() = startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, shareText) }, "Share"))
 
-    private fun clear() { status = null; report = null; pw1 = null; pw2 = null; labelField = null; start = null; restore = null; faceStatus = null; selfieBtn = null; bottom = null }
+    private fun clear() { photoBox = null; status = null; report = null; pw1 = null; pw2 = null; labelField = null; start = null; restore = null; faceStatus = null; selfieBtn = null; bottom = null }
 
     // ---- a reason to stop before step 3
     private fun stop(why: String) {
@@ -148,6 +151,8 @@ class EnrolActivity : Activity() {
         page = P.FACE; clear()
         val pg = Ui.page(this, t("faceStep"), 4) { menu() }
         pg.content.addView(Ui.body(this, t("faceIntro")))
+        val pb = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        photoBox = pb; pg.content.addView(pb); showPhotos()
         val st = Ui.status(this); faceStatus = st; pg.content.addView(st)
         bottom = pg.bottom
         if (faceOk) { faceDone(); return }
@@ -156,6 +161,15 @@ class EnrolActivity : Activity() {
         selfieBtn = b; Ui.enable(b, chipFace != null)
         pg.bottom.addView(Ui.secondary(this, t("back")) { consent() })
         pg.bottom.addView(b)
+    }
+    // The chip photo, and below it the last selfie once one is taken (founder's proposal, v0.17.2).
+    private fun showPhotos() {
+        val box = photoBox ?: return
+        box.removeAllViews()
+        val chip = FaceStore.chipBitmap ?: return
+        box.addView(Ui.photo(this, chip, t("chipPhoto"), 150))
+        selfieShown?.let { box.addView(Ui.photo(this, it, t("yourSelfie"), 150)) }
+        box.addView(Ui.note(this, t("photosStay")).apply { gravity = android.view.Gravity.CENTER })
     }
     private fun faceDone() {
         faceStatus?.let { Ui.say(it, t("facePass"), 1) }
@@ -240,9 +254,10 @@ class EnrolActivity : Activity() {
         return try {
             val bytes = FaceStore.chipPhoto ?: error("no chip photo")
             val m = matcher ?: FaceMatcher(this).also { matcher = it }
-            val f = m.analyse(FaceMatcher.decodeChip(bytes, FaceStore.chipMime))
+            val f = m.analyse(FaceStore.bitmap() ?: FaceMatcher.decodeChip(bytes, FaceStore.chipMime))
             chipFace = f
             runOnUiThread {
+                showPhotos()
                 faceNote = if (f == null) L10n.t("faceNoChipFace") else if (!faceOk) L10n.t("faceReady") else null
                 if (!faceOk) faceNote?.let { n -> faceStatus?.let { Ui.say(it, n, if (f == null) 2 else 0) } }
                 selfieBtn?.let { Ui.enable(it, f != null && !faceOk) }
@@ -280,7 +295,11 @@ class EnrolActivity : Activity() {
                 val f = matcher!!.analyse(bm)
                 faceTries++
                 val sim = f?.let { FaceMatcher.cosine(chipFace!!.embedding, it.embedding) }
+                // a small copy for the screen only; the selfie file is already deleted
+                val k = 480f / maxOf(bm.width, bm.height)
+                val shown = if (k >= 1f) bm else android.graphics.Bitmap.createScaledBitmap(bm, (bm.width * k).toInt(), (bm.height * k).toInt(), true)
                 runOnUiThread {
+                    selfieShown = shown; showPhotos()
                     selfieBtn?.let { Ui.enable(it, true) }
                     when {
                         sim == null -> faceStatus?.let { Ui.say(it, L10n.t("faceNone"), 2) }
@@ -295,7 +314,7 @@ class EnrolActivity : Activity() {
     }
 
     override fun onDestroy() {
-        super.onDestroy(); selfie.delete(); matcher?.close()
+        super.onDestroy(); selfie.delete(); matcher?.close(); selfieShown = null
         if (isFinishing) Profiles.clearChip()   // left for good, not only rebuilt (rotation)
     }
 
@@ -404,7 +423,7 @@ class EnrolActivity : Activity() {
         if (password != pw2?.text.toString()) { say(t("pwDiffer"), 2); return }
         start?.let { Ui.enable(it, false) }
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        val log = mutableListOf("Proof of One pilot enrolment v0.17.1", "consent: information text v0.6 read and agreed",
+        val log = mutableListOf("Proof of One pilot enrolment v0.17.2", "consent: information text v0.6 read and agreed",
             "face check: passed on the phone (similarity %.1f, threshold %.2f, %d selfie%s); no face data sent".format(
                 java.util.Locale.ROOT, faceSim, FaceMatcher.THRESHOLD, faceTries, if (faceTries == 1) "" else "s"))
         fun step(s: String) = runOnUiThread { status?.let { Ui.say(it, s) } }

@@ -48,6 +48,15 @@ The secrets and the credential stay in the app's private storage (`member.json`,
 - **What it is not.** A check made on the phone can be bypassed by a modified app, and it does not detect a printed photo or a screen held to the camera. In the pilot it stops honest mistakes (someone else's passport picked up at home) and gives the measurements; the design's defences (the attested enclave's face comparison, Decision #33) are not in the pilot.
 - **Translated.** The face check's texts are in the six languages. The technical test tools (face check test, enrolment proof test, ballot proof benchmark) stay in English and are folded under **▸ Test tools (English)** on the first screen, so that volunteers do not meet them.
 
+### v0.17.2: the photos are shown (Decision #73)
+
+On the founder's proposal, so that the holder sees what the app read and why the face check passed or failed:
+
+- **After the passport is read and checked**, the reader screen shows the photo read from the chip, above the green result.
+- **On the face-check screen**, the chip photo is shown, and below it the last selfie once one is taken, with the result (passed or not). No similarity number is shown on screen; the shared report keeps it as before.
+- **Nothing new is kept.** Both screens already block screenshots and the recent-apps preview (`FLAG_SECURE`). The decoded chip photo is held in memory with the chip data and forgotten with it (`Profiles.clearChip`); the selfie is shown from a small copy in memory (480 pixels at most), dropped when the screen closes; the selfie file is still deleted as soon as it is read. The face-check text no longer says the selfie is "deleted at once" but that it is not saved and not sent, and a note under the photos says they are gone when the screen closes (8 languages).
+- **Not changed:** the face check before each ballot shows no photos, since the chip photo is not kept after enrolment, only the face template.
+
 ### v0.17.1: consent v0.6 (Decision #71)
 
 A second AI model, reviewing whitepaper v1.3, found that consent v0.5 left out several things true of the pilot. Consent v0.6 (`docs/pilot/consent-v0.6*.md`) adds them: anyone who can open a membership can see its past answers (the app finds them again from the member's secret); the services run on a commercial cloud without the design's protected hardware; a lost or stolen phone's membership cannot be cancelled during the pilot; with about 100 members, taking part is easier to infer; and the member number could be computed by whoever holds the enrolment service's key. The app links to v0.6, records it in the enrolment report, and adds the first point to the consent summary (8 languages). No other change.
