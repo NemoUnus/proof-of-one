@@ -455,7 +455,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
                 Thread {
                     try {
                         val line = Registration.run(this)
-                        shareText = "Proof of One registration (app v0.17)\n$line"
+                        shareText = "Proof of One registration (app v0.17.1)\n$line"
                         registryChecked = true
                         runOnUiThread { checkRegistration() }
                     } catch (e: Registration.NotReady) {
@@ -463,7 +463,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
                     } catch (e: java.io.IOException) {
                         say(t("regOffline"), 2)
                     } catch (e: Throwable) {
-                        shareText = "Proof of One registration (app v0.17)\nFAILED: ${e.javaClass.simpleName}: ${e.message}"
+                        shareText = "Proof of One registration (app v0.17.1)\nFAILED: ${e.javaClass.simpleName}: ${e.message}"
                         say(t("regFailed", e.message ?: e.javaClass.simpleName), 2)
                     } finally { registering = false }
                 }.start()

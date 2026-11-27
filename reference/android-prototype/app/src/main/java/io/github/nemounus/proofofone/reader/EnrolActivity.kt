@@ -125,7 +125,7 @@ class EnrolActivity : Activity() {
         pg.bottom.addView(Ui.primary(this, t("back")) { finish() })
     }
 
-    // ---- step 3: information and consent (docs/pilot/consent-v0.5*.md; Decision #57, point 4)
+    // ---- step 3: information and consent (docs/pilot/consent-v0.6*.md; Decision #57, point 4)
     private fun consent() {
         page = P.CONSENT; clear()
         val pg = Ui.page(this, t("consentStep"), 3) { menu() }
@@ -133,7 +133,7 @@ class EnrolActivity : Activity() {
         val card = Ui.card(this, tint = true)
         card.addView(Ui.body(this, t("consentSummary")))
         card.addView(Ui.secondary(this, t("consentRead")) {
-            val f = if (L10n.lang == "fa") "consent-v0.5-fa.md" else "consent-v0.5.md"
+            val f = if (L10n.lang == "fa") "consent-v0.6-fa.md" else "consent-v0.6.md"
             startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/NemoUnus/proof-of-one/blob/main/docs/pilot/$f")))
         })
         pg.content.addView(card)
@@ -404,7 +404,7 @@ class EnrolActivity : Activity() {
         if (password != pw2?.text.toString()) { say(t("pwDiffer"), 2); return }
         start?.let { Ui.enable(it, false) }
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        val log = mutableListOf("Proof of One pilot enrolment v0.17", "consent: information text v0.5 read and agreed",
+        val log = mutableListOf("Proof of One pilot enrolment v0.17.1", "consent: information text v0.6 read and agreed",
             "face check: passed on the phone (similarity %.1f, threshold %.2f, %d selfie%s); no face data sent".format(
                 java.util.Locale.ROOT, faceSim, FaceMatcher.THRESHOLD, faceTries, if (faceTries == 1) "" else "s"))
         fun step(s: String) = runOnUiThread { status?.let { Ui.say(it, s) } }

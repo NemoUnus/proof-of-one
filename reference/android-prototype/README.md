@@ -48,6 +48,10 @@ The secrets and the credential stay in the app's private storage (`member.json`,
 - **What it is not.** A check made on the phone can be bypassed by a modified app, and it does not detect a printed photo or a screen held to the camera. In the pilot it stops honest mistakes (someone else's passport picked up at home) and gives the measurements; the design's defences (the attested enclave's face comparison, Decision #33) are not in the pilot.
 - **Translated.** The face check's texts are in the six languages. The technical test tools (face check test, enrolment proof test, ballot proof benchmark) stay in English and are folded under **▸ Test tools (English)** on the first screen, so that volunteers do not meet them.
 
+### v0.17.1: consent v0.6 (Decision #71)
+
+A second AI model, reviewing whitepaper v1.3, found that consent v0.5 left out several things true of the pilot. Consent v0.6 (`docs/pilot/consent-v0.6*.md`) adds them: anyone who can open a membership can see its past answers (the app finds them again from the member's secret); the services run on a commercial cloud without the design's protected hardware; a lost or stolen phone's membership cannot be cancelled during the pilot; with about 100 members, taking part is easier to infer; and the member number could be computed by whoever holds the enrolment service's key. The app links to v0.6, records it in the enrolment report, and adds the first point to the consent summary (8 languages). No other change.
+
 ### v0.17: fixes after the independent review of v0.16 (Decision #70)
 
 An AI agent of the project that did not write v0.16 reviewed it (`docs/reviews/app-v0.16-review.md`): no critical finding, two high, nine medium, eight low. Fixed in this version:

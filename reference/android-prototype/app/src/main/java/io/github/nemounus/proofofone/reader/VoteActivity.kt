@@ -59,7 +59,7 @@ class VoteActivity : Activity() {
     private lateinit var summary: TextView      // result view: "n people answered · closed …"
     private lateinit var bars: LinearLayout     // result view: one row and bar per option
     private lateinit var after: LinearLayout    // result view: "your answer is counted", the note
-    private val log = mutableListOf("Proof of One pilot ballot (app v0.17)")
+    private val log = mutableListOf("Proof of One pilot ballot (app v0.17.1)")
     private var pendingChoice = -1
     @Volatile private var busy = false
 
