@@ -11,8 +11,8 @@ android {
         applicationId = "io.github.nemounus.proofofone.reader"
         minSdk = 26
         targetSdk = 35
-        versionCode = 24
-        versionName = "0.17.2"
+        versionCode = 25
+        versionName = "0.18"
         // The native prover is built for 64-bit ARM phones only (reference/native-prover).
         ndk { abiFilters += listOf("arm64-v8a") }
     }

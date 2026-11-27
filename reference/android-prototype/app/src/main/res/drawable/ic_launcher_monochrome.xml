@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The Proof of One logo for the launcher icon (Decision #75): three open rings and the figure one.
+     Drawn from docs/brand logo.svg; viewport 108 with the logo inside the 66-unit safe zone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <group android:scaleX="0.42" android:scaleY="0.42" android:translateX="28.8" android:translateY="28">
+        <group android:rotation="122" android:pivotX="60" android:pivotY="62">
+            <path android:strokeColor="#FFFFFFFF" android:strokeWidth="6" android:strokeLineCap="round"
+                android:trimPathEnd="0.7385"
+                android:pathData="M110,62 A50,50 0 1,1 10,62 A50,50 0 1,1 110,62" />
+        </group>
+        <group android:rotation="118" android:pivotX="60" android:pivotY="62">
+            <path android:strokeColor="#FFFFFFFF" android:strokeWidth="6" android:strokeLineCap="round"
+                android:trimPathEnd="0.7455"
+                android:pathData="M98,62 A38,38 0 1,1 22,62 A38,38 0 1,1 98,62" />
+        </group>
+        <group android:rotation="130" android:pivotX="60" android:pivotY="62">
+            <path android:strokeColor="#FFFFFFFF" android:strokeWidth="6" android:strokeLineCap="round"
+                android:trimPathEnd="0.7101"
+                android:pathData="M86,62 A26,26 0 1,1 34,62 A26,26 0 1,1 86,62" />
+        </group>
+        <path android:strokeColor="#FFFFFFFF" android:strokeWidth="8" android:strokeLineCap="round" android:strokeLineJoin="round"
+            android:pathData="M52,57 L61,49 L61,80" />
+    </group>
+</vector>

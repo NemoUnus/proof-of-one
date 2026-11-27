@@ -130,6 +130,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         val items = mutableListOf<Pair<String, () -> Unit>>(t("language") to { Ui.language(this) })
         if (Profiles.isOpen()) {
             items += t("switchMember") to { Profiles.lock(); route() }
+            items += t("renameMember") to { rename() }
             items += t("removeMember") to { confirmRemove() }
         }
         // the report of the passport just read, or the open member's registration line
@@ -348,7 +349,6 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         val pg = Ui.page(this, t("appName"), 0) { menu() }
         pg.content.addView(Ui.body(this, t("migrateBody")))
         val (b0, e0) = Ui.field(this, t("memberLabel"), t("memberLabelHint"))
-        e0.setText(t("memberSelf"))
         val (b1, e1) = Ui.field(this, t("pw1"), "", password = true)
         val (b2, e2) = Ui.field(this, t("pw2"), "", password = true)
         pg.content.addView(b0); pg.content.addView(b1); pg.content.addView(b2)
@@ -378,6 +378,25 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             }.start()
         }
         pg.bottom.addView(go)
+    }
+
+    /** Changes the open member's name on this phone (v0.18, founder's proposal). */
+    private fun rename() {
+        val id = Profiles.current ?: return
+        val old = Profiles.meta(this, id)?.label ?: return
+        val (box, e) = Ui.field(this, t("memberLabel"), t("memberLabelHint"))
+        e.inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_CAP_WORDS
+        e.setText(old); e.setSelection(e.text.length)
+        box.setPadding(Ui.dp(this, 20), Ui.dp(this, 8), Ui.dp(this, 20), 0)
+        val dlg = android.app.AlertDialog.Builder(this).setTitle(t("renameMember")).setView(box)
+            .setNegativeButton(t("cancel"), null).setPositiveButton(t("renameSave"), null).create()
+        dlg.setOnShowListener {
+            dlg.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                if (Profiles.rename(this, id, e.text.toString())) { dlg.dismiss(); route() }
+                else e.error = t("labelNeeded")
+            }
+        }
+        dlg.show()
     }
 
     private fun confirmRemove() {
@@ -465,7 +484,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
                 Thread {
                     try {
                         val line = Registration.run(this)
-                        shareText = "Proof of One registration (app v0.17.2)\n$line"
+                        shareText = "Proof of One registration (app v0.18)\n$line"
                         registryChecked = true
                         runOnUiThread { checkRegistration() }
                     } catch (e: Registration.NotReady) {
@@ -473,7 +492,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
                     } catch (e: java.io.IOException) {
                         say(t("regOffline"), 2)
                     } catch (e: Throwable) {
-                        shareText = "Proof of One registration (app v0.17.2)\nFAILED: ${e.javaClass.simpleName}: ${e.message}"
+                        shareText = "Proof of One registration (app v0.18)\nFAILED: ${e.javaClass.simpleName}: ${e.message}"
                         say(t("regFailed", e.message ?: e.javaClass.simpleName), 2)
                     } finally { registering = false }
                 }.start()

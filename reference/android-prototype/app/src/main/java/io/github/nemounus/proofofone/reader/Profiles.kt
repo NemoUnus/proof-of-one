@@ -153,7 +153,7 @@ object Profiles {
             if (list(ctx).size >= MAX) error("this phone already holds $MAX members")
             val id = ByteArray(6).also { SecureRandom().nextBytes(it) }.joinToString("") { "%02x".format(it) }
             val tmp = File(dir(ctx), "$id.enc.part"); tmp.writeBytes(encrypt(id, kpw, member.toString())); tmp.renameTo(encFile(ctx, id))
-            metaFile(ctx, id).writeText(JSONObject().put("id", id).put("label", label.trim().ifEmpty { "—" }.take(30))
+            metaFile(ctx, id).writeText(JSONObject().put("id", id).put("label", cleanLabel(label).ifEmpty { L10n.t("memberDefault", Ui.digits((list(ctx).size + 1).toString())) })
                 .put("added", LocalDate.now().toString()).put("salt", android.util.Base64.encodeToString(salt, android.util.Base64.NO_WRAP))
                 .put("numberTag", tag).toString())
             if (current == openedAtStart) {
@@ -284,6 +284,24 @@ object Profiles {
         if (expectedId == null || id != expectedId) throw Locked()
         val tmp = File(dir(ctx), "$id.enc.part"); tmp.writeBytes(encrypt(id, kpw, member.toString())); tmp.renameTo(encFile(ctx, id))
         plain = JSONObject(member.toString()); touch()
+    }
+
+    /** A label as kept: one line, at most 30 characters. */
+    fun cleanLabel(s: String) = s.replace(Regex("\\s+"), " ").trim().take(30)
+
+    /**
+     * Renames a member (v0.18, founder's proposal). Only the member that is open, so that another
+     * user of a shared phone cannot change someone else's label. Keeps every other field of the
+     * meta file. Returns false if the label is empty or that member is not open.
+     */
+    @Synchronized
+    fun rename(ctx: Context, id: String, label: String): Boolean {
+        val l = cleanLabel(label)
+        if (l.isEmpty() || current != id) return false
+        val f = metaFile(ctx, id); if (!f.exists()) return false
+        val j = JSONObject(f.readText()).put("label", l)
+        val tmp = File(dir(ctx), "$id.meta.part"); tmp.writeText(j.toString()); tmp.renameTo(f)
+        touch(); return true
     }
 
     /** Closes the open member, and forgets the last passport read on this phone (review F1). */

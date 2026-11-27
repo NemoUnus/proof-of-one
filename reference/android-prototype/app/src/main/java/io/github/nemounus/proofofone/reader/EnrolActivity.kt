@@ -66,6 +66,11 @@ class EnrolActivity : Activity() {
     private var pendingBackup: String? = null
     private var pendingSeed: String? = null
     private var restoreTries = 0
+    // v0.18: wrong passwords when restoring from the backup. From the third, a growing wait (a deterrent
+    // only: the backup is on the phone, so a modified app could skip it; the password's strength is
+    // what protects it), and a "forgot my password" button that says plainly what is and is not possible.
+    private var wrongPw = 0
+    private var restoreAfter = 0L   // SystemClock.elapsedRealtime() before which no try is made
     // the face check (v0.10)
     private var faceStatus: TextView? = null
     private var selfieBtn: Button? = null
@@ -128,7 +133,7 @@ class EnrolActivity : Activity() {
         pg.bottom.addView(Ui.primary(this, t("back")) { finish() })
     }
 
-    // ---- step 3: information and consent (docs/pilot/consent-v0.6*.md; Decision #57, point 4)
+    // ---- step 3: information and consent (docs/pilot/consent-v0.7*.md; Decision #57, point 4)
     private fun consent() {
         page = P.CONSENT; clear()
         val pg = Ui.page(this, t("consentStep"), 3) { menu() }
@@ -136,7 +141,7 @@ class EnrolActivity : Activity() {
         val card = Ui.card(this, tint = true)
         card.addView(Ui.body(this, t("consentSummary")))
         card.addView(Ui.secondary(this, t("consentRead")) {
-            val f = if (L10n.lang == "fa") "consent-v0.6-fa.md" else "consent-v0.6.md"
+            val f = if (L10n.lang == "fa") "consent-v0.7-fa.md" else "consent-v0.7.md"
             startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/NemoUnus/proof-of-one/blob/main/docs/pilot/$f")))
         })
         pg.content.addView(card)
@@ -183,7 +188,6 @@ class EnrolActivity : Activity() {
         val pg = Ui.page(this, t("pwStep"), 5) { menu() }
         val (b0, e0) = Ui.field(this, t("memberLabel"), t("memberLabelHint"))
         e0.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_WORDS
-        if (Profiles.list(this).isEmpty()) e0.setText(t("memberSelf"))
         pg.content.addView(b0); labelField = e0
         pg.content.addView(Ui.body(this, t("pwLabel")))
         val (b1, e1) = Ui.field(this, t("pw1"), "", password = true)
@@ -196,6 +200,21 @@ class EnrolActivity : Activity() {
         val s = Ui.primary(this, t("enrol")) { run() }; start = s
         pg.bottom.addView(r); pg.bottom.addView(s)
     }
+    /** Counts a wrong backup password: sets the wait and, from the third, shows the forgot button. */
+    private fun wrongBackupPassword() {
+        wrongPw++
+        if (wrongPw >= 3) {
+            restoreAfter = android.os.SystemClock.elapsedRealtime() + minOf(60_000L, 5_000L shl minOf(wrongPw - 3, 4))
+            val b = bottom ?: return
+            if (b.findViewWithTag<View>("forgot") == null)
+                b.addView(Ui.secondary(this, t("forgotPw")) {
+                    android.app.AlertDialog.Builder(this).setTitle(t("forgotPw")).setMessage(t("forgotPwBody"))
+                        .setPositiveButton(t("back"), null).show()
+                }.apply { tag = "forgot" }, 0)
+        }
+    }
+    private fun restoreWait(): Long = ((restoreAfter - android.os.SystemClock.elapsedRealtime() + 999) / 1000).coerceAtLeast(0)
+
     private fun showDetailsButton() {
         val b = bottom ?: return
         if (b.findViewWithTag<View>("details") != null) return
@@ -385,6 +404,7 @@ class EnrolActivity : Activity() {
         }
         val blob = pendingBackup ?: return
         val seed = pendingSeed ?: return
+        restoreWait().let { if (it > 0) { status?.let { s -> Ui.say(s, t("unlockWait", Ui.digits("%d:%02d".format(java.util.Locale.ROOT, it / 60, it % 60))), 2) }; return } }
         val pw = pw1?.text.toString()
         restore?.let { Ui.enable(it, false) }
         thread {
@@ -400,6 +420,7 @@ class EnrolActivity : Activity() {
                 restore?.let { Ui.enable(it, true) }
                 restoreTries++
                 if (plain == null) {
+                    wrongBackupPassword()
                     status?.let { Ui.say(it, L10n.t("wrongPw"), 2) }
                     shareText += "\nretry $restoreTries: backup not opened (password)"
                     return@runOnUiThread
@@ -423,7 +444,7 @@ class EnrolActivity : Activity() {
         if (password != pw2?.text.toString()) { say(t("pwDiffer"), 2); return }
         start?.let { Ui.enable(it, false) }
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        val log = mutableListOf("Proof of One pilot enrolment v0.17.2", "consent: information text v0.6 read and agreed",
+        val log = mutableListOf("Proof of One pilot enrolment v0.18", "consent: information text v0.7 read and agreed",
             "face check: passed on the phone (similarity %.1f, threshold %.2f, %d selfie%s); no face data sent".format(
                 java.util.Locale.ROOT, faceSim, FaceMatcher.THRESHOLD, faceTries, if (faceTries == 1) "" else "s"))
         fun step(s: String) = runOnUiThread { status?.let { Ui.say(it, s) } }
@@ -528,7 +549,7 @@ class EnrolActivity : Activity() {
                                     status?.let { Ui.say(it, t("already") + "\n\n" + t("wrongPw") + " " + t("restoreAsk"), 2) }
                                     start?.visibility = View.GONE; restore?.visibility = View.VISIBLE
                                     pw2?.visibility = View.GONE; pw1?.text?.clear()
-                                    showDetailsButton()
+                                    showDetailsButton(); wrongBackupPassword()
                                 }
                                 else -> done(t("already") + "\n\n" + t("noBackup"), false, number)
                             }

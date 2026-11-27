@@ -48,6 +48,15 @@ The secrets and the credential stay in the app's private storage (`member.json`,
 - **What it is not.** A check made on the phone can be bypassed by a modified app, and it does not detect a printed photo or a screen held to the camera. In the pilot it stops honest mistakes (someone else's passport picked up at home) and gives the measurements; the design's defences (the attested enclave's face comparison, Decision #33) are not in the pilot.
 - **Translated.** The face check's texts are in the six languages. The technical test tools (face check test, enrolment proof test, ballot proof benchmark) stay in English and are folded under **▸ Test tools (English)** on the first screen, so that volunteers do not meet them.
 
+### v0.18: member names, a forgotten password, name and icon (Decisions #74, #75)
+
+On the founder's proposals:
+
+- **No default name.** The name field of a new member is empty, with its hint (a nickname only you recognise). Left empty, the member is called "Member 2" and so on. The default "Me" is no longer offered.
+- **Renaming a member.** With a member open, the ⋮ menu has "Change this member's name". Only the open member can be renamed, so that another user of a shared phone cannot change someone else's name. Names are kept on one line, 30 characters at most.
+- **Name and icon (Decision #75).** The app is called "Proof of One" on the phone and has the project's logo as its launcher icon (an adaptive icon drawn as a vector: three open rings and the figure one, on dark blue; a one-colour version for themed icons). This replaces the neutral name and icon promised by Decision #57, point 6, which the app never had; **consent v0.7** says so, and the app now links to v0.7.
+- **Wrong passwords when restoring.** When a passport already enrolled is read again and the backup does not open with the password typed: from the third wrong password a growing wait (5 seconds, doubling, at most 1 minute), and a button "I forgot my password" that says plainly that the membership cannot be brought back without it, that during the pilot one cannot enrol again with the same passport, that answers already given stay counted, and that the volunteer may come back if the password returns or tell the group's coordinator. The wait is a deterrent only: the backup is on the phone, so a modified app could skip it; the password's strength is what protects it (whitepaper §6.8).
+
 ### v0.17.2: the photos are shown (Decision #73)
 
 On the founder's proposal, so that the holder sees what the app read and why the face check passed or failed:
