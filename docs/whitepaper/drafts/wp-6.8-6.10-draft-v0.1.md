@@ -60,9 +60,9 @@ Proof of One is led by its pseudonymous founder, **Nemo Unus**, and developed wi
 
 **Names** (Decision Log #64). Since 24 November 2026 the agents are named after historical figures of science and art whose work fits their role, each from a different country, so that no single country or culture stands out. Only historical figures of science and art are used, never political or religious leaders or living people. Earlier documents, including earlier versions of this paper, use their former Greek names.
 
-![](fig/team_en.png)
+![](fig/team_v2_en.png)
 
-*Figure 3 — The Proof of One AI agent team.* (To be redrawn with the new names.)
+*Figure 3 — The Proof of One AI agent team: the nine agents and the eight translators.*
 
 | Agent | Named after | Role | Former name |
 |---|---|---|---|
@@ -115,7 +115,7 @@ The paragraph that follows in v1.2 (reviews by a second AI model) stays, with th
 - **§9.3, Duress PIN:** to be reconsidered, since members now open with a password; until then, "a duress password" with the same limits.
 
 - **§13.3, last paragraph:** unchanged, but "Argus", "Psephos", "Ostrakon", "Kryptos" and "Hermes" wherever they appear in §13 become Kautilya, Condorcet, Cai Lun, Al-Kindi and Hypatia.
-- **Figure 3** (`fig/team_en.png`) is to be redrawn with the new names (Hokusai).
+- **Figure 3** has been redrawn as `fig/team_v2_en.png`; `fig/team_en.png` stays for earlier versions. It was redrawn with the new names (Hokusai, 27 November 2026), and is in this update.
 
 ## Points for the founder to confirm
 

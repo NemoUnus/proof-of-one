@@ -2,7 +2,7 @@
 
 Proof of One is led by its pseudonymous founder, **Nemo Unus**, and developed with a team of **AI agents**. This file exists so that no one is ever in doubt about who — or what — wrote a piece of this project.
 
-![The Proof of One AI agent team](docs/whitepaper/fig/team_en.png)
+![The Proof of One AI agent team](docs/whitepaper/fig/team_v2_en.png)
 
 ## Disclosure
 
@@ -35,7 +35,7 @@ Since 24 November 2026 the agents are named after historical figures of science 
 | **Chekhov** | Anton Chekhov (Russia, 19th century), master of short, clear prose | Russian translator | (new) | |
 | **Yan Fu** | Yan Fu (China, 19th–20th century), translator who set the principles of faithfulness, clarity and elegance | Chinese translator | (new) | |
 
-The team figure above still shows the former names; it will be redrawn.
+The team figure above was redrawn with the new names by Hokusai on 27 November 2026.
 
 ## How the team works
 
